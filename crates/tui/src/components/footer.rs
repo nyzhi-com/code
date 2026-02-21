@@ -73,7 +73,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let right = right_parts.join("  ");
 
-    let shortcuts = "ctrl+t theme  ctrl+a accent";
+    let shortcuts = "ctrl+t theme  ctrl+a accent  /model switch";
 
     let available = area.width as usize;
     let right_len = right.len();

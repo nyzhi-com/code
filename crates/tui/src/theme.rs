@@ -85,6 +85,10 @@ impl Accent {
         Accent::ALL[(idx + 1) % Accent::ALL.len()]
     }
 
+    pub fn color_preview(self, mode: ThemeMode) -> Color {
+        self.color(mode)
+    }
+
     fn color(self, mode: ThemeMode) -> Color {
         match self {
             Accent::Copper => Color::Rgb(196, 154, 108),

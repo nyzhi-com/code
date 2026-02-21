@@ -51,14 +51,14 @@ pub async fn handle_key(
             }
 
             if input == "/theme" {
-                app.theme.toggle_mode();
+                app.open_theme_selector();
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
             }
 
             if input == "/accent" {
-                app.theme.next_accent();
+                app.open_accent_selector();
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
@@ -317,20 +317,14 @@ pub async fn handle_key(
 
             if input == "/model" {
                 let models = provider.supported_models();
-                let mut lines = vec!["Available models:".to_string()];
-                for m in models {
-                    let marker = if m.id == app.model_name { " *" } else { "" };
-                    lines.push(format!(
-                        "  {} ({}){marker}",
-                        m.id, m.name,
-                    ));
+                if models.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No models available.".to_string(),
+                    });
+                } else {
+                    app.open_model_selector(models);
                 }
-                lines.push(String::new());
-                lines.push("Use /model <id> to switch.".to_string());
-                app.items.push(DisplayItem::Message {
-                    role: "system".to_string(),
-                    content: lines.join("\n"),
-                });
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
@@ -584,8 +578,8 @@ pub async fn handle_key(
                         "  /compact        Compress conversation history",
                         "  /sessions       List saved sessions",
                         "  /resume <id>    Restore a saved session",
-                        "  /theme          Toggle light/dark theme",
-                        "  /accent         Cycle accent color",
+                        "  /theme          Choose theme (dark/light)",
+                        "  /accent         Choose accent color",
                         "  /trust          Show current trust mode",
                         "  /trust <mode>   Set trust mode (off, limited, full)",
                         "  /undo           Undo the last file change",
@@ -604,8 +598,8 @@ pub async fn handle_key(
                         "  nyzhi whoami              Show auth status for all providers",
                         "",
                         "Shortcuts:",
-                        "  ctrl+t          Toggle theme",
-                        "  ctrl+a          Cycle accent",
+                        "  ctrl+t          Open theme picker",
+                        "  ctrl+a          Open accent picker",
                         "  ctrl+l          Clear session",
                         "  ctrl+u          Clear input line",
                         "  ctrl+c          Exit",

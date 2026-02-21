@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
 
 use crate::app::App;
-use crate::components::{chat, footer, input_box, welcome};
+use crate::components::{chat, footer, input_box, selector, welcome};
 use crate::spinner::SpinnerState;
 use crate::theme::Theme;
 
@@ -28,4 +28,8 @@ pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState)
 
     input_box::draw(frame, chunks[1], app, theme, spinner);
     footer::draw(frame, chunks[2], app, theme);
+
+    if let Some(sel) = &app.selector {
+        selector::draw(frame, sel, theme);
+    }
 }

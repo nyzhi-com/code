@@ -64,8 +64,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let commands: &[(&str, &str, &str)] = &[
         ("/help", "show help", "ctrl+h"),
         ("/clear", "clear session", "ctrl+l"),
-        ("/theme", "toggle theme", "ctrl+t"),
-        ("/accent", "cycle accent", "ctrl+a"),
+        ("/theme", "choose theme", "ctrl+t"),
+        ("/accent", "choose accent", "ctrl+a"),
+        ("/model", "choose model", ""),
         ("/quit", "exit", "ctrl+c"),
     ];
 

@@ -72,6 +72,7 @@ pub struct App {
         Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>>,
     pub pending_images: Vec<PendingImage>,
     pub trust_mode: nyzhi_config::TrustMode,
+    pub selector: Option<crate::components::selector::SelectorState>,
 }
 
 impl App {
@@ -99,6 +100,7 @@ impl App {
             pending_approval: None,
             pending_images: Vec::new(),
             trust_mode: nyzhi_config::TrustMode::Off,
+            selector: None,
         }
     }
 
@@ -183,18 +185,20 @@ impl App {
 
             if event::poll(std::time::Duration::from_millis(16))? {
                 if let Event::Key(key) = event::read()? {
-                    if key.code == KeyCode::Char('c')
+                    if self.selector.is_some() {
+                        self.handle_selector_key(key, &mut model_info_idx);
+                    } else if key.code == KeyCode::Char('c')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
                         self.should_quit = true;
                     } else if key.code == KeyCode::Char('t')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
-                        self.theme.toggle_mode();
+                        self.open_theme_selector();
                     } else if key.code == KeyCode::Char('a')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
-                        self.theme.next_accent();
+                        self.open_accent_selector();
                     } else if key.code == KeyCode::Char('l')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
@@ -337,6 +341,114 @@ impl App {
         Ok(())
     }
 
+    fn handle_selector_key(&mut self, key: crossterm::event::KeyEvent, model_info_idx: &mut Option<usize>) {
+        use crate::components::selector::{SelectorAction, SelectorKind};
+        use crate::theme::{Accent, ThemeMode};
+
+        let action = if let Some(sel) = &mut self.selector {
+            sel.handle_key(key)
+        } else {
+            return;
+        };
+
+        match action {
+            SelectorAction::Select(value) => {
+                let kind = self.selector.as_ref().unwrap().kind;
+                match kind {
+                    SelectorKind::Theme => {
+                        let mode = match value.as_str() {
+                            "light" => ThemeMode::Light,
+                            _ => ThemeMode::Dark,
+                        };
+                        self.theme = Theme::new(mode, self.theme.accent_type);
+                    }
+                    SelectorKind::Accent => {
+                        let accent = Accent::from_name(&value);
+                        self.theme = Theme::new(self.theme.mode, accent);
+                    }
+                    SelectorKind::Model => {
+                        let idx = self.selector.as_ref().unwrap().cursor;
+                        *model_info_idx = Some(idx);
+                        self.model_name = value;
+                    }
+                }
+                self.selector = None;
+            }
+            SelectorAction::Cancel => {
+                self.selector = None;
+            }
+            SelectorAction::None => {}
+        }
+        let _ = model_info_idx;
+    }
+
+    pub fn open_theme_selector(&mut self) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+        use crate::theme::ThemeMode;
+
+        let items = vec![
+            SelectorItem {
+                label: "Dark".to_string(),
+                value: "dark".to_string(),
+                preview_color: None,
+            },
+            SelectorItem {
+                label: "Light".to_string(),
+                value: "light".to_string(),
+                preview_color: None,
+            },
+        ];
+        let current = match self.theme.mode {
+            ThemeMode::Dark => "dark",
+            ThemeMode::Light => "light",
+        };
+        self.selector = Some(SelectorState::new(
+            SelectorKind::Theme,
+            "Theme",
+            items,
+            current,
+        ));
+    }
+
+    pub fn open_accent_selector(&mut self) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+        use crate::theme::Accent;
+
+        let items: Vec<SelectorItem> = Accent::ALL
+            .iter()
+            .map(|a| SelectorItem {
+                label: capitalize(a.name()),
+                value: a.name().to_string(),
+                preview_color: Some(a.color_preview(self.theme.mode)),
+            })
+            .collect();
+        self.selector = Some(SelectorState::new(
+            SelectorKind::Accent,
+            "Accent Color",
+            items,
+            self.theme.accent_type.name(),
+        ));
+    }
+
+    pub fn open_model_selector(&mut self, models: &[nyzhi_provider::ModelInfo]) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let items: Vec<SelectorItem> = models
+            .iter()
+            .map(|m| SelectorItem {
+                label: m.id.to_string(),
+                value: m.id.to_string(),
+                preview_color: None,
+            })
+            .collect();
+        self.selector = Some(SelectorState::new(
+            SelectorKind::Model,
+            "Model",
+            items,
+            &self.model_name,
+        ));
+    }
+
     async fn respond_approval(&mut self, approved: bool) {
         if let Some(respond) = self.pending_approval.take() {
             let mut guard = respond.lock().await;
@@ -352,6 +464,14 @@ impl App {
             }
         }
         self.mode = AppMode::Streaming;
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().to_string() + c.as_str(),
     }
 }
 
