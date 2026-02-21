@@ -1,6 +1,7 @@
 pub mod permission;
 pub mod bash;
 pub mod change_tracker;
+pub mod close_agent;
 pub mod diff;
 pub mod read;
 pub mod write;
@@ -13,7 +14,11 @@ pub mod todo;
 pub mod filesystem;
 pub mod lsp;
 pub mod notepad;
+pub mod resume_agent;
+pub mod send_input;
+pub mod spawn_agent;
 pub mod verify;
+pub mod wait_tool;
 
 use std::collections::HashMap;
 use std::path::PathBuf;

@@ -1558,6 +1558,7 @@ dependencies = [
  "glob",
  "nyzhi-config",
  "nyzhi-provider",
+ "rand 0.9.2",
  "regex",
  "reqwest 0.12.28",
  "rmcp",

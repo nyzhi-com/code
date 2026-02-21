@@ -83,6 +83,33 @@ pub struct AgentSettings {
     pub auto_simplify: bool,
     #[serde(default)]
     pub verify: VerifyConfig,
+    #[serde(default)]
+    pub agents: AgentManagerConfig,
+}
+
+fn default_max_agents() -> usize {
+    4
+}
+
+fn default_max_agent_depth() -> u32 {
+    2
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentManagerConfig {
+    #[serde(default = "default_max_agents")]
+    pub max_threads: usize,
+    #[serde(default = "default_max_agent_depth")]
+    pub max_depth: u32,
+}
+
+impl Default for AgentManagerConfig {
+    fn default() -> Self {
+        Self {
+            max_threads: default_max_agents(),
+            max_depth: default_max_agent_depth(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -519,6 +546,18 @@ impl Config {
                     project.agent.verify.clone()
                 } else {
                     global.agent.verify.clone()
+                },
+                agents: AgentManagerConfig {
+                    max_threads: if project.agent.agents.max_threads != default_max_agents() {
+                        project.agent.agents.max_threads
+                    } else {
+                        global.agent.agents.max_threads
+                    },
+                    max_depth: if project.agent.agents.max_depth != default_max_agent_depth() {
+                        project.agent.agents.max_depth
+                    } else {
+                        global.agent.agents.max_depth
+                    },
                 },
             },
             mcp: McpConfig {

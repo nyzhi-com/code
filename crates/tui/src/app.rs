@@ -197,8 +197,8 @@ impl App {
 
     pub async fn run(
         &mut self,
-        provider: &dyn Provider,
-        registry: &ToolRegistry,
+        provider: std::sync::Arc<dyn Provider>,
+        mut registry: ToolRegistry,
         config: &nyzhi_config::Config,
     ) -> Result<()> {
         self.history.load();
@@ -311,6 +311,33 @@ impl App {
             change_tracker: change_tracker.clone(),
         };
 
+        let agent_registry = std::sync::Arc::new(nyzhi_core::tools::default_registry().registry);
+        let agent_manager = std::sync::Arc::new(nyzhi_core::agent_manager::AgentManager::new(
+            provider.clone(),
+            agent_registry,
+            event_tx.clone(),
+            config.agent.agents.max_threads,
+            config.agent.agents.max_depth,
+        ));
+
+        registry.register(Box::new(
+            nyzhi_core::tools::spawn_agent::SpawnAgentTool::new(agent_manager.clone()),
+        ));
+        registry.register(Box::new(
+            nyzhi_core::tools::send_input::SendInputTool::new(agent_manager.clone()),
+        ));
+        registry.register(Box::new(
+            nyzhi_core::tools::wait_tool::WaitTool::new(agent_manager.clone()),
+        ));
+        registry.register(Box::new(
+            nyzhi_core::tools::close_agent::CloseAgentTool::new(agent_manager.clone()),
+        ));
+        registry.register(Box::new(
+            nyzhi_core::tools::resume_agent::ResumeAgentTool::new(agent_manager.clone()),
+        ));
+
+        let registry = registry;
+
         loop {
             self.spinner.tick();
 
@@ -361,11 +388,11 @@ impl App {
                         handle_key(
                             self,
                             key,
-                            provider,
+                            &*provider,
                             &mut thread,
                             &mut agent_config,
                             &event_tx,
-                            registry,
+                            &registry,
                             &tool_ctx,
                             mi,
                             &mut model_info_idx,
@@ -539,6 +566,35 @@ impl App {
                         self.items.push(DisplayItem::Message {
                             role: "system".to_string(),
                             content: format!("Routed to {model_name} (tier: {tier})"),
+                        });
+                    }
+                    AgentEvent::SubAgentSpawned { nickname, role, .. } => {
+                        let role_str = role.as_deref().unwrap_or("default");
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Spawned sub-agent {nickname} (role: {role_str})"),
+                        });
+                    }
+                    AgentEvent::SubAgentStatusChanged { nickname, status, .. } => {
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Agent {nickname}: {status}"),
+                        });
+                    }
+                    AgentEvent::SubAgentCompleted { nickname, final_message, .. } => {
+                        let preview = final_message
+                            .as_deref()
+                            .map(|m| {
+                                if m.len() > 200 {
+                                    format!("{}...", &m[..200])
+                                } else {
+                                    m.to_string()
+                                }
+                            })
+                            .unwrap_or_else(|| "no output".to_string());
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Agent {nickname} completed: {preview}"),
                         });
                     }
                     AgentEvent::Usage(usage) => {

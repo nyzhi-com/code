@@ -1,4 +1,6 @@
 pub mod agent;
+pub mod agent_manager;
+pub mod agent_roles;
 pub mod analytics;
 pub mod autopilot;
 pub mod commands;

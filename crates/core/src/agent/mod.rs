@@ -66,6 +66,21 @@ pub enum AgentEvent {
         model_name: String,
         tier: String,
     },
+    SubAgentSpawned {
+        id: String,
+        nickname: String,
+        role: Option<String>,
+    },
+    SubAgentStatusChanged {
+        id: String,
+        nickname: String,
+        status: String,
+    },
+    SubAgentCompleted {
+        id: String,
+        nickname: String,
+        final_message: Option<String>,
+    },
     Usage(SessionUsage),
     TurnComplete,
     Error(String),
@@ -134,6 +149,24 @@ impl std::fmt::Debug for AgentEvent {
                 .debug_struct("RoutedModel")
                 .field("model_name", model_name)
                 .field("tier", tier)
+                .finish(),
+            Self::SubAgentSpawned { id, nickname, role } => f
+                .debug_struct("SubAgentSpawned")
+                .field("id", id)
+                .field("nickname", nickname)
+                .field("role", role)
+                .finish(),
+            Self::SubAgentStatusChanged { id, nickname, status } => f
+                .debug_struct("SubAgentStatusChanged")
+                .field("id", id)
+                .field("nickname", nickname)
+                .field("status", status)
+                .finish(),
+            Self::SubAgentCompleted { id, nickname, final_message } => f
+                .debug_struct("SubAgentCompleted")
+                .field("id", id)
+                .field("nickname", nickname)
+                .field("final_message", final_message)
                 .finish(),
             Self::Usage(u) => f.debug_struct("Usage").field("usage", u).finish(),
             Self::TurnComplete => write!(f, "TurnComplete"),

@@ -554,11 +554,8 @@ async fn main() -> Result<()> {
             Vec::new()
         };
 
-    registry.register(Box::new(nyzhi_core::tools::task::TaskTool::new(
-        provider.clone(),
-        std::sync::Arc::new(nyzhi_core::tools::default_registry().registry),
-        2,
-    )));
+    // Multi-agent tools will be registered per-session with access to the event_tx.
+    // The old single-shot `task` tool is replaced by spawn_agent/send_input/wait/close_agent/resume_agent.
 
     let mut config = config;
     if let Some(trust_str) = &cli.trust {
@@ -637,7 +634,7 @@ async fn main() -> Result<()> {
                 nyzhi_tui::App::new(provider_name, model_name, &config.tui, workspace.clone());
             app.mcp_manager = mcp_manager.clone();
             app.initial_session = initial_session;
-            app.run(&*provider, &registry, &config).await?;
+            app.run(provider.clone(), registry, &config).await?;
         }
         _ => unreachable!(),
     }

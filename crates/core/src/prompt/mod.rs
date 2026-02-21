@@ -102,13 +102,27 @@ fn build_full_system_prompt(
 - `copy_file`: Copy a file. Requires approval. Undoable.
 - `create_dir`: Create a directory including parents. Requires approval.
 - `todowrite` / `todoread`: Manage a task list for complex multi-step work.
-- `task`: Delegate a sub-task to a child agent. The sub-agent runs independently with its own conversation and returns the result. Use for research, analysis, or implementation sub-tasks that benefit from focused attention.
 
-# Task Delegation
-- Use `task` for complex sub-problems that can be solved independently (e.g. "research how X library handles Y", "implement the tests for module Z").
-- Prefer direct tool use for simple operations -- don't delegate single reads, greps, or edits.
-- Multiple `task` calls in the same turn will execute in parallel automatically.
-- Sub-agents have access to all standard tools and can read/write files, run commands, etc.
+# Sub-Agents (Multi-Agent)
+You can spawn, communicate with, and coordinate multiple independent sub-agents:
+- `spawn_agent`: Spawn a new sub-agent with a task. Params: `message` (string, required), `agent_type` (optional: "default", "explorer", "worker", "reviewer"). Returns `{{ agent_id, agent_nickname }}`.
+- `send_input`: Send follow-up instructions to a running agent. Params: `id` (string), `message` (string).
+- `wait`: Wait for agents to finish. Params: `ids` (array of agent_id strings), `timeout_ms` (optional, default 30000). Returns status of completed agents. Prefer longer timeouts.
+- `close_agent`: Shut down an agent to free its slot. Params: `id` (string).
+- `resume_agent`: Re-activate a completed/errored agent. Params: `id` (string).
+
+## Agent Roles
+- `default`: Standard agent with full tools. Use for general tasks.
+- `explorer`: Read-only agent optimized for fast codebase exploration. Trust explorer results without re-verifying.
+- `worker`: Implementation agent with full tools. Assign specific files/scope.
+- `reviewer`: Read-only analysis agent for code review. Returns structured findings.
+
+## Multi-Agent Best Practices
+- Spawn explorers to answer specific questions about the codebase. Run them in parallel when useful.
+- Spawn workers for independent implementation sub-tasks. Assign clear ownership (files/scope).
+- After spawning agents, use `wait` to block until they complete -- do NOT busy-poll.
+- Close agents when done to free slots (max concurrent agents is limited).
+- Prefer direct tool use for simple operations -- don't spawn agents for single reads/edits.
 
 # Coding Guidelines
 - Always use absolute paths when referring to files.
