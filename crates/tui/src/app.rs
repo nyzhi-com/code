@@ -593,7 +593,7 @@ impl App {
 
     fn handle_selector_key(&mut self, key: crossterm::event::KeyEvent, model_info_idx: &mut Option<usize>) {
         use crate::components::selector::{SelectorAction, SelectorKind};
-        use crate::theme::{Accent, ThemeMode};
+        use crate::theme::{Accent, ThemePreset};
 
         let action = if let Some(sel) = &mut self.selector {
             sel.handle_key(key)
@@ -606,15 +606,20 @@ impl App {
                 let kind = self.selector.as_ref().unwrap().kind;
                 match kind {
                     SelectorKind::Theme => {
-                        let mode = match value.as_str() {
-                            "light" => ThemeMode::Light,
-                            _ => ThemeMode::Dark,
-                        };
-                        self.theme = Theme::new(mode, self.theme.accent_type);
+                        let preset = ThemePreset::from_name(&value);
+                        self.theme = Theme::new(preset, self.theme.accent_type);
+                        let _ = nyzhi_config::Config::save_tui_preferences(
+                            preset.name(),
+                            self.theme.accent_type.name(),
+                        );
                     }
                     SelectorKind::Accent => {
                         let accent = Accent::from_name(&value);
-                        self.theme = Theme::new(self.theme.mode, accent);
+                        self.theme = Theme::new(self.theme.preset, accent);
+                        let _ = nyzhi_config::Config::save_tui_preferences(
+                            self.theme.preset.name(),
+                            accent.name(),
+                        );
                     }
                     SelectorKind::Model => {
                         let idx = self.selector.as_ref().unwrap().cursor;
@@ -634,29 +639,21 @@ impl App {
 
     pub fn open_theme_selector(&mut self) {
         use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
-        use crate::theme::ThemeMode;
+        use crate::theme::ThemePreset;
 
-        let items = vec![
-            SelectorItem {
-                label: "Dark".to_string(),
-                value: "dark".to_string(),
-                preview_color: None,
-            },
-            SelectorItem {
-                label: "Light".to_string(),
-                value: "light".to_string(),
-                preview_color: None,
-            },
-        ];
-        let current = match self.theme.mode {
-            ThemeMode::Dark => "dark",
-            ThemeMode::Light => "light",
-        };
+        let items: Vec<SelectorItem> = ThemePreset::ALL
+            .iter()
+            .map(|p| SelectorItem {
+                label: p.display_name().to_string(),
+                value: p.name().to_string(),
+                preview_color: Some(p.bg_page_color()),
+            })
+            .collect();
         self.selector = Some(SelectorState::new(
             SelectorKind::Theme,
             "Theme",
             items,
-            current,
+            self.theme.preset.name(),
         ));
     }
 

@@ -207,6 +207,28 @@ pub struct TuiConfig {
     pub theme: String,
     #[serde(default = "default_accent")]
     pub accent: String,
+    #[serde(default)]
+    pub colors: ThemeOverrides,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ThemeOverrides {
+    pub bg_page: Option<String>,
+    pub bg_surface: Option<String>,
+    pub bg_elevated: Option<String>,
+    pub bg_sunken: Option<String>,
+    pub text_primary: Option<String>,
+    pub text_secondary: Option<String>,
+    pub text_tertiary: Option<String>,
+    pub text_disabled: Option<String>,
+    pub border_default: Option<String>,
+    pub border_strong: Option<String>,
+    pub accent: Option<String>,
+    pub accent_muted: Option<String>,
+    pub success: Option<String>,
+    pub danger: Option<String>,
+    pub warning: Option<String>,
+    pub info: Option<String>,
 }
 
 fn default_provider() -> String {
@@ -267,6 +289,7 @@ impl Default for TuiConfig {
             streaming: true,
             theme: default_theme(),
             accent: default_accent(),
+            colors: ThemeOverrides::default(),
         }
     }
 }
@@ -303,6 +326,21 @@ impl Config {
         std::fs::create_dir_all(Self::config_dir())?;
         std::fs::create_dir_all(Self::data_dir())?;
         Ok(())
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = Self::config_path();
+        Self::ensure_dirs()?;
+        let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
+        std::fs::write(&path, content).context("Failed to write config file")?;
+        Ok(())
+    }
+
+    pub fn save_tui_preferences(theme: &str, accent: &str) -> Result<()> {
+        let mut config = Self::load()?;
+        config.tui.theme = theme.to_string();
+        config.tui.accent = accent.to_string();
+        config.save()
     }
 
     pub fn load_project(project_root: &std::path::Path) -> Result<Option<Self>> {

@@ -5,7 +5,7 @@ A performance-optimized AI coding agent for the terminal, built in Rust.
 ## Features
 
 - **Multi-provider** -- OpenAI, Anthropic, and Google Gemini with streaming
-- **Rich TUI** -- ratatui-based interface with themes, ASCII logo, animated spinner
+- **Rich TUI** -- ratatui-based interface with 8 built-in themes, persistent theme/accent selection, ASCII logo, animated spinner
 - **30+ built-in tools** -- file ops, git, grep, glob, bash, sub-agents, todo
 - **MCP support** -- connect external tool servers via stdio or HTTP
 - **OAuth + API key auth** -- Google PKCE, OpenAI device code, or plain API keys
@@ -86,7 +86,7 @@ Flags:
 | `/resume <id>` | Restore a saved session |
 | `/session delete <id>` | Delete a saved session |
 | `/session rename <t>` | Rename current session |
-| `/theme` | Choose theme (dark/light) |
+| `/theme` | Choose theme preset |
 | `/accent` | Choose accent color |
 | `/trust [mode]` | Show or set trust mode |
 | `/editor` | Open `$EDITOR` for multi-line input |
@@ -133,9 +133,14 @@ model = "claude-sonnet-4-20250514"
 model = "gemini-2.5-flash"
 
 [tui]
-theme = "dark"       # "dark" or "light"
-accent = "copper"    # copper, blue, orange, emerald, violet, rose, amber,
-                     # cyan, red, pink, teal, indigo, lime, monochrome
+theme = "nyzhi-dark"  # nyzhi-dark, nyzhi-light, tokyonight, catppuccin-mocha,
+                      # dracula, solarized-dark, solarized-light, gruvbox-dark
+accent = "copper"     # copper, blue, orange, emerald, violet, rose, amber,
+                      # cyan, red, pink, teal, indigo, lime, monochrome
+
+[tui.colors]          # optional per-slot hex overrides (applied on top of preset)
+# bg_page = "#1a1b26"
+# text_primary = "#c0caf5"
 
 [agent]
 max_steps = 100
