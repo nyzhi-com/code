@@ -84,6 +84,10 @@ pub struct App {
     pub stream_token_count: usize,
     pub turn_start: Option<std::time::Instant>,
     pub last_prompt: Option<String>,
+    pub initial_session: Option<(Thread, nyzhi_core::session::SessionMeta)>,
+    pub hooks_config: Vec<nyzhi_config::HookConfig>,
+    pub hook_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
+    hook_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
 }
 
 impl App {
@@ -123,6 +127,10 @@ impl App {
             stream_token_count: 0,
             turn_start: None,
             last_prompt: None,
+            initial_session: None,
+            hooks_config: Vec::new(),
+            hook_rx: None,
+            hook_tx: None,
         }
     }
 
@@ -142,7 +150,35 @@ impl App {
         let mut terminal = Terminal::new(backend)?;
 
         let (event_tx, mut event_rx) = broadcast::channel::<AgentEvent>(256);
-        let mut thread = Thread::new();
+        let mut thread = if let Some((loaded_thread, loaded_meta)) = self.initial_session.take() {
+            for msg in loaded_thread.messages() {
+                let role = match msg.role {
+                    nyzhi_provider::Role::User => "user",
+                    nyzhi_provider::Role::Assistant => "assistant",
+                    _ => "system",
+                };
+                let mut text = msg.content.as_text().to_string();
+                if msg.content.has_images() {
+                    text.push_str("\n[image attached]");
+                }
+                if !text.is_empty() {
+                    self.items.push(DisplayItem::Message {
+                        role: role.to_string(),
+                        content: text,
+                    });
+                }
+            }
+            self.items.push(DisplayItem::Message {
+                role: "system".to_string(),
+                content: format!(
+                    "Resumed session: {} ({} messages)",
+                    loaded_meta.title, loaded_meta.message_count,
+                ),
+            });
+            loaded_thread
+        } else {
+            Thread::new()
+        };
 
         let mcp_tool_summaries = if let Some(mgr) = &self.mcp_manager {
             let mut summaries = Vec::new();
@@ -190,6 +226,10 @@ impl App {
             ..AgentConfig::default()
         };
         self.trust_mode = agent_config.trust.mode.clone();
+        self.hooks_config = config.agent.hooks.clone();
+        let (hook_tx, hook_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        self.hook_tx = Some(hook_tx);
+        self.hook_rx = Some(hook_rx);
 
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let change_tracker = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -341,6 +381,30 @@ impl App {
                                 *elapsed_ms = Some(ev_elapsed);
                             }
                         }
+                        const FILE_TOOLS: &[&str] = &[
+                            "edit", "write", "delete_file", "move_file", "copy_file",
+                        ];
+                        if FILE_TOOLS.contains(&name.as_str()) && !self.hooks_config.is_empty() {
+                            let tracker = change_tracker.clone();
+                            let hooks = self.hooks_config.clone();
+                            let hook_cwd = tool_ctx.cwd.clone();
+                            if let Some(tx) = self.hook_tx.clone() {
+                                tokio::spawn(async move {
+                                    let changed_file = {
+                                        let guard = tracker.lock().await;
+                                        guard.last().map(|c| c.path.display().to_string())
+                                    };
+                                    if let Some(file) = changed_file {
+                                        let results = nyzhi_core::hooks::run_after_edit_hooks(
+                                            &hooks, &file, &hook_cwd,
+                                        ).await;
+                                        for r in results {
+                                            let _ = tx.send(r.summary());
+                                        }
+                                    }
+                                });
+                            }
+                        }
                     }
                     AgentEvent::ToolOutputDelta { tool_name, delta } => {
                         if let Some(DisplayItem::ToolCall {
@@ -417,6 +481,20 @@ impl App {
                                 &self.model_name,
                             );
                         }
+                        if !self.hooks_config.is_empty() {
+                            let hooks = self.hooks_config.clone();
+                            let hook_cwd = tool_ctx.cwd.clone();
+                            if let Some(tx) = self.hook_tx.clone() {
+                                tokio::spawn(async move {
+                                    let results =
+                                        nyzhi_core::hooks::run_after_turn_hooks(&hooks, &hook_cwd)
+                                            .await;
+                                    for r in results {
+                                        let _ = tx.send(r.summary());
+                                    }
+                                });
+                            }
+                        }
                     }
                     AgentEvent::Error(e) => {
                         self.items.push(DisplayItem::Message {
@@ -425,6 +503,15 @@ impl App {
                         });
                         self.mode = AppMode::Input;
                     }
+                }
+            }
+
+            if let Some(ref mut rx) = self.hook_rx {
+                while let Ok(msg) = rx.try_recv() {
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: msg,
+                    });
                 }
             }
 

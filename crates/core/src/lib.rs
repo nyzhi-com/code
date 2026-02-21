@@ -2,6 +2,7 @@ pub mod agent;
 pub mod context;
 pub mod context_files;
 pub mod conversation;
+pub mod hooks;
 pub mod mcp;
 pub mod session;
 pub mod tools;

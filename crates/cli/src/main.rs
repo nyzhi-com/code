@@ -20,6 +20,14 @@ struct Cli {
     /// Trust mode: off, limited, or full (auto-approve tool calls)
     #[arg(short = 'y', long = "trust")]
     trust: Option<String>,
+
+    /// Continue the most recent session
+    #[arg(short = 'c', long = "continue")]
+    continue_session: bool,
+
+    /// Resume a specific session by ID prefix or title search
+    #[arg(short, long)]
+    session: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -294,6 +302,46 @@ async fn main() -> Result<()> {
             .await?;
         }
         None => {
+            if cli.continue_session && cli.session.is_some() {
+                eprintln!("Cannot use both --continue and --session");
+                std::process::exit(1);
+            }
+
+            let initial_session = if cli.continue_session {
+                match nyzhi_core::session::latest_session()? {
+                    Some(meta) => {
+                        let (thread, meta) = nyzhi_core::session::load_session(&meta.id)?;
+                        Some((thread, meta))
+                    }
+                    None => {
+                        eprintln!("No sessions to continue.");
+                        std::process::exit(1);
+                    }
+                }
+            } else if let Some(ref query) = cli.session {
+                let matches = nyzhi_core::session::find_sessions(query)?;
+                match matches.len() {
+                    0 => {
+                        eprintln!("No session matching '{query}'");
+                        std::process::exit(1);
+                    }
+                    1 => {
+                        let (thread, meta) =
+                            nyzhi_core::session::load_session(&matches[0].id)?;
+                        Some((thread, meta))
+                    }
+                    n => {
+                        eprintln!("Ambiguous: {n} sessions match '{query}'. Be more specific.");
+                        for s in matches.iter().take(10) {
+                            eprintln!("  [{}] {}", &s.id[..8], s.title);
+                        }
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                None
+            };
+
             let model_name = cli.model.as_deref().unwrap_or(
                 provider
                     .supported_models()
@@ -305,6 +353,7 @@ async fn main() -> Result<()> {
             let mut app =
                 nyzhi_tui::App::new(provider_name, model_name, &config.tui, workspace.clone());
             app.mcp_manager = mcp_manager.clone();
+            app.initial_session = initial_session;
             app.run(&*provider, &registry, &config).await?;
         }
         _ => unreachable!(),
@@ -459,6 +508,16 @@ async fn run_once(
     }
 
     let _ = handle.await;
+
+    if !config.agent.hooks.is_empty() {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let results =
+            nyzhi_core::hooks::run_after_turn_hooks(&config.agent.hooks, &cwd).await;
+        for r in results {
+            eprintln!("{}", r.summary());
+        }
+    }
+
     println!();
     Ok(())
 }

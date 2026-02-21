@@ -114,3 +114,29 @@ pub fn delete_session(id: &str) -> Result<()> {
     }
     Ok(())
 }
+
+pub fn latest_session() -> Result<Option<SessionMeta>> {
+    let sessions = list_sessions()?;
+    Ok(sessions.into_iter().next())
+}
+
+pub fn rename_session(id: &str, new_title: &str) -> Result<()> {
+    let path = session_path(id)?;
+    let json = std::fs::read_to_string(&path)?;
+    let mut file: SessionFile = serde_json::from_str(&json)?;
+    file.meta.title = new_title.to_string();
+    let json = serde_json::to_string(&file)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
+pub fn find_sessions(query: &str) -> Result<Vec<SessionMeta>> {
+    let query_lower = query.to_lowercase();
+    let sessions = list_sessions()?;
+    Ok(sessions
+        .into_iter()
+        .filter(|s| {
+            s.id.starts_with(query) || s.title.to_lowercase().contains(&query_lower)
+        })
+        .collect())
+}

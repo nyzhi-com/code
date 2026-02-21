@@ -163,16 +163,32 @@ pub async fn handle_key(
                 return;
             }
 
-            if input == "/sessions" {
-                match nyzhi_core::session::list_sessions() {
+            if input == "/sessions" || input.starts_with("/sessions ") {
+                let query = input.strip_prefix("/sessions").unwrap().trim();
+                let result = if query.is_empty() {
+                    nyzhi_core::session::list_sessions()
+                } else {
+                    nyzhi_core::session::find_sessions(query)
+                };
+                match result {
                     Ok(sessions) => {
                         if sessions.is_empty() {
+                            let msg = if query.is_empty() {
+                                "No saved sessions.".to_string()
+                            } else {
+                                format!("No sessions matching '{query}'.")
+                            };
                             app.items.push(DisplayItem::Message {
                                 role: "system".to_string(),
-                                content: "No saved sessions.".to_string(),
+                                content: msg,
                             });
                         } else {
-                            let mut lines = vec!["Saved sessions:".to_string()];
+                            let header = if query.is_empty() {
+                                "Saved sessions:".to_string()
+                            } else {
+                                format!("Sessions matching '{query}':")
+                            };
+                            let mut lines = vec![header];
                             for (i, s) in sessions.iter().take(20).enumerate() {
                                 lines.push(format!(
                                     "  {}. [{}] {} ({} msgs, {})",
@@ -283,6 +299,100 @@ pub async fn handle_key(
                 return;
             }
 
+            if let Some(rest) = input.strip_prefix("/session delete ") {
+                let id_prefix = rest.trim();
+                if id_prefix.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /session delete <id-prefix>".to_string(),
+                    });
+                } else {
+                    match nyzhi_core::session::find_sessions(id_prefix) {
+                        Ok(matched) => match matched.len() {
+                            0 => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("No session matching '{id_prefix}'"),
+                                });
+                            }
+                            1 => {
+                                let target = &matched[0];
+                                if target.id == thread.id {
+                                    app.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: "Cannot delete the active session.".to_string(),
+                                    });
+                                } else {
+                                    match nyzhi_core::session::delete_session(&target.id) {
+                                        Ok(()) => {
+                                            app.items.push(DisplayItem::Message {
+                                                role: "system".to_string(),
+                                                content: format!(
+                                                    "Deleted session: [{}] {}",
+                                                    &target.id[..8],
+                                                    target.title,
+                                                ),
+                                            });
+                                        }
+                                        Err(e) => {
+                                            app.items.push(DisplayItem::Message {
+                                                role: "system".to_string(),
+                                                content: format!("Error deleting session: {e}"),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                            n => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!(
+                                        "Ambiguous: {n} sessions match '{id_prefix}'. Be more specific."
+                                    ),
+                                });
+                            }
+                        },
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Error finding sessions: {e}"),
+                            });
+                        }
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if let Some(rest) = input.strip_prefix("/session rename ") {
+                let new_title = rest.trim();
+                if new_title.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /session rename <new title>".to_string(),
+                    });
+                } else {
+                    match nyzhi_core::session::rename_session(&thread.id, new_title) {
+                        Ok(()) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Session renamed to: {new_title}"),
+                            });
+                        }
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Error renaming session: {e}"),
+                            });
+                        }
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/init" {
                 match nyzhi_core::workspace::scaffold_nyzhi_dir(&app.workspace.project_root) {
                     Ok(created) => {
@@ -348,6 +458,35 @@ pub async fn handle_key(
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
                         content: "No MCP servers configured.".to_string(),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/hooks" {
+                if app.hooks_config.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No hooks configured.\n\nAdd hooks in .nyzhi/config.toml:\n\n  [[agent.hooks]]\n  event = \"after_edit\"\n  command = \"cargo fmt -- {file}\"\n  pattern = \"*.rs\"".to_string(),
+                    });
+                } else {
+                    let mut lines = vec![format!("Configured hooks ({}):", app.hooks_config.len())];
+                    for (i, h) in app.hooks_config.iter().enumerate() {
+                        let pat = h.pattern.as_deref().unwrap_or("*");
+                        lines.push(format!(
+                            "  {}. [{}] {} (pattern: {}, timeout: {}s)",
+                            i + 1,
+                            h.event,
+                            h.command,
+                            pat,
+                            h.timeout,
+                        ));
+                    }
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: lines.join("\n"),
                     });
                 }
                 app.input.clear();
@@ -621,10 +760,13 @@ pub async fn handle_key(
                         "  /login          Show OAuth login status",
                         "  /init           Initialize .nyzhi/ project config",
                         "  /mcp            List connected MCP servers",
+                        "  /hooks          List configured hooks",
                         "  /clear          Clear the session",
                         "  /compact        Compress conversation history",
-                        "  /sessions       List saved sessions",
+                        "  /sessions [q]   List saved sessions (optionally filter)",
                         "  /resume <id>    Restore a saved session",
+                        "  /session delete <id>  Delete a saved session",
+                        "  /session rename <t>   Rename current session",
                         "  /theme          Choose theme (dark/light)",
                         "  /accent         Choose accent color",
                         "  /trust          Show current trust mode",
