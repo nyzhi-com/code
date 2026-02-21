@@ -33,7 +33,11 @@ pub fn estimate_thread_tokens(messages: &[Message], system_prompt: &str) -> usiz
 }
 
 pub fn should_compact(estimated_tokens: usize, context_window: u32) -> bool {
-    let threshold = (context_window as f64 * 0.8) as usize;
+    should_compact_at(estimated_tokens, context_window, 0.8)
+}
+
+pub fn should_compact_at(estimated_tokens: usize, context_window: u32, ratio: f64) -> bool {
+    let threshold = (context_window as f64 * ratio.clamp(0.1, 0.99)) as usize;
     estimated_tokens > threshold
 }
 

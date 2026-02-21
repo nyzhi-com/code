@@ -92,6 +92,8 @@ impl Tool for TaskTool {
             max_tokens: None,
             trust: nyzhi_config::TrustConfig::default(),
             retry: nyzhi_config::RetrySettings::default(),
+            routing: nyzhi_config::RoutingConfig::default(),
+            auto_compact_threshold: None,
         };
 
         let mut child_thread = Thread::new();

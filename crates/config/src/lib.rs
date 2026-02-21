@@ -57,6 +57,48 @@ pub struct AgentSettings {
     pub hooks: Vec<HookConfig>,
     #[serde(default)]
     pub commands: Vec<CommandConfig>,
+    #[serde(default)]
+    pub routing: RoutingConfig,
+    #[serde(default)]
+    pub auto_compact_threshold: Option<f64>,
+    #[serde(default)]
+    pub enforce_todos: bool,
+    #[serde(default)]
+    pub auto_simplify: bool,
+    #[serde(default)]
+    pub verify: VerifyConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VerifyConfig {
+    #[serde(default)]
+    pub checks: Vec<VerifyCheckConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifyCheckConfig {
+    pub kind: String,
+    pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoutingConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub low_keywords: Vec<String>,
+    #[serde(default)]
+    pub high_keywords: Vec<String>,
+}
+
+impl Default for RoutingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            low_keywords: vec![],
+            high_keywords: vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -455,6 +497,22 @@ impl Config {
                     let mut cmds = global.agent.commands.clone();
                     cmds.extend(project.agent.commands.clone());
                     cmds
+                },
+                routing: if project.agent.routing.enabled {
+                    project.agent.routing.clone()
+                } else {
+                    global.agent.routing.clone()
+                },
+                auto_compact_threshold: project
+                    .agent
+                    .auto_compact_threshold
+                    .or(global.agent.auto_compact_threshold),
+                enforce_todos: project.agent.enforce_todos || global.agent.enforce_todos,
+                auto_simplify: project.agent.auto_simplify || global.agent.auto_simplify,
+                verify: if !project.agent.verify.checks.is_empty() {
+                    project.agent.verify.clone()
+                } else {
+                    global.agent.verify.clone()
                 },
             },
             mcp: McpConfig {

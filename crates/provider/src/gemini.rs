@@ -23,6 +23,7 @@ static MODELS: &[ModelInfo] = &[
         output_price_per_m: 0.60,
         cache_read_price_per_m: 0.0375,
         cache_write_price_per_m: 0.0,
+        tier: ModelTier::Low,
     },
     ModelInfo {
         id: "gemini-2.5-pro",
@@ -36,6 +37,7 @@ static MODELS: &[ModelInfo] = &[
         output_price_per_m: 10.0,
         cache_read_price_per_m: 0.3125,
         cache_write_price_per_m: 0.0,
+        tier: ModelTier::High,
     },
 ];
 

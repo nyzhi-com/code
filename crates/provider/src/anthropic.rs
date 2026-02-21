@@ -24,6 +24,7 @@ static MODELS: &[ModelInfo] = &[
         output_price_per_m: 15.0,
         cache_read_price_per_m: 0.3,
         cache_write_price_per_m: 3.75,
+        tier: ModelTier::Medium,
     },
     ModelInfo {
         id: "claude-opus-4-20250514",
@@ -37,6 +38,7 @@ static MODELS: &[ModelInfo] = &[
         output_price_per_m: 75.0,
         cache_read_price_per_m: 1.5,
         cache_write_price_per_m: 18.75,
+        tier: ModelTier::High,
     },
     ModelInfo {
         id: "claude-haiku-3-5-20241022",
@@ -50,6 +52,7 @@ static MODELS: &[ModelInfo] = &[
         output_price_per_m: 4.0,
         cache_read_price_per_m: 0.08,
         cache_write_price_per_m: 1.0,
+        tier: ModelTier::Low,
     },
 ];
 

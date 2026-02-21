@@ -79,6 +79,22 @@ enum Commands {
         #[command(subcommand)]
         action: SessionAction,
     },
+    /// Show session or overall statistics
+    Stats,
+    /// Show cost report
+    Cost {
+        /// Period: daily, weekly, monthly (default: daily)
+        #[arg(default_value = "daily")]
+        period: String,
+    },
+    /// Replay a session's event timeline
+    Replay {
+        /// Session ID
+        id: String,
+        /// Filter by event type (e.g. tool, error)
+        #[arg(long)]
+        filter: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -379,6 +395,57 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         }
+        Some(Commands::Stats) => {
+            let entries = nyzhi_core::analytics::load_entries()?;
+            if entries.is_empty() {
+                println!("No usage data recorded yet.");
+            } else {
+                let report = nyzhi_core::analytics::generate_report(
+                    &entries, "All-time", 0,
+                );
+                println!("{}", report.display());
+                println!("\nTotal sessions: {}", {
+                    let mut ids: Vec<&str> = entries.iter().map(|e| e.session_id.as_str()).collect();
+                    ids.sort();
+                    ids.dedup();
+                    ids.len()
+                });
+                println!("Total entries:  {}", entries.len());
+            }
+            return Ok(());
+        }
+        Some(Commands::Replay { id, filter }) => {
+            let events = nyzhi_core::replay::load_replay(&id)?;
+            if events.is_empty() {
+                println!("No replay data for session '{id}'");
+            } else {
+                println!("{}", nyzhi_core::replay::format_replay(
+                    &events,
+                    filter.as_deref(),
+                ));
+            }
+            return Ok(());
+        }
+        Some(Commands::Cost { period }) => {
+            let entries = nyzhi_core::analytics::load_entries()?;
+            if entries.is_empty() {
+                println!("No usage data recorded yet.");
+                return Ok(());
+            }
+            let now = nyzhi_core::analytics::now_ts();
+            let (label, since) = match period.as_str() {
+                "daily" | "day" => ("Daily", now.saturating_sub(86_400)),
+                "weekly" | "week" => ("Weekly", now.saturating_sub(86_400 * 7)),
+                "monthly" | "month" => ("Monthly", now.saturating_sub(86_400 * 30)),
+                other => {
+                    eprintln!("Unknown period: {other} (use daily, weekly, monthly)");
+                    std::process::exit(1);
+                }
+            };
+            let report = nyzhi_core::analytics::generate_report(&entries, label, since);
+            println!("{}", report.display());
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -386,7 +453,9 @@ async fn main() -> Result<()> {
         nyzhi_provider::create_provider_async(provider_name, &config)
             .await?
             .into();
-    let mut registry = nyzhi_core::tools::default_registry();
+    let bundle = nyzhi_core::tools::default_registry();
+    let mut registry = bundle.registry;
+    let _todo_store = bundle.todo_store;
 
     let mut all_mcp_servers = config.mcp.servers.clone();
     let mcp_json_servers = nyzhi_core::mcp::load_mcp_json(&workspace.project_root);
@@ -445,7 +514,7 @@ async fn main() -> Result<()> {
 
     registry.register(Box::new(nyzhi_core::tools::task::TaskTool::new(
         provider.clone(),
-        std::sync::Arc::new(nyzhi_core::tools::default_registry()),
+        std::sync::Arc::new(nyzhi_core::tools::default_registry().registry),
         2,
     )));
 
@@ -563,6 +632,8 @@ async fn run_once(
         max_tokens: config.agent.max_tokens,
         trust: config.agent.trust.clone(),
         retry: config.agent.retry.clone(),
+        routing: config.agent.routing.clone(),
+        auto_compact_threshold: config.agent.auto_compact_threshold,
         ..AgentConfig::default()
     };
     let (event_tx, mut event_rx) = tokio::sync::broadcast::channel::<AgentEvent>(256);

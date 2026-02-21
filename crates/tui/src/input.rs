@@ -598,6 +598,70 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/todo" {
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: "Reading todo list from agent store...".to_string(),
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/persist" || input.starts_with("/persist ") {
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: "Persistence mode: agent will verify after each turn and auto-fix failures.\nUse `persist:` prefix in your next prompt to activate.".to_string(),
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/qa" || input.starts_with("/qa ") {
+                let checks = nyzhi_core::verify::detect_checks(&tool_ctx.project_root);
+                if checks.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No verification checks detected for QA.".to_string(),
+                    });
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!(
+                            "QA mode available: {} checks detected.\nUse `qa:` prefix in your next prompt to run autonomous QA cycling.",
+                            checks.len()
+                        ),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/verify" {
+                let checks = nyzhi_core::verify::detect_checks(&tool_ctx.project_root);
+                if checks.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No verification checks detected for this project.".to_string(),
+                    });
+                } else {
+                    let cmds: Vec<String> = checks.iter().map(|c| format!("  [{}] {}", c.kind, c.command)).collect();
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!(
+                            "Detected {} checks:\n{}\n\nUse the `verify` tool in a prompt to run them.",
+                            checks.len(),
+                            cmds.join("\n"),
+                        ),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/commands" {
                 if app.custom_commands.is_empty() {
                     app.items.push(DisplayItem::Message {

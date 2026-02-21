@@ -19,6 +19,14 @@ pub trait Provider: Send + Sync {
     fn name(&self) -> &str;
     fn supported_models(&self) -> &[ModelInfo];
 
+    fn model_for_tier(&self, tier: ModelTier) -> Option<&ModelInfo> {
+        let models = self.supported_models();
+        models
+            .iter()
+            .find(|m| m.tier == tier)
+            .or_else(|| models.first())
+    }
+
     async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse>;
 
     async fn chat_stream(

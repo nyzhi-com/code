@@ -11,6 +11,8 @@ pub mod git;
 pub mod task;
 pub mod todo;
 pub mod filesystem;
+pub mod notepad;
+pub mod verify;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -96,7 +98,15 @@ impl Default for ToolRegistry {
     }
 }
 
-pub fn default_registry() -> ToolRegistry {
+pub type TodoStoreHandle = Arc<tokio::sync::Mutex<std::collections::HashMap<String, Vec<todo::TodoItem>>>>;
+
+pub struct RegistryBundle {
+    pub registry: ToolRegistry,
+    pub todo_store: TodoStoreHandle,
+}
+
+pub fn default_registry() -> RegistryBundle {
+    let todo_store = todo::shared_store();
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(bash::BashTool));
     registry.register(Box::new(read::ReadTool));
@@ -111,8 +121,8 @@ pub fn default_registry() -> ToolRegistry {
     registry.register(Box::new(git::GitBranchTool));
     registry.register(Box::new(git::GitCommitTool));
     registry.register(Box::new(git::GitCheckoutTool));
-    registry.register(Box::new(todo::TodoWriteTool::new()));
-    registry.register(Box::new(todo::TodoReadTool::new()));
+    registry.register(Box::new(todo::TodoWriteTool::with_store(todo_store.clone())));
+    registry.register(Box::new(todo::TodoReadTool::with_store(todo_store.clone())));
     registry.register(Box::new(filesystem::ListDirTool));
     registry.register(Box::new(filesystem::DirectoryTreeTool));
     registry.register(Box::new(filesystem::FileInfoTool));
@@ -120,5 +130,8 @@ pub fn default_registry() -> ToolRegistry {
     registry.register(Box::new(filesystem::MoveFileTool));
     registry.register(Box::new(filesystem::CopyFileTool));
     registry.register(Box::new(filesystem::CreateDirTool));
-    registry
+    registry.register(Box::new(verify::VerifyTool));
+    registry.register(Box::new(notepad::NotepadWriteTool));
+    registry.register(Box::new(notepad::NotepadReadTool));
+    RegistryBundle { registry, todo_store }
 }

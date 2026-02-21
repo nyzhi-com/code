@@ -288,6 +288,8 @@ impl App {
             max_tokens: config.agent.max_tokens,
             trust: config.agent.trust.clone(),
             retry: config.agent.retry.clone(),
+            routing: config.agent.routing.clone(),
+            auto_compact_threshold: config.agent.auto_compact_threshold,
             ..AgentConfig::default()
         };
         self.trust_mode = agent_config.trust.mode.clone();
@@ -523,6 +525,20 @@ impl App {
                             content: format!(
                                 "Retrying ({attempt}/{max_retries}) in {wait_ms}ms: {reason}"
                             ),
+                        });
+                    }
+                    AgentEvent::AutoCompacting { estimated_tokens, context_window } => {
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "Auto-compacting context ({estimated_tokens} tokens / {context_window} window)"
+                            ),
+                        });
+                    }
+                    AgentEvent::RoutedModel { model_name, tier } => {
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Routed to {model_name} (tier: {tier})"),
                         });
                     }
                     AgentEvent::Usage(usage) => {

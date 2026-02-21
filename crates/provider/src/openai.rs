@@ -23,6 +23,7 @@ static MODELS: &[ModelInfo] = &[
         output_price_per_m: 8.0,
         cache_read_price_per_m: 0.5,
         cache_write_price_per_m: 0.0,
+        tier: ModelTier::Medium,
     },
     ModelInfo {
         id: "gpt-4.1-mini",
@@ -36,6 +37,7 @@ static MODELS: &[ModelInfo] = &[
         output_price_per_m: 1.6,
         cache_read_price_per_m: 0.1,
         cache_write_price_per_m: 0.0,
+        tier: ModelTier::Low,
     },
     ModelInfo {
         id: "o3",
@@ -49,6 +51,7 @@ static MODELS: &[ModelInfo] = &[
         output_price_per_m: 8.0,
         cache_read_price_per_m: 0.5,
         cache_write_price_per_m: 0.0,
+        tier: ModelTier::High,
     },
     ModelInfo {
         id: "o4-mini",
@@ -62,6 +65,7 @@ static MODELS: &[ModelInfo] = &[
         output_price_per_m: 4.4,
         cache_read_price_per_m: 0.275,
         cache_write_price_per_m: 0.0,
+        tier: ModelTier::Low,
     },
 ];
 

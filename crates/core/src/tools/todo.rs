@@ -65,6 +65,33 @@ pub fn shared_store() -> TodoStore {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
+pub async fn has_incomplete_todos(store: &TodoStore, session_id: &str) -> bool {
+    let store = store.lock().await;
+    store
+        .get(session_id)
+        .map(|items| {
+            items.iter().any(|t| t.status == "pending" || t.status == "in_progress")
+        })
+        .unwrap_or(false)
+}
+
+pub async fn incomplete_summary(store: &TodoStore, session_id: &str) -> Option<String> {
+    let store = store.lock().await;
+    let items = store.get(session_id)?;
+    let incomplete: Vec<&TodoItem> = items
+        .iter()
+        .filter(|t| t.status == "pending" || t.status == "in_progress")
+        .collect();
+    if incomplete.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = incomplete
+        .iter()
+        .map(|t| format!("[{}] {}: {}", t.status, t.id, t.content))
+        .collect();
+    Some(lines.join("\n"))
+}
+
 #[async_trait]
 impl Tool for TodoWriteTool {
     fn name(&self) -> &str {

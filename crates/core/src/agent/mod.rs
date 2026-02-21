@@ -58,6 +58,14 @@ pub enum AgentEvent {
         wait_ms: u64,
         reason: String,
     },
+    AutoCompacting {
+        estimated_tokens: usize,
+        context_window: u32,
+    },
+    RoutedModel {
+        model_name: String,
+        tier: String,
+    },
     Usage(SessionUsage),
     TurnComplete,
     Error(String),
@@ -117,6 +125,16 @@ impl std::fmt::Debug for AgentEvent {
                 .field("wait_ms", wait_ms)
                 .field("reason", reason)
                 .finish(),
+            Self::AutoCompacting { estimated_tokens, context_window } => f
+                .debug_struct("AutoCompacting")
+                .field("estimated_tokens", estimated_tokens)
+                .field("context_window", context_window)
+                .finish(),
+            Self::RoutedModel { model_name, tier } => f
+                .debug_struct("RoutedModel")
+                .field("model_name", model_name)
+                .field("tier", tier)
+                .finish(),
             Self::Usage(u) => f.debug_struct("Usage").field("usage", u).finish(),
             Self::TurnComplete => write!(f, "TurnComplete"),
             Self::Error(s) => f.debug_tuple("Error").field(s).finish(),
@@ -131,6 +149,8 @@ pub struct AgentConfig {
     pub max_tokens: Option<u32>,
     pub trust: TrustConfig,
     pub retry: nyzhi_config::RetrySettings,
+    pub routing: nyzhi_config::RoutingConfig,
+    pub auto_compact_threshold: Option<f64>,
 }
 
 impl Default for AgentConfig {
@@ -142,6 +162,8 @@ impl Default for AgentConfig {
             max_tokens: None,
             trust: TrustConfig::default(),
             retry: nyzhi_config::RetrySettings::default(),
+            routing: nyzhi_config::RoutingConfig::default(),
+            auto_compact_threshold: None,
         }
     }
 }
@@ -201,7 +223,12 @@ pub async fn run_turn_with_content(
     for step in 0..config.max_steps {
         if let Some(mi) = model_info {
             let est = thread.estimated_tokens(&config.system_prompt);
-            if crate::context::should_compact(est, mi.context_window) {
+            let threshold = config.auto_compact_threshold.unwrap_or(0.8);
+            if crate::context::should_compact_at(est, mi.context_window, threshold) {
+                let _ = event_tx.send(AgentEvent::AutoCompacting {
+                    estimated_tokens: est,
+                    context_window: mi.context_window,
+                });
                 let summary_prompt = crate::context::build_compaction_prompt(thread.messages());
                 let summary_request = ChatRequest {
                     model: mi.id.to_string(),
