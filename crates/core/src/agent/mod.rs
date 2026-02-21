@@ -1,7 +1,7 @@
 use anyhow::Result;
 use futures::StreamExt;
 use nyzhi_provider::{
-    ChatRequest, ContentPart, Message, MessageContent, Provider, Role, StreamEvent,
+    ChatRequest, ContentPart, Message, MessageContent, ModelInfo, Provider, Role, StreamEvent,
 };
 use tokio::sync::broadcast;
 
@@ -9,6 +9,16 @@ use crate::conversation::Thread;
 use crate::streaming::StreamAccumulator;
 use crate::tools::permission::ToolPermission;
 use crate::tools::{ToolContext, ToolRegistry};
+
+#[derive(Debug, Clone, Default)]
+pub struct SessionUsage {
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_cost_usd: f64,
+    pub turn_input_tokens: u32,
+    pub turn_output_tokens: u32,
+    pub turn_cost_usd: f64,
+}
 
 #[derive(Clone)]
 pub enum AgentEvent {
@@ -31,6 +41,7 @@ pub enum AgentEvent {
         args_summary: String,
         respond: std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>,
     },
+    Usage(SessionUsage),
     TurnComplete,
     Error(String),
 }
@@ -64,6 +75,7 @@ impl std::fmt::Debug for AgentEvent {
                 .field("tool_name", tool_name)
                 .field("args_summary", args_summary)
                 .finish(),
+            Self::Usage(u) => f.debug_struct("Usage").field("usage", u).finish(),
             Self::TurnComplete => write!(f, "TurnComplete"),
             Self::Error(s) => f.debug_tuple("Error").field(s).finish(),
         }
@@ -74,6 +86,7 @@ pub struct AgentConfig {
     pub name: String,
     pub system_prompt: String,
     pub max_steps: u32,
+    pub max_tokens: Option<u32>,
 }
 
 impl Default for AgentConfig {
@@ -82,10 +95,12 @@ impl Default for AgentConfig {
             name: "build".to_string(),
             system_prompt: crate::prompt::default_system_prompt(),
             max_steps: 100,
+            max_tokens: None,
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_turn(
     provider: &dyn Provider,
     thread: &mut Thread,
@@ -94,6 +109,8 @@ pub async fn run_turn(
     event_tx: &broadcast::Sender<AgentEvent>,
     registry: &ToolRegistry,
     ctx: &ToolContext,
+    model_info: Option<&ModelInfo>,
+    session_usage: &mut SessionUsage,
 ) -> Result<()> {
     thread.push_message(Message {
         role: Role::User,
@@ -101,13 +118,41 @@ pub async fn run_turn(
     });
 
     let tool_defs = registry.definitions();
+    let max_tokens = config.max_tokens.or_else(|| model_info.map(|m| m.max_output_tokens));
+
+    session_usage.turn_input_tokens = 0;
+    session_usage.turn_output_tokens = 0;
+    session_usage.turn_cost_usd = 0.0;
 
     for step in 0..config.max_steps {
+        if let Some(mi) = model_info {
+            let est = thread.estimated_tokens(&config.system_prompt);
+            if crate::context::should_compact(est, mi.context_window) {
+                let summary_prompt = crate::context::build_compaction_prompt(thread.messages());
+                let summary_request = ChatRequest {
+                    model: String::new(),
+                    messages: vec![Message {
+                        role: Role::User,
+                        content: MessageContent::Text(summary_prompt),
+                    }],
+                    tools: vec![],
+                    max_tokens: Some(2048),
+                    temperature: Some(0.0),
+                    system: None,
+                    stream: false,
+                };
+                if let Ok(resp) = provider.chat(&summary_request).await {
+                    let summary_text = resp.message.content.as_text().to_string();
+                    thread.compact(&summary_text, 4);
+                }
+            }
+        }
+
         let request = ChatRequest {
             model: String::new(),
             messages: thread.messages().to_vec(),
             tools: tool_defs.clone(),
-            max_tokens: Some(16384),
+            max_tokens,
             temperature: None,
             system: Some(config.system_prompt.clone()),
             stream: true,
@@ -146,6 +191,23 @@ pub async fn run_turn(
                 }
                 _ => {}
             }
+        }
+
+        if let Some(usage) = &acc.usage {
+            session_usage.turn_input_tokens =
+                session_usage.turn_input_tokens.saturating_add(usage.input_tokens);
+            session_usage.turn_output_tokens =
+                session_usage.turn_output_tokens.saturating_add(usage.output_tokens);
+            session_usage.total_input_tokens += usage.input_tokens as u64;
+            session_usage.total_output_tokens += usage.output_tokens as u64;
+
+            if let Some(mi) = model_info {
+                let step_cost = mi.cost_usd(usage.input_tokens, usage.output_tokens);
+                session_usage.turn_cost_usd += step_cost;
+                session_usage.total_cost_usd += step_cost;
+            }
+
+            let _ = event_tx.send(AgentEvent::Usage(session_usage.clone()));
         }
 
         if acc.has_tool_calls() {

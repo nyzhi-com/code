@@ -19,6 +19,8 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 16_384,
         supports_tools: true,
         supports_streaming: true,
+        input_price_per_m: 3.0,
+        output_price_per_m: 15.0,
     },
     ModelInfo {
         id: "claude-opus-4-20250514",
@@ -27,6 +29,8 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 32_768,
         supports_tools: true,
         supports_streaming: true,
+        input_price_per_m: 15.0,
+        output_price_per_m: 75.0,
     },
     ModelInfo {
         id: "claude-haiku-3-5-20241022",
@@ -35,6 +39,8 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 8_192,
         supports_tools: true,
         supports_streaming: true,
+        input_price_per_m: 0.8,
+        output_price_per_m: 4.0,
     },
 ];
 
@@ -247,56 +253,82 @@ impl Provider for AnthropicProvider {
 
         let sse_stream = parse_sse_stream(resp);
 
-        let event_stream = sse_stream.filter_map(|result| async move {
-            match result {
+        let event_stream = sse_stream.flat_map(|result| {
+            let events: Vec<Result<StreamEvent>> = match result {
                 Ok(sse) => {
-                    let data: serde_json::Value = serde_json::from_str(&sse.data).ok()?;
+                    let data: serde_json::Value = match serde_json::from_str(&sse.data) {
+                        Ok(v) => v,
+                        Err(_) => return futures::stream::iter(vec![]),
+                    };
                     let event_type = sse.event.as_deref().unwrap_or("");
 
                     match event_type {
+                        "message_start" => {
+                            let input = data["message"]["usage"]["input_tokens"]
+                                .as_u64()
+                                .unwrap_or(0) as u32;
+                            if input > 0 {
+                                vec![Ok(StreamEvent::Usage(Usage {
+                                    input_tokens: input,
+                                    output_tokens: 0,
+                                }))]
+                            } else {
+                                vec![]
+                            }
+                        }
                         "content_block_delta" => {
                             let delta = &data["delta"];
                             if delta["type"] == "text_delta" {
-                                Some(Ok(StreamEvent::TextDelta(
+                                vec![Ok(StreamEvent::TextDelta(
                                     delta["text"].as_str().unwrap_or("").to_string(),
-                                )))
+                                ))]
                             } else if delta["type"] == "input_json_delta" {
-                                Some(Ok(StreamEvent::ToolCallDelta {
+                                vec![Ok(StreamEvent::ToolCallDelta {
                                     index: data["index"].as_u64().unwrap_or(0) as u32,
                                     arguments_delta: delta["partial_json"]
                                         .as_str()
                                         .unwrap_or("")
                                         .to_string(),
-                                }))
+                                })]
                             } else {
-                                None
+                                vec![]
                             }
                         }
                         "content_block_start" => {
                             let block = &data["content_block"];
                             if block["type"] == "tool_use" {
-                                Some(Ok(StreamEvent::ToolCallStart {
+                                vec![Ok(StreamEvent::ToolCallStart {
                                     index: data["index"].as_u64().unwrap_or(0) as u32,
                                     id: block["id"].as_str().unwrap_or("").to_string(),
                                     name: block["name"].as_str().unwrap_or("").to_string(),
-                                }))
+                                })]
                             } else {
-                                None
+                                vec![]
                             }
                         }
                         "message_delta" => {
-                            if data["delta"]["stop_reason"].is_string() {
-                                Some(Ok(StreamEvent::Done))
-                            } else {
-                                None
+                            let mut evts = Vec::new();
+                            let output = data["usage"]["output_tokens"]
+                                .as_u64()
+                                .unwrap_or(0) as u32;
+                            if output > 0 {
+                                evts.push(Ok(StreamEvent::Usage(Usage {
+                                    input_tokens: 0,
+                                    output_tokens: output,
+                                })));
                             }
+                            if data["delta"]["stop_reason"].is_string() {
+                                evts.push(Ok(StreamEvent::Done));
+                            }
+                            evts
                         }
-                        "message_stop" => Some(Ok(StreamEvent::Done)),
-                        _ => None,
+                        "message_stop" => vec![Ok(StreamEvent::Done)],
+                        _ => vec![],
                     }
                 }
-                Err(e) => Some(Err(e)),
-            }
+                Err(e) => vec![Err(e)],
+            };
+            futures::stream::iter(events)
         });
 
         Ok(Box::pin(event_stream))

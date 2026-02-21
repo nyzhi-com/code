@@ -18,6 +18,8 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 32_768,
         supports_tools: true,
         supports_streaming: true,
+        input_price_per_m: 2.0,
+        output_price_per_m: 8.0,
     },
     ModelInfo {
         id: "gpt-4.1-mini",
@@ -26,6 +28,8 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 32_768,
         supports_tools: true,
         supports_streaming: true,
+        input_price_per_m: 0.4,
+        output_price_per_m: 1.6,
     },
     ModelInfo {
         id: "o3",
@@ -34,6 +38,8 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 100_000,
         supports_tools: true,
         supports_streaming: true,
+        input_price_per_m: 2.0,
+        output_price_per_m: 8.0,
     },
     ModelInfo {
         id: "o4-mini",
@@ -42,6 +48,8 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 100_000,
         supports_tools: true,
         supports_streaming: true,
+        input_price_per_m: 1.1,
+        output_price_per_m: 4.4,
     },
 ];
 
@@ -222,6 +230,7 @@ impl Provider for OpenAIProvider {
             "model": model,
             "messages": self.build_messages(request),
             "stream": true,
+            "stream_options": {"include_usage": true},
         });
 
         if let Some(max_tokens) = request.max_tokens {
@@ -257,6 +266,14 @@ impl Provider for OpenAIProvider {
         let event_stream = sse_stream.map(|result| {
             result.and_then(|sse| {
                 let data: serde_json::Value = serde_json::from_str(&sse.data)?;
+
+                if let Some(usage) = data.get("usage").filter(|u| u.is_object()) {
+                    return Ok(StreamEvent::Usage(Usage {
+                        input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0) as u32,
+                        output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0)
+                            as u32,
+                    }));
+                }
 
                 if data["choices"][0]["finish_reason"].is_string() {
                     return Ok(StreamEvent::Done);

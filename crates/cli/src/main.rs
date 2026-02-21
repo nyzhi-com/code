@@ -139,6 +139,7 @@ async fn run_once(
         }
     });
 
+    let mut session_usage = nyzhi_core::agent::SessionUsage::default();
     nyzhi_core::agent::run_turn(
         provider,
         &mut thread,
@@ -147,6 +148,8 @@ async fn run_once(
         &tx,
         registry,
         &tool_ctx,
+        None,
+        &mut session_usage,
     )
     .await?;
 

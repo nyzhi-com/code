@@ -4,6 +4,27 @@ use ratatui::widgets::*;
 use crate::app::{App, AppMode};
 use crate::theme::Theme;
 
+fn format_tokens(count: u64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}k", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
+}
+
+fn format_cost(usd: f64) -> String {
+    if usd < 0.001 {
+        return "$0.00".to_string();
+    }
+    if usd < 1.0 {
+        format!("${:.3}", usd)
+    } else {
+        format!("${:.2}", usd)
+    }
+}
+
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let left = match app.mode {
         AppMode::Input => "enter send",
@@ -11,11 +32,24 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         AppMode::AwaitingApproval => "y approve  n deny",
     };
 
+    let usage = &app.session_usage;
+    let total_tokens = usage.total_input_tokens + usage.total_output_tokens;
+    let usage_str = if total_tokens > 0 {
+        format!(
+            "{}tok  {}",
+            format_tokens(total_tokens),
+            format_cost(usage.total_cost_usd),
+        )
+    } else {
+        String::new()
+    };
+
     let right = format!(
-        "{} {}  {}  {}",
+        "{}{}{}  {}  {}",
+        usage_str,
+        if usage_str.is_empty() { "" } else { "  " },
         app.provider_name,
         app.model_name,
-        theme.accent_type.name(),
         match theme.mode {
             crate::theme::ThemeMode::Dark => "dark",
             crate::theme::ThemeMode::Light => "light",

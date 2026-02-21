@@ -18,6 +18,8 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 65_536,
         supports_tools: true,
         supports_streaming: true,
+        input_price_per_m: 0.15,
+        output_price_per_m: 0.60,
     },
     ModelInfo {
         id: "gemini-2.5-pro",
@@ -26,6 +28,8 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 65_536,
         supports_tools: true,
         supports_streaming: true,
+        input_price_per_m: 1.25,
+        output_price_per_m: 10.0,
     },
 ];
 
@@ -252,36 +256,57 @@ impl Provider for GeminiProvider {
 
         let sse_stream = parse_sse_stream(resp);
 
-        let event_stream = sse_stream.filter_map(|result| async move {
-            match result {
+        let event_stream = sse_stream.flat_map(|result| {
+            let events: Vec<Result<StreamEvent>> = match result {
                 Ok(sse) => {
-                    let data: serde_json::Value = serde_json::from_str(&sse.data).ok()?;
-                    let parts = data["candidates"][0]["content"]["parts"].as_array()?;
+                    let data: serde_json::Value = match serde_json::from_str(&sse.data) {
+                        Ok(v) => v,
+                        Err(_) => return futures::stream::iter(vec![]),
+                    };
+                    let mut evts = Vec::new();
 
-                    for part in parts {
-                        if let Some(text) = part["text"].as_str() {
-                            return Some(Ok(StreamEvent::TextDelta(text.to_string())));
+                    if let Some(parts) =
+                        data["candidates"][0]["content"]["parts"].as_array()
+                    {
+                        for part in parts {
+                            if let Some(text) = part["text"].as_str() {
+                                evts.push(Ok(StreamEvent::TextDelta(text.to_string())));
+                            }
+                            if part.get("functionCall").is_some() {
+                                evts.push(Ok(StreamEvent::ToolCallStart {
+                                    index: 0,
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    name: part["functionCall"]["name"]
+                                        .as_str()
+                                        .unwrap_or("")
+                                        .to_string(),
+                                }));
+                            }
                         }
-                        if part.get("functionCall").is_some() {
-                            return Some(Ok(StreamEvent::ToolCallStart {
-                                index: 0,
-                                id: uuid::Uuid::new_v4().to_string(),
-                                name: part["functionCall"]["name"]
-                                    .as_str()
-                                    .unwrap_or("")
-                                    .to_string(),
-                            }));
-                        }
+                    }
+
+                    if let Some(meta) =
+                        data.get("usageMetadata").filter(|m| m.is_object())
+                    {
+                        evts.push(Ok(StreamEvent::Usage(Usage {
+                            input_tokens: meta["promptTokenCount"]
+                                .as_u64()
+                                .unwrap_or(0) as u32,
+                            output_tokens: meta["candidatesTokenCount"]
+                                .as_u64()
+                                .unwrap_or(0) as u32,
+                        })));
                     }
 
                     if data["candidates"][0]["finishReason"].is_string() {
-                        return Some(Ok(StreamEvent::Done));
+                        evts.push(Ok(StreamEvent::Done));
                     }
 
-                    None
+                    evts
                 }
-                Err(e) => Some(Err(e)),
-            }
+                Err(e) => vec![Err(e)],
+            };
+            futures::stream::iter(events)
         });
 
         Ok(Box::pin(event_stream))

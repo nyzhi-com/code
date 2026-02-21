@@ -8,6 +8,10 @@ pub struct ModelInfo {
     pub max_output_tokens: u32,
     pub supports_tools: bool,
     pub supports_streaming: bool,
+    #[serde(default)]
+    pub input_price_per_m: f64,
+    #[serde(default)]
+    pub output_price_per_m: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +92,14 @@ pub struct ChatResponse {
     pub message: Message,
     pub usage: Option<Usage>,
     pub finish_reason: Option<String>,
+}
+
+impl ModelInfo {
+    pub fn cost_usd(&self, input_tokens: u32, output_tokens: u32) -> f64 {
+        (input_tokens as f64 * self.input_price_per_m
+            + output_tokens as f64 * self.output_price_per_m)
+            / 1_000_000.0
+    }
 }
 
 #[derive(Debug, Clone, Default)]

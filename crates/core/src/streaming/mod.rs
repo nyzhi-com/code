@@ -40,7 +40,16 @@ impl StreamAccumulator {
                 }
             }
             StreamEvent::Usage(usage) => {
-                self.usage = Some(usage.clone());
+                if let Some(existing) = &mut self.usage {
+                    if usage.input_tokens > 0 {
+                        existing.input_tokens = usage.input_tokens;
+                    }
+                    if usage.output_tokens > 0 {
+                        existing.output_tokens = usage.output_tokens;
+                    }
+                } else {
+                    self.usage = Some(usage.clone());
+                }
             }
             StreamEvent::Done => {
                 self.done = true;
