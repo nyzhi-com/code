@@ -1,5 +1,7 @@
 mod app;
 pub mod components;
+pub mod highlight;
+pub mod history;
 mod input;
 mod logo;
 mod spinner;

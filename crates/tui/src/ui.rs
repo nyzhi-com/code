@@ -11,7 +11,11 @@ pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState)
         frame.area(),
     );
 
-    let input_lines = app.input.lines().count().max(1) as u16;
+    let input_lines = if app.history_search.is_some() {
+        3u16 // search prompt + match + counter
+    } else {
+        app.input.lines().count().max(1) as u16
+    };
     let input_height = (input_lines + 2).min(12); // +2 for borders, cap at 12
 
     let chunks = Layout::default()

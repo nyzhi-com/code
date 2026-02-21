@@ -74,6 +74,9 @@ pub struct App {
     pub trust_mode: nyzhi_config::TrustMode,
     pub selector: Option<crate::components::selector::SelectorState>,
     pub wants_editor: bool,
+    pub history: crate::history::InputHistory,
+    pub history_search: Option<crate::history::HistorySearch>,
+    pub highlighter: crate::highlight::SyntaxHighlighter,
 }
 
 impl App {
@@ -103,6 +106,11 @@ impl App {
             trust_mode: nyzhi_config::TrustMode::Off,
             selector: None,
             wants_editor: false,
+            history: crate::history::InputHistory::new(
+                nyzhi_config::Config::data_dir().join("history"),
+            ),
+            history_search: None,
+            highlighter: crate::highlight::SyntaxHighlighter::new(),
         }
     }
 
@@ -112,6 +120,8 @@ impl App {
         registry: &ToolRegistry,
         config: &nyzhi_config::Config,
     ) -> Result<()> {
+        self.history.load();
+
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
         io::stdout().execute(EnableBracketedPaste)?;
@@ -374,6 +384,8 @@ impl App {
                 break;
             }
         }
+
+        self.history.save();
 
         io::stdout().execute(DisableBracketedPaste)?;
         terminal::disable_raw_mode()?;

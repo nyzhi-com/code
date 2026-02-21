@@ -51,8 +51,9 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Markdown rendering in terminal
-termimad = "0.30"
+# Syntax highlighting
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+syntect-tui = "3"
 
 # Async trait
 async-trait = "0.1"

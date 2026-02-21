@@ -2,7 +2,8 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{App, DisplayItem, ToolStatus};
-use crate::theme::Theme;
+use crate::highlight::{self, SyntaxHighlighter};
+use crate::theme::{Theme, ThemeMode};
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let block = Block::bordered()
@@ -17,12 +18,13 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let dark = theme.mode == ThemeMode::Dark;
     let mut lines: Vec<Line> = Vec::new();
 
     for item in &app.items {
         match item {
             DisplayItem::Message { role, content } => {
-                render_message(&mut lines, role, content, theme);
+                render_message(&mut lines, role, content, theme, &app.highlighter, dark);
             }
             DisplayItem::ToolCall {
                 name,
@@ -37,12 +39,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     if !app.current_stream.is_empty() {
         lines.push(Line::from(""));
-        for line in app.current_stream.lines() {
-            lines.push(Line::from(Span::styled(
-                format!("  {line}"),
-                Style::default().fg(theme.text_primary),
-            )));
-        }
+        render_highlighted_content(&mut lines, &app.current_stream, theme, &app.highlighter, dark);
         lines.push(Line::from(Span::styled(
             "  _",
             Style::default().fg(theme.accent),
@@ -67,22 +64,80 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     frame.render_widget(paragraph, inner);
 }
 
-fn render_message<'a>(lines: &mut Vec<Line<'a>>, role: &str, content: &str, theme: &Theme) {
+fn render_message<'a>(
+    lines: &mut Vec<Line<'a>>,
+    role: &str,
+    content: &str,
+    theme: &Theme,
+    highlighter: &SyntaxHighlighter,
+    dark: bool,
+) {
     lines.push(Line::from(""));
 
     match role {
         "user" => {
-            lines.push(Line::from(Span::styled(
-                format!("  {content}"),
-                Style::default().fg(theme.text_primary).bold(),
-            )));
-        }
-        _ => {
             for line in content.lines() {
                 lines.push(Line::from(Span::styled(
                     format!("  {line}"),
-                    Style::default().fg(theme.text_primary),
+                    Style::default().fg(theme.text_primary).bold(),
                 )));
+            }
+        }
+        _ => {
+            render_highlighted_content(lines, content, theme, highlighter, dark);
+        }
+    }
+}
+
+fn render_highlighted_content<'a>(
+    lines: &mut Vec<Line<'a>>,
+    content: &str,
+    theme: &Theme,
+    highlighter: &SyntaxHighlighter,
+    dark: bool,
+) {
+    let segments = highlight::parse_segments(content);
+    let code_bg = theme.bg_elevated;
+
+    for segment in segments {
+        match segment {
+            highlight::Segment::Prose(text) => {
+                for line in text.lines() {
+                    lines.push(highlight::format_prose_line(
+                        line,
+                        theme.text_primary,
+                        theme.accent,
+                        code_bg,
+                    ));
+                }
+            }
+            highlight::Segment::CodeBlock { lang, code } => {
+                let lang_label = lang.unwrap_or("text");
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(
+                        format!(" {lang_label} "),
+                        Style::default()
+                            .fg(theme.text_secondary)
+                            .bg(theme.bg_elevated)
+                            .bold(),
+                    ),
+                ]));
+
+                let highlighted = highlighter.highlight_code(
+                    code,
+                    lang,
+                    dark,
+                    theme.text_disabled,
+                    code_bg,
+                );
+                for hl_line in highlighted {
+                    let mut padded = vec![Span::raw("  ")];
+                    padded.extend(hl_line.spans);
+                    lines.push(Line::from(padded));
+                }
+
+                lines.push(Line::from(""));
             }
         }
     }

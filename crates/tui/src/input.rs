@@ -24,6 +24,16 @@ pub async fn handle_key(
         return;
     }
 
+    if app.history_search.is_some() {
+        handle_history_search_key(app, key);
+        return;
+    }
+
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
+        app.history_search = Some(crate::history::HistorySearch::new());
+        return;
+    }
+
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('u') {
         app.input.clear();
         app.cursor_pos = 0;
@@ -617,6 +627,8 @@ pub async fn handle_key(
                         "  alt+enter       Insert newline (multi-line mode)",
                         "  shift+enter     Insert newline (kitty protocol)",
                         "  enter           Submit message",
+                        "  up/down         Navigate input history (single-line)",
+                        "  ctrl+r          Reverse search history",
                         "",
                         "Shortcuts:",
                         "  ctrl+t          Open theme picker",
@@ -631,6 +643,8 @@ pub async fn handle_key(
                 app.cursor_pos = 0;
                 return;
             }
+
+            app.history.push(input.clone());
 
             let has_images = !app.pending_images.is_empty();
             let mut display_content = input.clone();
@@ -689,6 +703,7 @@ pub async fn handle_key(
         KeyCode::Char(c) => {
             app.input.insert(app.cursor_pos, c);
             app.cursor_pos += 1;
+            app.history.reset_cursor();
         }
         KeyCode::Backspace => {
             if app.cursor_pos > 0 {
@@ -722,6 +737,9 @@ pub async fn handle_key(
         KeyCode::Up => {
             if app.input.contains('\n') {
                 move_cursor_up(app);
+            } else if let Some(entry) = app.history.navigate_up(&app.input) {
+                app.input = entry;
+                app.cursor_pos = app.input.len();
             } else {
                 app.scroll_offset = app.scroll_offset.saturating_add(1);
             }
@@ -729,8 +747,57 @@ pub async fn handle_key(
         KeyCode::Down => {
             if app.input.contains('\n') {
                 move_cursor_down(app);
+            } else if let Some(entry) = app.history.navigate_down() {
+                app.input = entry;
+                app.cursor_pos = app.input.len();
             } else {
                 app.scroll_offset = app.scroll_offset.saturating_sub(1);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_history_search_key(app: &mut App, key: KeyEvent) {
+    let search = app.history_search.as_mut().unwrap();
+    match key.code {
+        KeyCode::Esc => {
+            app.history_search = None;
+        }
+        KeyCode::Enter => {
+            let query = search.query.clone();
+            let selected = search.selected;
+            let matches = app.history.search(&query);
+            if let Some((_, entry)) = matches.get(selected) {
+                app.input = entry.to_string();
+                app.cursor_pos = app.input.len();
+            }
+            app.history_search = None;
+        }
+        KeyCode::Backspace => {
+            search.query.pop();
+            search.selected = 0;
+        }
+        KeyCode::Up => {
+            let matches_len = app.history.search(&search.query).len();
+            if matches_len > 0 && search.selected + 1 < matches_len {
+                search.selected += 1;
+            }
+        }
+        KeyCode::Down => {
+            if search.selected > 0 {
+                search.selected -= 1;
+            }
+        }
+        KeyCode::Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'r' {
+                let matches_len = app.history.search(&search.query).len();
+                if matches_len > 0 && search.selected + 1 < matches_len {
+                    search.selected += 1;
+                }
+            } else {
+                search.query.push(c);
+                search.selected = 0;
             }
         }
         _ => {}
