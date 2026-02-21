@@ -37,6 +37,10 @@ pub enum AgentEvent {
         name: String,
         output: String,
     },
+    ToolOutputDelta {
+        tool_name: String,
+        delta: String,
+    },
     ApprovalRequest {
         tool_name: String,
         args_summary: String,
@@ -66,6 +70,13 @@ impl std::fmt::Debug for AgentEvent {
                 .field("id", id)
                 .field("name", name)
                 .field("output", output)
+                .finish(),
+            Self::ToolOutputDelta {
+                tool_name, delta, ..
+            } => f
+                .debug_struct("ToolOutputDelta")
+                .field("tool_name", tool_name)
+                .field("delta", delta)
                 .finish(),
             Self::ApprovalRequest {
                 tool_name,

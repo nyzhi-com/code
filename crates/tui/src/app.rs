@@ -283,6 +283,28 @@ impl App {
                             }
                         }
                     }
+                    AgentEvent::ToolOutputDelta { tool_name, delta } => {
+                        if let Some(DisplayItem::ToolCall {
+                            name,
+                            output,
+                            status,
+                            ..
+                        }) = self.items.last_mut()
+                        {
+                            if *name == tool_name && *status == ToolStatus::Running {
+                                let out = output.get_or_insert_with(String::new);
+                                out.push_str(&delta);
+                                out.push('\n');
+                                if out.len() > 4096 {
+                                    let trim_point = out.len() - 3072;
+                                    *out = format!(
+                                        "... (earlier output trimmed)\n{}",
+                                        &out[trim_point..]
+                                    );
+                                }
+                            }
+                        }
+                    }
                     AgentEvent::ApprovalRequest {
                         tool_name,
                         args_summary,

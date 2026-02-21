@@ -1,11 +1,14 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use std::process::Stdio;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use super::{Tool, ToolContext, ToolResult};
 use super::permission::ToolPermission;
+use super::{Tool, ToolContext, ToolResult};
+use crate::agent::AgentEvent;
 
 const MAX_OUTPUT_BYTES: usize = 100 * 1024;
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
@@ -58,52 +61,112 @@ impl Tool for BashTool {
             .unwrap_or(DEFAULT_TIMEOUT_SECS)
             .min(MAX_TIMEOUT_SECS);
 
-        let result = tokio::time::timeout(
-            Duration::from_secs(timeout_secs),
-            Command::new("sh")
-                .arg("-c")
-                .arg(command)
-                .current_dir(&ctx.cwd)
-                .output(),
-        )
-        .await;
+        let spawn_result = Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .current_dir(&ctx.cwd)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
 
-        match result {
-            Ok(Ok(output)) => {
-                let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-                let mut stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-                let exit_code = output.status.code().unwrap_or(-1);
+        let mut child = match spawn_result {
+            Ok(c) => c,
+            Err(e) => return Err(anyhow::anyhow!("Failed to spawn command: {e}")),
+        };
 
-                truncate_output(&mut stdout);
-                truncate_output(&mut stderr);
+        let stdout_pipe = child.stdout.take().unwrap();
+        let stderr_pipe = child.stderr.take().unwrap();
 
-                let mut out = String::new();
-                if !stdout.is_empty() {
-                    out.push_str(&stdout);
-                }
-                if !stderr.is_empty() {
-                    if !out.is_empty() {
-                        out.push_str("\n--- stderr ---\n");
+        let mut stdout_lines = BufReader::new(stdout_pipe).lines();
+        let mut stderr_lines = BufReader::new(stderr_pipe).lines();
+
+        let mut accumulated = String::new();
+        let mut stdout_done = false;
+        let mut stderr_done = false;
+        let mut timed_out = false;
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs);
+
+        while !stdout_done || !stderr_done {
+            tokio::select! {
+                biased;
+                result = stdout_lines.next_line(), if !stdout_done => {
+                    match result {
+                        Ok(Some(line)) => {
+                            emit_delta(ctx, &line);
+                            if accumulated.len() < MAX_OUTPUT_BYTES {
+                                if !accumulated.is_empty() {
+                                    accumulated.push('\n');
+                                }
+                                accumulated.push_str(&line);
+                            }
+                        }
+                        Ok(None) => stdout_done = true,
+                        Err(_) => stdout_done = true,
                     }
-                    out.push_str(&stderr);
                 }
-                if out.is_empty() {
-                    out.push_str("(no output)");
+                result = stderr_lines.next_line(), if !stderr_done => {
+                    match result {
+                        Ok(Some(line)) => {
+                            emit_delta(ctx, &line);
+                            if accumulated.len() < MAX_OUTPUT_BYTES {
+                                if !accumulated.is_empty() {
+                                    accumulated.push('\n');
+                                }
+                                accumulated.push_str(&line);
+                            }
+                        }
+                        Ok(None) => stderr_done = true,
+                        Err(_) => stderr_done = true,
+                    }
                 }
-
-                Ok(ToolResult {
-                    output: out,
-                    title: format!("bash: {}", truncate_title(command)),
-                    metadata: json!({ "exit_code": exit_code }),
-                })
+                _ = tokio::time::sleep_until(deadline) => {
+                    timed_out = true;
+                    let _ = child.kill().await;
+                    break;
+                }
             }
-            Ok(Err(e)) => Err(anyhow::anyhow!("Failed to spawn command: {e}")),
-            Err(_) => Ok(ToolResult {
-                output: format!("Command timed out after {timeout_secs}s"),
+        }
+
+        if timed_out {
+            return Ok(ToolResult {
+                output: if accumulated.is_empty() {
+                    format!("Command timed out after {timeout_secs}s")
+                } else {
+                    truncate_output(&mut accumulated);
+                    format!("{accumulated}\n\n(command timed out after {timeout_secs}s)")
+                },
                 title: format!("bash (timeout): {}", truncate_title(command)),
                 metadata: json!({ "exit_code": -1, "timeout": true }),
-            }),
+            });
         }
+
+        let status = child.wait().await;
+        let exit_code = status
+            .ok()
+            .and_then(|s| s.code())
+            .unwrap_or(-1);
+
+        if accumulated.is_empty() {
+            accumulated.push_str("(no output)");
+        } else {
+            truncate_output(&mut accumulated);
+        }
+
+        Ok(ToolResult {
+            output: accumulated,
+            title: format!("bash: {}", truncate_title(command)),
+            metadata: json!({ "exit_code": exit_code }),
+        })
+    }
+}
+
+fn emit_delta(ctx: &ToolContext, line: &str) {
+    if let Some(tx) = &ctx.event_tx {
+        let _ = tx.send(AgentEvent::ToolOutputDelta {
+            tool_name: "bash".to_string(),
+            delta: line.to_string(),
+        });
     }
 }
 

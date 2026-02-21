@@ -134,7 +134,14 @@ fn render_tool_call<'a>(
     }
 
     if let Some(out) = output {
-        for line in out.lines().take(3) {
+        let max_lines = if *status == ToolStatus::Running { 10 } else { 3 };
+        let all_lines: Vec<&str> = out.lines().collect();
+        let display_lines = if *status == ToolStatus::Running && all_lines.len() > max_lines {
+            &all_lines[all_lines.len() - max_lines..]
+        } else {
+            &all_lines[..all_lines.len().min(max_lines)]
+        };
+        for line in display_lines {
             lines.push(Line::from(Span::styled(
                 format!("      {line}"),
                 Style::default().fg(theme.text_secondary),
