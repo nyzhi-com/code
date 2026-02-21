@@ -61,6 +61,40 @@ enum Commands {
         #[command(subcommand)]
         action: McpAction,
     },
+    /// List saved sessions
+    Sessions {
+        /// Optional search query to filter by ID or title
+        query: Option<String>,
+    },
+    /// Export a session to markdown
+    Export {
+        /// Session ID prefix or title query
+        id: String,
+        /// Output file path (default: nyzhi-export-<timestamp>.md)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+    /// Manage a specific session
+    Session {
+        #[command(subcommand)]
+        action: SessionAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SessionAction {
+    /// Delete a saved session
+    Delete {
+        /// Session ID prefix or title query
+        id: String,
+    },
+    /// Rename a saved session
+    Rename {
+        /// Session ID prefix or title query
+        id: String,
+        /// New title for the session
+        title: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -204,6 +238,144 @@ async fn main() -> Result<()> {
                     "✗"
                 };
                 println!("  {marker} {prov}: {method}");
+            }
+            return Ok(());
+        }
+        Some(Commands::Sessions { query }) => {
+            let sessions = if let Some(q) = &query {
+                nyzhi_core::session::find_sessions(q)?
+            } else {
+                nyzhi_core::session::list_sessions()?
+            };
+            if sessions.is_empty() {
+                if let Some(q) = &query {
+                    println!("No sessions matching '{q}'");
+                } else {
+                    println!("No saved sessions.");
+                }
+            } else {
+                println!(
+                    "{:<10} {:<40} {:>4}  {:<20} UPDATED",
+                    "ID", "TITLE", "MSGS", "PROVIDER/MODEL"
+                );
+                for s in sessions.iter().take(50) {
+                    let title = if s.title.len() > 38 {
+                        format!("{}…", &s.title[..37])
+                    } else {
+                        s.title.clone()
+                    };
+                    let pm = format!("{}/{}", s.provider, s.model);
+                    let pm_display = if pm.len() > 20 {
+                        format!("{}…", &pm[..19])
+                    } else {
+                        pm
+                    };
+                    println!(
+                        "{:<10} {:<40} {:>4}  {:<20} {}",
+                        &s.id[..s.id.len().min(8)],
+                        title,
+                        s.message_count,
+                        pm_display,
+                        s.updated_at.format("%Y-%m-%d %H:%M"),
+                    );
+                }
+                if sessions.len() > 50 {
+                    println!("... and {} more", sessions.len() - 50);
+                }
+            }
+            return Ok(());
+        }
+        Some(Commands::Export { id, output }) => {
+            let matches = nyzhi_core::session::find_sessions(&id)?;
+            let meta = match matches.len() {
+                0 => {
+                    eprintln!("No session matching '{id}'");
+                    std::process::exit(1);
+                }
+                1 => &matches[0],
+                n => {
+                    eprintln!("Ambiguous: {n} sessions match '{id}'. Be more specific.");
+                    for s in matches.iter().take(10) {
+                        eprintln!("  [{}] {}", &s.id[..8], s.title);
+                    }
+                    std::process::exit(1);
+                }
+            };
+            let (thread, session_meta) = nyzhi_core::session::load_session(&meta.id)?;
+            let export_meta = nyzhi_tui::export::ExportMeta {
+                provider: session_meta.provider.clone(),
+                model: session_meta.model.clone(),
+                usage: nyzhi_core::agent::SessionUsage::default(),
+                timestamp: session_meta.updated_at,
+            };
+            let markdown = nyzhi_tui::export::export_thread_markdown(
+                thread.messages(),
+                &export_meta,
+            );
+            let path = output.unwrap_or_else(nyzhi_tui::export::default_export_path);
+            std::fs::write(&path, &markdown)?;
+            println!(
+                "Exported session [{}] \"{}\" ({} messages, {} bytes) to {}",
+                &session_meta.id[..8],
+                session_meta.title,
+                session_meta.message_count,
+                markdown.len(),
+                path,
+            );
+            return Ok(());
+        }
+        Some(Commands::Session { action }) => {
+            match action {
+                SessionAction::Delete { id } => {
+                    let matches = nyzhi_core::session::find_sessions(&id)?;
+                    match matches.len() {
+                        0 => {
+                            eprintln!("No session matching '{id}'");
+                            std::process::exit(1);
+                        }
+                        1 => {
+                            let s = &matches[0];
+                            nyzhi_core::session::delete_session(&s.id)?;
+                            println!("Deleted session [{}] \"{}\"", &s.id[..8], s.title);
+                        }
+                        n => {
+                            eprintln!(
+                                "Ambiguous: {n} sessions match '{id}'. Be more specific."
+                            );
+                            for s in matches.iter().take(10) {
+                                eprintln!("  [{}] {}", &s.id[..8], s.title);
+                            }
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                SessionAction::Rename { id, title } => {
+                    let matches = nyzhi_core::session::find_sessions(&id)?;
+                    match matches.len() {
+                        0 => {
+                            eprintln!("No session matching '{id}'");
+                            std::process::exit(1);
+                        }
+                        1 => {
+                            let s = &matches[0];
+                            nyzhi_core::session::rename_session(&s.id, &title)?;
+                            println!(
+                                "Renamed session [{}] to \"{}\"",
+                                &s.id[..8],
+                                title,
+                            );
+                        }
+                        n => {
+                            eprintln!(
+                                "Ambiguous: {n} sessions match '{id}'. Be more specific."
+                            );
+                            for s in matches.iter().take(10) {
+                                eprintln!("  [{}] {}", &s.id[..8], s.title);
+                            }
+                            std::process::exit(1);
+                        }
+                    }
+                }
             }
             return Ok(());
         }
@@ -453,6 +625,7 @@ async fn run_once(
     });
 
     let mut session_usage = nyzhi_core::agent::SessionUsage::default();
+    let turn_start = std::time::Instant::now();
 
     if image_paths.is_empty() {
         nyzhi_core::agent::run_turn(
@@ -508,6 +681,24 @@ async fn run_once(
     }
 
     let _ = handle.await;
+
+    let turn_elapsed = turn_start.elapsed();
+    let notify = &config.tui.notify;
+    if turn_elapsed.as_millis() as u64 >= notify.min_duration_ms {
+        if notify.bell {
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::style::Print("\x07")
+            );
+        }
+        if notify.desktop {
+            let elapsed_str = format!("{:.1}s", turn_elapsed.as_secs_f64());
+            let _ = notify_rust::Notification::new()
+                .summary("nyzhi code")
+                .body(&format!("Turn complete ({elapsed_str})"))
+                .show();
+        }
+    }
 
     if !config.agent.hooks.is_empty() {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));

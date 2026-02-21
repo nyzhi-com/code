@@ -21,6 +21,7 @@ A performance-optimized AI coding agent for the terminal, built in Rust.
 - **Tab completion** -- slash commands, `@`-mention file paths
 - **Conversation export** -- `/export` to save session as markdown
 - **In-session search** -- `/search` with highlighted matches and Ctrl+N/P navigation
+- **Completion notifications** -- terminal bell + desktop notifications when turns finish (configurable threshold)
 - **Prompt caching** -- Anthropic cache_control + OpenAI/Gemini automatic caching for lower costs
 - **Retry logic** -- exponential backoff for 429/5xx errors
 - **Single binary** -- no runtime dependencies
@@ -59,6 +60,10 @@ nyzhi mcp add <name> -- cmd  Add stdio MCP server
 nyzhi mcp add <name> --url   Add HTTP MCP server
 nyzhi mcp list               List configured MCP servers
 nyzhi mcp remove <name>      Remove an MCP server
+nyzhi sessions [query]       List saved sessions
+nyzhi export <id> [-o path]  Export session to markdown
+nyzhi session delete <id>    Delete a saved session
+nyzhi session rename <id> <t> Rename a saved session
 
 Flags:
   -p, --provider <name>      Provider (openai, anthropic, gemini)
@@ -96,9 +101,10 @@ Flags:
 | `/changes` | List file changes in session |
 | `/export [path]` | Export conversation as markdown |
 | `/search <query>` | Search session (Ctrl+N/P to navigate, Esc to clear) |
+| `/notify` | Show or toggle notification settings (bell, desktop, duration) |
 | `/quit` | Exit |
 
-**Shortcuts:** Tab (completion), Alt+Enter (newline), Ctrl+R (history search), Ctrl+N/P (search next/prev), Ctrl+T (theme), Ctrl+A (accent), Ctrl+L (clear), Ctrl+C (exit)
+**Shortcuts:** Tab (completion), Alt+Enter (newline), Ctrl+R (history search), Ctrl+N/P (search next/prev), Ctrl+T (theme), Ctrl+A (accent), Ctrl+L (clear), PageUp/PageDown (scroll), Ctrl+C (exit)
 
 ## Built-in Tools
 
@@ -141,6 +147,11 @@ accent = "copper"     # copper, blue, orange, emerald, violet, rose, amber,
 [tui.colors]          # optional per-slot hex overrides (applied on top of preset)
 # bg_page = "#1a1b26"
 # text_primary = "#c0caf5"
+
+[tui.notify]
+bell = true           # terminal bell on turn complete (default: true)
+desktop = false       # desktop notification on turn complete (default: false)
+min_duration_ms = 5000  # only notify if turn took longer than this (default: 5000)
 
 [agent]
 max_steps = 100

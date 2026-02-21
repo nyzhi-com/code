@@ -512,6 +512,92 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/notify" || input.starts_with("/notify ") {
+                let arg = input.strip_prefix("/notify").unwrap().trim();
+                if arg.is_empty() {
+                    let bell = if app.notify.bell { "on" } else { "off" };
+                    let desktop = if app.notify.desktop { "on" } else { "off" };
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!(
+                            "Notification settings:\n  bell:     {bell}\n  desktop:  {desktop}\n  duration: {}ms\n\nUsage:\n  /notify bell on|off\n  /notify desktop on|off\n  /notify duration <ms>",
+                            app.notify.min_duration_ms,
+                        ),
+                    });
+                } else {
+                    let parts: Vec<&str> = arg.splitn(2, ' ').collect();
+                    match parts.as_slice() {
+                        ["bell", val] => match *val {
+                            "on" | "true" | "1" => {
+                                app.notify.bell = true;
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Terminal bell enabled.".to_string(),
+                                });
+                            }
+                            "off" | "false" | "0" => {
+                                app.notify.bell = false;
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Terminal bell disabled.".to_string(),
+                                });
+                            }
+                            _ => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Usage: /notify bell on|off".to_string(),
+                                });
+                            }
+                        },
+                        ["desktop", val] => match *val {
+                            "on" | "true" | "1" => {
+                                app.notify.desktop = true;
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Desktop notifications enabled.".to_string(),
+                                });
+                            }
+                            "off" | "false" | "0" => {
+                                app.notify.desktop = false;
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Desktop notifications disabled.".to_string(),
+                                });
+                            }
+                            _ => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Usage: /notify desktop on|off".to_string(),
+                                });
+                            }
+                        },
+                        ["duration", val] => {
+                            if let Ok(ms) = val.parse::<u64>() {
+                                app.notify.min_duration_ms = ms;
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Notification threshold set to {ms}ms."),
+                                });
+                            } else {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Usage: /notify duration <ms> (e.g. /notify duration 5000)".to_string(),
+                                });
+                            }
+                        }
+                        _ => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: "Usage: /notify [bell on|off] [desktop on|off] [duration <ms>]".to_string(),
+                            });
+                        }
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/commands" {
                 if app.custom_commands.is_empty() {
                     app.items.push(DisplayItem::Message {
@@ -901,6 +987,9 @@ pub async fn handle_key(
                         "  /changes        List all file changes in this session",
                         "  /export [path]  Export conversation as markdown",
                         "  /search <q>     Search session (Ctrl+N/P next/prev, Esc clear)",
+                        "  /notify         Show notification settings",
+                        "  /notify bell|desktop on|off  Toggle notifications",
+                        "  /notify duration <ms>        Set min turn duration threshold",
                         "  /quit           Exit nyzhi",
                         "",
                         "Agent tools:",
@@ -1153,6 +1242,18 @@ pub async fn handle_key(
             } else {
                 app.scroll_offset = app.scroll_offset.saturating_sub(1);
             }
+        }
+        KeyCode::PageUp => {
+            app.scroll_offset = app.scroll_offset.saturating_add(20);
+        }
+        KeyCode::PageDown => {
+            app.scroll_offset = app.scroll_offset.saturating_sub(20);
+        }
+        KeyCode::Delete => {
+            if app.cursor_pos < app.input.len() {
+                app.input.remove(app.cursor_pos);
+            }
+            app.completion = None;
         }
         _ => {}
     }

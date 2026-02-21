@@ -209,6 +209,32 @@ pub struct TuiConfig {
     pub accent: String,
     #[serde(default)]
     pub colors: ThemeOverrides,
+    #[serde(default)]
+    pub notify: NotifyConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotifyConfig {
+    #[serde(default = "default_true")]
+    pub bell: bool,
+    #[serde(default)]
+    pub desktop: bool,
+    #[serde(default = "default_min_duration_ms")]
+    pub min_duration_ms: u64,
+}
+
+fn default_min_duration_ms() -> u64 {
+    5000
+}
+
+impl Default for NotifyConfig {
+    fn default() -> Self {
+        Self {
+            bell: true,
+            desktop: false,
+            min_duration_ms: default_min_duration_ms(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -290,6 +316,7 @@ impl Default for TuiConfig {
             theme: default_theme(),
             accent: default_accent(),
             colors: ThemeOverrides::default(),
+            notify: NotifyConfig::default(),
         }
     }
 }

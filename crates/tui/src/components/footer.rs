@@ -124,6 +124,15 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         nyzhi_config::TrustMode::Off => None,
     };
 
+    let notify_span = if app.notify.desktop {
+        Some(Span::styled(
+            "notify  ",
+            Style::default().fg(theme.text_disabled),
+        ))
+    } else {
+        None
+    };
+
     let line = if total <= available {
         let mut spans = vec![
             Span::styled(
@@ -142,6 +151,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         if let Some(ts) = trust_span {
             spans.push(ts);
         }
+        if let Some(ns) = &notify_span {
+            spans.push(ns.clone());
+        }
         spans.push(Span::styled(
             format!("{right}  "),
             Style::default().fg(theme.text_tertiary),
@@ -155,6 +167,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         if let Some(ts) = trust_span {
             spans.push(Span::raw("  "));
             spans.push(ts);
+        }
+        if let Some(ns) = &notify_span {
+            spans.push(ns.clone());
         }
         spans.push(Span::styled(
             format!("{:>width$}  ", right, width = available.saturating_sub(left_len + 4)),

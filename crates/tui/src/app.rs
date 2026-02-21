@@ -92,6 +92,7 @@ pub struct App {
     pub search_query: Option<String>,
     pub search_matches: Vec<usize>,
     pub search_match_idx: usize,
+    pub notify: nyzhi_config::NotifyConfig,
 }
 
 impl App {
@@ -139,6 +140,7 @@ impl App {
             search_query: None,
             search_matches: Vec::new(),
             search_match_idx: 0,
+            notify: config.notify.clone(),
         }
     }
 
@@ -533,10 +535,36 @@ impl App {
                                 content: std::mem::take(&mut self.current_stream),
                             });
                         }
+                        let turn_elapsed = self.turn_start.map(|t| t.elapsed());
                         self.stream_start = None;
                         self.stream_token_count = 0;
                         self.turn_start = None;
                         self.mode = AppMode::Input;
+
+                        let should_notify = turn_elapsed
+                            .map(|d| d.as_millis() as u64 >= self.notify.min_duration_ms)
+                            .unwrap_or(false);
+                        if should_notify {
+                            if self.notify.bell {
+                                let _ = crossterm::execute!(
+                                    std::io::stdout(),
+                                    crossterm::style::Print("\x07")
+                                );
+                            }
+                            if self.notify.desktop {
+                                let elapsed_str = if let Some(d) = turn_elapsed {
+                                    format!("{:.1}s", d.as_secs_f64())
+                                } else {
+                                    "done".to_string()
+                                };
+                                tokio::spawn(async move {
+                                    let _ = notify_rust::Notification::new()
+                                        .summary("nyzhi code")
+                                        .body(&format!("Turn complete ({elapsed_str})"))
+                                        .show();
+                                });
+                            }
+                        }
                         if thread.message_count() > 0 {
                             let _ = nyzhi_core::session::save_session(
                                 &thread,

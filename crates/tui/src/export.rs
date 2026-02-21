@@ -97,6 +97,56 @@ pub fn export_session_markdown(items: &[DisplayItem], meta: &ExportMeta) -> Stri
     out
 }
 
+pub fn export_thread_markdown(
+    messages: &[nyzhi_provider::Message],
+    meta: &ExportMeta,
+) -> String {
+    let mut out = String::with_capacity(4096);
+
+    out.push_str("---\n");
+    out.push_str(&format!(
+        "date: {}\n",
+        meta.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+    ));
+    out.push_str(&format!("provider: {}\n", meta.provider));
+    out.push_str(&format!("model: {}\n", meta.model));
+    out.push_str("---\n\n");
+
+    for msg in messages {
+        let text = msg.content.as_text();
+        match msg.role {
+            nyzhi_provider::Role::User => {
+                out.push_str("## You\n\n");
+                out.push_str(text);
+                out.push_str("\n\n");
+            }
+            nyzhi_provider::Role::Assistant => {
+                out.push_str("## Assistant\n\n");
+                out.push_str(text);
+                out.push_str("\n\n");
+            }
+            nyzhi_provider::Role::System => {
+                for line in text.lines() {
+                    out.push_str("> ");
+                    out.push_str(line);
+                    out.push('\n');
+                }
+                out.push('\n');
+            }
+            nyzhi_provider::Role::Tool => {
+                out.push_str("### Tool Response\n\n```\n");
+                out.push_str(text);
+                if !text.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str("```\n\n");
+            }
+        }
+    }
+
+    out
+}
+
 pub fn default_export_path() -> String {
     let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
     format!("nyzhi-export-{ts}.md")
@@ -173,5 +223,37 @@ mod tests {
         let path = default_export_path();
         assert!(path.starts_with("nyzhi-export-"));
         assert!(path.ends_with(".md"));
+    }
+
+    #[test]
+    fn test_export_thread_markdown() {
+        use nyzhi_provider::{Message, MessageContent, Role};
+
+        let messages = vec![
+            Message {
+                role: Role::User,
+                content: MessageContent::Text("Hello agent".into()),
+            },
+            Message {
+                role: Role::Assistant,
+                content: MessageContent::Text("Hi! How can I help?".into()),
+            },
+            Message {
+                role: Role::Tool,
+                content: MessageContent::Text("file contents here".into()),
+            },
+        ];
+        let meta = ExportMeta {
+            provider: "anthropic".into(),
+            model: "claude".into(),
+            usage: SessionUsage::default(),
+            timestamp: chrono::Utc::now(),
+        };
+        let md = export_thread_markdown(&messages, &meta);
+        assert!(md.contains("## You\n\nHello agent"));
+        assert!(md.contains("## Assistant\n\nHi! How can I help?"));
+        assert!(md.contains("### Tool Response"));
+        assert!(md.contains("file contents here"));
+        assert!(md.contains("provider: anthropic"));
     }
 }

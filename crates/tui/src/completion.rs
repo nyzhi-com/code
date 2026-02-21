@@ -17,6 +17,7 @@ const SLASH_COMMANDS: &[&str] = &[
     "/login",
     "/mcp",
     "/model",
+    "/notify",
     "/quit",
     "/resume",
     "/retry",
