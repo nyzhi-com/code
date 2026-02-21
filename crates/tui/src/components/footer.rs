@@ -81,8 +81,20 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let short_len = shortcuts.len();
     let total = left_len + short_len + right_len + 4;
 
+    let trust_span = match app.trust_mode {
+        nyzhi_config::TrustMode::Full => Some(Span::styled(
+            "TRUST:FULL  ",
+            Style::default().fg(theme.danger).bold(),
+        )),
+        nyzhi_config::TrustMode::Limited => Some(Span::styled(
+            "TRUST:LIMITED  ",
+            Style::default().fg(theme.warning).bold(),
+        )),
+        nyzhi_config::TrustMode::Off => None,
+    };
+
     let line = if total <= available {
-        Line::from(vec![
+        let mut spans = vec![
             Span::styled(
                 format!("  {left}"),
                 Style::default().fg(theme.text_tertiary),
@@ -95,22 +107,29 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 ),
                 Style::default().fg(theme.text_disabled),
             ),
-            Span::styled(
-                format!("{right}  "),
-                Style::default().fg(theme.text_tertiary),
-            ),
-        ])
+        ];
+        if let Some(ts) = trust_span {
+            spans.push(ts);
+        }
+        spans.push(Span::styled(
+            format!("{right}  "),
+            Style::default().fg(theme.text_tertiary),
+        ));
+        Line::from(spans)
     } else {
-        Line::from(vec![
-            Span::styled(
-                format!("  {left}"),
-                Style::default().fg(theme.text_tertiary),
-            ),
-            Span::styled(
-                format!("{:>width$}  ", right, width = available.saturating_sub(left_len + 4)),
-                Style::default().fg(theme.text_tertiary),
-            ),
-        ])
+        let mut spans = vec![Span::styled(
+            format!("  {left}"),
+            Style::default().fg(theme.text_tertiary),
+        )];
+        if let Some(ts) = trust_span {
+            spans.push(Span::raw("  "));
+            spans.push(ts);
+        }
+        spans.push(Span::styled(
+            format!("{:>width$}  ", right, width = available.saturating_sub(left_len + 4)),
+            Style::default().fg(theme.text_tertiary),
+        ));
+        Line::from(spans)
     };
 
     let paragraph = Paragraph::new(line).style(Style::default().bg(theme.bg_page));

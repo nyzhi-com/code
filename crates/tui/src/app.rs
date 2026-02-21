@@ -71,6 +71,7 @@ pub struct App {
     pub pending_approval:
         Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>>,
     pub pending_images: Vec<PendingImage>,
+    pub trust_mode: nyzhi_config::TrustMode,
 }
 
 impl App {
@@ -97,6 +98,7 @@ impl App {
             mcp_manager: None,
             pending_approval: None,
             pending_images: Vec::new(),
+            trust_mode: nyzhi_config::TrustMode::Off,
         }
     }
 
@@ -147,7 +149,7 @@ impl App {
             .map(|i| provider.supported_models()[i].supports_vision)
             .unwrap_or(false);
 
-        let agent_config = AgentConfig {
+        let mut agent_config = AgentConfig {
             system_prompt: nyzhi_core::prompt::build_system_prompt_with_vision(
                 Some(&self.workspace),
                 config.agent.custom_instructions.as_deref(),
@@ -156,8 +158,10 @@ impl App {
             ),
             max_steps: config.agent.max_steps.unwrap_or(100),
             max_tokens: config.agent.max_tokens,
+            trust: config.agent.trust.clone(),
             ..AgentConfig::default()
         };
+        self.trust_mode = agent_config.trust.mode.clone();
 
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let change_tracker = std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -215,7 +219,7 @@ impl App {
                             key,
                             provider,
                             &mut thread,
-                            &agent_config,
+                            &mut agent_config,
                             &event_tx,
                             registry,
                             &tool_ctx,

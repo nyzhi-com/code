@@ -1,5 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
+use nyzhi_config::{TrustConfig, TrustMode};
 use nyzhi_provider::{
     ChatRequest, ContentPart, Message, MessageContent, ModelInfo, Provider, Role, StreamEvent,
 };
@@ -87,6 +88,7 @@ pub struct AgentConfig {
     pub system_prompt: String,
     pub max_steps: u32,
     pub max_tokens: Option<u32>,
+    pub trust: TrustConfig,
 }
 
 impl Default for AgentConfig {
@@ -96,6 +98,7 @@ impl Default for AgentConfig {
             system_prompt: crate::prompt::default_system_prompt(),
             max_steps: 100,
             max_tokens: None,
+            trust: TrustConfig::default(),
         }
     }
 }
@@ -297,7 +300,7 @@ pub async fn run_turn_with_content(
             for (i, args) in sequential_indices {
                 let tc = &acc.tool_calls[i];
                 let output = match execute_with_permission(
-                    registry, &tc.name, args, ctx, event_tx,
+                    registry, &tc.name, args, ctx, event_tx, &config.trust,
                 )
                 .await
                 {
@@ -358,12 +361,15 @@ async fn execute_with_permission(
     args: serde_json::Value,
     ctx: &ToolContext,
     event_tx: &broadcast::Sender<AgentEvent>,
+    trust: &TrustConfig,
 ) -> Result<crate::tools::ToolResult> {
     let tool = registry
         .get(tool_name)
         .ok_or_else(|| anyhow::anyhow!("Unknown tool: {tool_name}"))?;
 
-    if tool.permission() == ToolPermission::NeedsApproval {
+    if tool.permission() == ToolPermission::NeedsApproval
+        && !should_auto_approve(trust, tool_name, &args)
+    {
         let args_summary = summarize_args(tool_name, &args).await;
         let (tx, rx) = tokio::sync::oneshot::channel();
         let respond = std::sync::Arc::new(tokio::sync::Mutex::new(Some(tx)));
@@ -385,6 +391,42 @@ async fn execute_with_permission(
     }
 
     registry.execute(tool_name, args, ctx).await
+}
+
+fn should_auto_approve(trust: &TrustConfig, tool_name: &str, args: &serde_json::Value) -> bool {
+    match trust.mode {
+        TrustMode::Full => true,
+        TrustMode::Limited => {
+            let tool_allowed = trust.allow_tools.is_empty()
+                || trust.allow_tools.iter().any(|t| t == tool_name);
+            if !tool_allowed {
+                return false;
+            }
+            if trust.allow_paths.is_empty() {
+                return true;
+            }
+            if let Some(path) = extract_target_path(tool_name, args) {
+                trust.allow_paths.iter().any(|p| path.starts_with(p))
+            } else {
+                tool_allowed
+            }
+        }
+        TrustMode::Off => false,
+    }
+}
+
+fn extract_target_path(tool_name: &str, args: &serde_json::Value) -> Option<String> {
+    match tool_name {
+        "edit" | "write" | "read" => args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        "bash" => args
+            .get("command")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        _ => None,
+    }
 }
 
 async fn summarize_args(tool_name: &str, args: &serde_json::Value) -> String {

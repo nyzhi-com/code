@@ -16,6 +16,10 @@ struct Cli {
     /// Model to use (e.g. gpt-4.1, claude-sonnet-4, gemini-2.5-flash)
     #[arg(short, long)]
     model: Option<String>,
+
+    /// Trust mode: off, limited, or full (auto-approve tool calls)
+    #[arg(short = 'y', long = "trust")]
+    trust: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -105,10 +109,11 @@ async fn main() -> Result<()> {
         global_config
     };
 
-    let provider_name = cli
+    let provider_name_owned = cli
         .provider
-        .as_deref()
-        .unwrap_or(&config.provider.default);
+        .clone()
+        .unwrap_or_else(|| config.provider.default.clone());
+    let provider_name: &str = &provider_name_owned;
 
     match cli.command {
         Some(Commands::Init) => {
@@ -264,6 +269,17 @@ async fn main() -> Result<()> {
         2,
     )));
 
+    let mut config = config;
+    if let Some(trust_str) = &cli.trust {
+        match trust_str.parse::<nyzhi_config::TrustMode>() {
+            Ok(mode) => config.agent.trust.mode = mode,
+            Err(e) => {
+                eprintln!("Invalid --trust value: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     match cli.command {
         Some(Commands::Run { prompt, images }) => {
             run_once(
@@ -324,6 +340,7 @@ async fn run_once(
         ),
         max_steps: config.agent.max_steps.unwrap_or(100),
         max_tokens: config.agent.max_tokens,
+        trust: config.agent.trust.clone(),
         ..AgentConfig::default()
     };
     let (event_tx, mut event_rx) = tokio::sync::broadcast::channel::<AgentEvent>(256);

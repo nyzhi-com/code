@@ -49,6 +49,49 @@ pub struct AgentSettings {
     pub max_tokens: Option<u32>,
     #[serde(default)]
     pub custom_instructions: Option<String>,
+    #[serde(default)]
+    pub trust: TrustConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TrustConfig {
+    #[serde(default)]
+    pub mode: TrustMode,
+    #[serde(default)]
+    pub allow_tools: Vec<String>,
+    #[serde(default)]
+    pub allow_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TrustMode {
+    #[default]
+    Off,
+    Limited,
+    Full,
+}
+
+impl std::fmt::Display for TrustMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TrustMode::Off => write!(f, "off"),
+            TrustMode::Limited => write!(f, "limited"),
+            TrustMode::Full => write!(f, "full"),
+        }
+    }
+}
+
+impl std::str::FromStr for TrustMode {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "off" => Ok(TrustMode::Off),
+            "limited" => Ok(TrustMode::Limited),
+            "full" => Ok(TrustMode::Full),
+            other => Err(format!("unknown trust mode: {other} (use off, limited, or full)")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,6 +279,11 @@ impl Config {
                     .custom_instructions
                     .clone()
                     .or_else(|| global.agent.custom_instructions.clone()),
+                trust: if project.agent.trust.mode != TrustMode::Off {
+                    project.agent.trust.clone()
+                } else {
+                    global.agent.trust.clone()
+                },
             },
             mcp: McpConfig {
                 servers: mcp_servers,

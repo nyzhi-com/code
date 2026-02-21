@@ -13,7 +13,7 @@ pub async fn handle_key(
     key: KeyEvent,
     provider: &dyn Provider,
     thread: &mut Thread,
-    agent_config: &AgentConfig,
+    agent_config: &mut AgentConfig,
     event_tx: &broadcast::Sender<AgentEvent>,
     registry: &ToolRegistry,
     tool_ctx: &ToolContext,
@@ -525,6 +525,49 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/trust" {
+                let mode = &agent_config.trust.mode;
+                let tools = &agent_config.trust.allow_tools;
+                let paths = &agent_config.trust.allow_paths;
+                let mut msg = format!("Trust mode: {mode}");
+                if !tools.is_empty() {
+                    msg.push_str(&format!("\nAllowed tools: {}", tools.join(", ")));
+                }
+                if !paths.is_empty() {
+                    msg.push_str(&format!("\nAllowed paths: {}", paths.join(", ")));
+                }
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: msg,
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/trust full" || input == "/trust limited" || input == "/trust off" {
+                let mode_str = input.strip_prefix("/trust ").unwrap();
+                match mode_str.parse::<nyzhi_config::TrustMode>() {
+                    Ok(mode) => {
+                        agent_config.trust.mode = mode.clone();
+                        app.trust_mode = mode;
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Trust mode set to: {mode_str}"),
+                        });
+                    }
+                    Err(e) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Invalid trust mode: {e}"),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/help" {
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
@@ -543,6 +586,8 @@ pub async fn handle_key(
                         "  /resume <id>    Restore a saved session",
                         "  /theme          Toggle light/dark theme",
                         "  /accent         Cycle accent color",
+                        "  /trust          Show current trust mode",
+                        "  /trust <mode>   Set trust mode (off, limited, full)",
                         "  /undo           Undo the last file change",
                         "  /undo all       Undo all file changes in this session",
                         "  /changes        List all file changes in this session",
