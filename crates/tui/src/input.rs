@@ -623,6 +623,10 @@ pub async fn handle_key(
                         "  nyzhi logout <provider>   Remove stored OAuth token",
                         "  nyzhi whoami              Show auth status for all providers",
                         "",
+                        "Context:",
+                        "  @path           Attach file or directory contents to your prompt",
+                        "                  e.g. explain @src/main.rs or list @src/",
+                        "",
                         "Input:",
                         "  alt+enter       Insert newline (multi-line mode)",
                         "  shift+enter     Insert newline (kitty protocol)",
@@ -646,7 +650,19 @@ pub async fn handle_key(
 
             app.history.push(input.clone());
 
+            let mentions = nyzhi_core::context_files::parse_mentions(&input);
+            let context_files = if mentions.is_empty() {
+                Vec::new()
+            } else {
+                nyzhi_core::context_files::resolve_context_files(
+                    &mentions,
+                    &tool_ctx.project_root,
+                    &tool_ctx.cwd,
+                )
+            };
+
             let has_images = !app.pending_images.is_empty();
+            let has_context = !context_files.is_empty();
             let mut display_content = input.clone();
             if has_images {
                 let names: Vec<&str> = app
@@ -662,6 +678,21 @@ pub async fn handle_key(
                 content: display_content,
             });
 
+            if has_context {
+                let summary =
+                    nyzhi_core::context_files::format_attachment_summary(&context_files);
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: summary,
+                });
+            }
+
+            let agent_input = if has_context {
+                nyzhi_core::context_files::build_context_message(&input, &context_files)
+            } else {
+                input.clone()
+            };
+
             app.input.clear();
             app.cursor_pos = 0;
             app.mode = AppMode::Streaming;
@@ -669,7 +700,7 @@ pub async fn handle_key(
             let event_tx = event_tx.clone();
             let result = if has_images {
                 let images = std::mem::take(&mut app.pending_images);
-                let content = build_multimodal_content(&input, &images);
+                let content = build_multimodal_content(&agent_input, &images);
                 nyzhi_core::agent::run_turn_with_content(
                     provider,
                     thread,
@@ -686,7 +717,7 @@ pub async fn handle_key(
                 nyzhi_core::agent::run_turn(
                     provider,
                     thread,
-                    &input,
+                    &agent_input,
                     agent_config,
                     &event_tx,
                     registry,

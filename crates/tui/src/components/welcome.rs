@@ -27,7 +27,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let vert_pad = inner
         .height
-        .saturating_sub(logo_lines.len() as u16 + 14)
+        .saturating_sub(logo_lines.len() as u16 + 15)
         / 2;
 
     for _ in 0..vert_pad {
@@ -63,6 +63,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let commands: &[(&str, &str, &str)] = &[
         ("/help", "show help", "ctrl+h"),
+        ("@file", "attach context", ""),
         ("/clear", "clear session", "ctrl+l"),
         ("/theme", "choose theme", "ctrl+t"),
         ("/accent", "choose accent", "ctrl+a"),
