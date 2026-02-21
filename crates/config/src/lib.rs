@@ -110,6 +110,17 @@ fn default_accent() -> String {
     "copper".to_string()
 }
 
+impl ProviderConfig {
+    pub fn entry(&self, name: &str) -> Option<&ProviderEntry> {
+        match name {
+            "openai" => Some(&self.openai),
+            "anthropic" => Some(&self.anthropic),
+            "gemini" => Some(&self.gemini),
+            _ => None,
+        }
+    }
+}
+
 impl Default for ProviderConfig {
     fn default() -> Self {
         Self {

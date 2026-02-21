@@ -2,10 +2,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nyzhi_core::agent::{AgentConfig, AgentEvent};
 use nyzhi_core::conversation::Thread;
 use nyzhi_core::tools::{ToolContext, ToolRegistry};
-use nyzhi_provider::{ModelInfo, Provider};
+use nyzhi_provider::{ContentPart, MessageContent, ModelInfo, Provider};
 use tokio::sync::broadcast;
 
-use crate::app::{App, AppMode, DisplayItem};
+use crate::app::{App, AppMode, DisplayItem, PendingImage};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_key(
@@ -18,6 +18,7 @@ pub async fn handle_key(
     registry: &ToolRegistry,
     tool_ctx: &ToolContext,
     model_info: Option<&ModelInfo>,
+    model_info_idx: &mut Option<usize>,
 ) {
     if matches!(app.mode, AppMode::Streaming | AppMode::AwaitingApproval) {
         return;
@@ -192,11 +193,14 @@ pub async fn handle_key(
                                                 nyzhi_provider::Role::Assistant => "assistant",
                                                 _ => "system",
                                             };
-                                            let text = msg.content.as_text();
+                                            let mut text = msg.content.as_text().to_string();
+                                            if msg.content.has_images() {
+                                                text.push_str("\n[image attached]");
+                                            }
                                             if !text.is_empty() {
                                                 app.items.push(DisplayItem::Message {
                                                     role: role.to_string(),
-                                                    content: text.to_string(),
+                                                    content: text,
                                                 });
                                             }
                                         }
@@ -311,28 +315,147 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/model" {
+                let models = provider.supported_models();
+                let mut lines = vec!["Available models:".to_string()];
+                for m in models {
+                    let marker = if m.id == app.model_name { " *" } else { "" };
+                    lines.push(format!(
+                        "  {} ({}){marker}",
+                        m.id, m.name,
+                    ));
+                }
+                lines.push(String::new());
+                lines.push("Use /model <id> to switch.".to_string());
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: lines.join("\n"),
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if let Some(new_model) = input.strip_prefix("/model ") {
+                let new_model = new_model.trim();
+                if let Some(idx) = provider
+                    .supported_models()
+                    .iter()
+                    .position(|m| m.id == new_model)
+                {
+                    let mi = &provider.supported_models()[idx];
+                    app.model_name = mi.id.to_string();
+                    *model_info_idx = Some(idx);
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Switched to {} ({})", mi.id, mi.name),
+                    });
+                } else {
+                    let available: Vec<&str> =
+                        provider.supported_models().iter().map(|m| m.id).collect();
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!(
+                            "Unknown model '{}'. Available: {}",
+                            new_model,
+                            available.join(", ")
+                        ),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if let Some(path_str) = input.strip_prefix("/image ") {
+                let path_str = path_str.trim();
+                match load_image(path_str) {
+                    Ok(img) => {
+                        let kb = img.size_bytes / 1024;
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "Image attached: {} ({} KB). Type your prompt and press Enter.",
+                                img.filename, kb
+                            ),
+                        });
+                        app.pending_images.push(img);
+                    }
+                    Err(e) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Failed to load image: {e}"),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/login" {
+                let providers = ["openai", "gemini"];
+                let mut lines = vec!["Auth status:".to_string()];
+                for prov in &providers {
+                    let has_token = nyzhi_auth::token_store::load_token(prov)
+                        .ok()
+                        .flatten()
+                        .is_some();
+                    let status = if has_token { "logged in" } else { "not logged in" };
+                    let marker = if has_token { "✓" } else { "✗" };
+                    lines.push(format!("  {marker} {prov}: {status}"));
+                }
+                lines.push(String::new());
+                lines.push(
+                    "Use `nyzhi login <provider>` in your terminal to log in via OAuth."
+                        .to_string(),
+                );
+                lines.push("Use `nyzhi logout <provider>` to remove stored tokens.".to_string());
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: lines.join("\n"),
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/help" {
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
                     content: [
                         "Commands:",
-                        "  /help        Show this help",
-                        "  /init        Initialize .nyzhi/ project config",
-                        "  /mcp         List connected MCP servers",
-                        "  /clear       Clear the session",
-                        "  /compact     Compress conversation history",
-                        "  /sessions    List saved sessions",
-                        "  /resume <id> Restore a saved session",
-                        "  /theme       Toggle light/dark theme",
-                        "  /accent      Cycle accent color",
-                        "  /quit        Exit nyzhi",
+                        "  /help           Show this help",
+                        "  /model          List available models",
+                        "  /model <id>     Switch to a different model",
+                        "  /image <path>   Attach an image for the next prompt",
+                        "  /login          Show OAuth login status",
+                        "  /init           Initialize .nyzhi/ project config",
+                        "  /mcp            List connected MCP servers",
+                        "  /clear          Clear the session",
+                        "  /compact        Compress conversation history",
+                        "  /sessions       List saved sessions",
+                        "  /resume <id>    Restore a saved session",
+                        "  /theme          Toggle light/dark theme",
+                        "  /accent         Cycle accent color",
+                        "  /quit           Exit nyzhi",
+                        "",
+                        "Agent tools:",
+                        "  git_status, git_diff, git_log, git_show, git_branch (read-only)",
+                        "  git_commit, git_checkout (require approval)",
+                        "  task (delegate sub-tasks to a child agent)",
+                        "",
+                        "Auth:",
+                        "  nyzhi login <provider>    Log in via OAuth (gemini, openai)",
+                        "  nyzhi logout <provider>   Remove stored OAuth token",
+                        "  nyzhi whoami              Show auth status for all providers",
                         "",
                         "Shortcuts:",
-                        "  ctrl+t       Toggle theme",
-                        "  ctrl+a       Cycle accent",
-                        "  ctrl+l       Clear session",
-                        "  ctrl+u       Clear input line",
-                        "  ctrl+c       Exit",
+                        "  ctrl+t          Toggle theme",
+                        "  ctrl+a          Cycle accent",
+                        "  ctrl+l          Clear session",
+                        "  ctrl+u          Clear input line",
+                        "  ctrl+c          Exit",
                     ]
                     .join("\n"),
                 });
@@ -341,9 +464,20 @@ pub async fn handle_key(
                 return;
             }
 
+            let has_images = !app.pending_images.is_empty();
+            let mut display_content = input.clone();
+            if has_images {
+                let names: Vec<&str> = app
+                    .pending_images
+                    .iter()
+                    .map(|i| i.filename.as_str())
+                    .collect();
+                display_content = format!("{input}\n[images: {}]", names.join(", "));
+            }
+
             app.items.push(DisplayItem::Message {
                 role: "user".to_string(),
-                content: input.clone(),
+                content: display_content,
             });
 
             app.input.clear();
@@ -351,19 +485,36 @@ pub async fn handle_key(
             app.mode = AppMode::Streaming;
 
             let event_tx = event_tx.clone();
-            if let Err(e) = nyzhi_core::agent::run_turn(
-                provider,
-                thread,
-                &input,
-                agent_config,
-                &event_tx,
-                registry,
-                tool_ctx,
-                model_info,
-                &mut app.session_usage,
-            )
-            .await
-            {
+            let result = if has_images {
+                let images = std::mem::take(&mut app.pending_images);
+                let content = build_multimodal_content(&input, &images);
+                nyzhi_core::agent::run_turn_with_content(
+                    provider,
+                    thread,
+                    content,
+                    agent_config,
+                    &event_tx,
+                    registry,
+                    tool_ctx,
+                    model_info,
+                    &mut app.session_usage,
+                )
+                .await
+            } else {
+                nyzhi_core::agent::run_turn(
+                    provider,
+                    thread,
+                    &input,
+                    agent_config,
+                    &event_tx,
+                    registry,
+                    tool_ctx,
+                    model_info,
+                    &mut app.session_usage,
+                )
+                .await
+            };
+            if let Err(e) = result {
                 let _ = event_tx.send(AgentEvent::Error(e.to_string()));
             }
         }
@@ -401,4 +552,57 @@ pub async fn handle_key(
         }
         _ => {}
     }
+}
+
+fn load_image(path_str: &str) -> anyhow::Result<PendingImage> {
+    use base64::Engine;
+
+    let path = std::path::Path::new(path_str);
+    if !path.exists() {
+        anyhow::bail!("File not found: {path_str}");
+    }
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let media_type = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => anyhow::bail!("Unsupported image format: .{ext} (use png, jpg, gif, or webp)"),
+    };
+
+    let bytes = std::fs::read(path)?;
+    let size_bytes = bytes.len();
+    let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("image")
+        .to_string();
+
+    Ok(PendingImage {
+        filename,
+        media_type: media_type.to_string(),
+        data,
+        size_bytes,
+    })
+}
+
+fn build_multimodal_content(text: &str, images: &[PendingImage]) -> MessageContent {
+    let mut parts = Vec::new();
+    for img in images {
+        parts.push(ContentPart::Image {
+            media_type: img.media_type.clone(),
+            data: img.data.clone(),
+        });
+    }
+    parts.push(ContentPart::Text {
+        text: text.to_string(),
+    });
+    MessageContent::Parts(parts)
 }

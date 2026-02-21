@@ -6,6 +6,8 @@ pub fn estimate_tokens(text: &str) -> usize {
     text.len() / CHARS_PER_TOKEN + 1
 }
 
+pub const IMAGE_TOKEN_ESTIMATE: usize = 1000;
+
 pub fn estimate_message_tokens(msg: &Message) -> usize {
     let content_tokens = match &msg.content {
         MessageContent::Text(text) => estimate_tokens(text),
@@ -13,6 +15,7 @@ pub fn estimate_message_tokens(msg: &Message) -> usize {
             .iter()
             .map(|p| match p {
                 ContentPart::Text { text } => estimate_tokens(text),
+                ContentPart::Image { .. } => IMAGE_TOKEN_ESTIMATE,
                 ContentPart::ToolUse { name, input, .. } => {
                     estimate_tokens(name) + estimate_tokens(&input.to_string())
                 }
@@ -20,7 +23,6 @@ pub fn estimate_message_tokens(msg: &Message) -> usize {
             })
             .sum(),
     };
-    // ~4 tokens overhead per message for role/formatting
     content_tokens + 4
 }
 

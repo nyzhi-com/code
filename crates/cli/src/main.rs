@@ -1,4 +1,5 @@
 use anyhow::Result;
+use base64::Engine;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -23,12 +24,22 @@ enum Commands {
     Run {
         /// The prompt to send
         prompt: String,
+        /// Attach image file(s) to the prompt
+        #[arg(short = 'i', long = "image")]
+        images: Vec<String>,
     },
     /// Log in to a provider via OAuth
     Login {
-        /// Provider to log in to
+        /// Provider to log in to (gemini, openai)
         provider: String,
     },
+    /// Log out from a provider (delete stored OAuth token)
+    Logout {
+        /// Provider to log out from
+        provider: String,
+    },
+    /// Show current auth status for the active provider
+    Whoami,
     /// Show current configuration
     Config,
     /// Initialize a .nyzhi/ project directory
@@ -138,10 +149,58 @@ async fn main() -> Result<()> {
             handle_mcp_command(action, &workspace, &config).await?;
             return Ok(());
         }
+        Some(Commands::Login { provider: prov }) => {
+            match nyzhi_auth::oauth::login(&prov).await {
+                Ok(_) => println!("Logged in to {prov}."),
+                Err(e) => eprintln!("Login failed: {e}"),
+            }
+            return Ok(());
+        }
+        Some(Commands::Logout { provider: prov }) => {
+            nyzhi_auth::token_store::delete_token(&prov)?;
+            println!("Logged out from {prov}.");
+            return Ok(());
+        }
+        Some(Commands::Whoami) => {
+            let providers = ["openai", "anthropic", "gemini"];
+            println!("Auth status:");
+            for prov in &providers {
+                let conf_entry = config.provider.entry(prov);
+                let has_api_key = conf_entry
+                    .and_then(|e| e.api_key.as_deref())
+                    .is_some();
+                let env_var = nyzhi_auth::api_key::env_var_name(prov);
+                let has_env = std::env::var(env_var).is_ok();
+                let has_token = nyzhi_auth::token_store::load_token(prov)
+                    .ok()
+                    .flatten()
+                    .is_some();
+
+                let method = if has_api_key {
+                    "config api_key".to_string()
+                } else if has_env {
+                    format!("env ({env_var})")
+                } else if has_token {
+                    "OAuth token".to_string()
+                } else {
+                    "none".to_string()
+                };
+                let marker = if has_api_key || has_env || has_token {
+                    "✓"
+                } else {
+                    "✗"
+                };
+                println!("  {marker} {prov}: {method}");
+            }
+            return Ok(());
+        }
         _ => {}
     }
 
-    let provider = nyzhi_provider::create_provider(provider_name, &config)?;
+    let provider: std::sync::Arc<dyn nyzhi_provider::Provider> =
+        nyzhi_provider::create_provider_async(provider_name, &config)
+            .await?
+            .into();
     let mut registry = nyzhi_core::tools::default_registry();
 
     let mut all_mcp_servers = config.mcp.servers.clone();
@@ -199,20 +258,24 @@ async fn main() -> Result<()> {
             Vec::new()
         };
 
+    registry.register(Box::new(nyzhi_core::tools::task::TaskTool::new(
+        provider.clone(),
+        std::sync::Arc::new(nyzhi_core::tools::default_registry()),
+        2,
+    )));
+
     match cli.command {
-        Some(Commands::Run { prompt }) => {
+        Some(Commands::Run { prompt, images }) => {
             run_once(
                 &*provider,
                 &prompt,
+                &images,
                 &registry,
                 &workspace,
                 &config,
                 &mcp_summaries,
             )
             .await?;
-        }
-        Some(Commands::Login { provider: prov }) => {
-            eprintln!("OAuth login for '{prov}' is not yet implemented.");
         }
         None => {
             let model_name = cli.model.as_deref().unwrap_or(
@@ -241,6 +304,7 @@ async fn main() -> Result<()> {
 async fn run_once(
     provider: &dyn nyzhi_provider::Provider,
     prompt: &str,
+    image_paths: &[String],
     registry: &nyzhi_core::tools::ToolRegistry,
     workspace: &nyzhi_core::workspace::WorkspaceContext,
     config: &nyzhi_config::Config,
@@ -249,6 +313,7 @@ async fn run_once(
     use nyzhi_core::agent::{AgentConfig, AgentEvent};
     use nyzhi_core::conversation::Thread;
     use nyzhi_core::tools::ToolContext;
+    use nyzhi_provider::{ContentPart, MessageContent};
 
     let mut thread = Thread::new();
     let agent_config = AgentConfig {
@@ -268,6 +333,8 @@ async fn run_once(
         session_id: thread.id.clone(),
         cwd,
         project_root: workspace.project_root.clone(),
+        depth: 0,
+        event_tx: Some(event_tx.clone()),
     };
 
     let tx = event_tx.clone();
@@ -289,7 +356,6 @@ async fn run_once(
                 AgentEvent::ApprovalRequest {
                     tool_name, respond, ..
                 } => {
-                    // Auto-approve in non-interactive mode
                     let mut guard = respond.lock().await;
                     if let Some(sender) = guard.take() {
                         eprintln!("[auto-approved: {tool_name}]");
@@ -307,18 +373,59 @@ async fn run_once(
     });
 
     let mut session_usage = nyzhi_core::agent::SessionUsage::default();
-    nyzhi_core::agent::run_turn(
-        provider,
-        &mut thread,
-        prompt,
-        &agent_config,
-        &tx,
-        registry,
-        &tool_ctx,
-        None,
-        &mut session_usage,
-    )
-    .await?;
+
+    if image_paths.is_empty() {
+        nyzhi_core::agent::run_turn(
+            provider,
+            &mut thread,
+            prompt,
+            &agent_config,
+            &tx,
+            registry,
+            &tool_ctx,
+            None,
+            &mut session_usage,
+        )
+        .await?;
+    } else {
+        let mut parts = Vec::new();
+        for path_str in image_paths {
+            let path = std::path::Path::new(path_str);
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let media_type = match ext.as_str() {
+                "png" => "image/png",
+                "jpg" | "jpeg" => "image/jpeg",
+                "gif" => "image/gif",
+                "webp" => "image/webp",
+                _ => anyhow::bail!("Unsupported image format: .{ext}"),
+            };
+            let bytes = std::fs::read(path)?;
+            let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            parts.push(ContentPart::Image {
+                media_type: media_type.to_string(),
+                data,
+            });
+        }
+        parts.push(ContentPart::Text {
+            text: prompt.to_string(),
+        });
+        nyzhi_core::agent::run_turn_with_content(
+            provider,
+            &mut thread,
+            MessageContent::Parts(parts),
+            &agent_config,
+            &tx,
+            registry,
+            &tool_ctx,
+            None,
+            &mut session_usage,
+        )
+        .await?;
+    }
 
     let _ = handle.await;
     println!();

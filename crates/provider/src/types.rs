@@ -9,6 +9,8 @@ pub struct ModelInfo {
     pub supports_tools: bool,
     pub supports_streaming: bool,
     #[serde(default)]
+    pub supports_vision: bool,
+    #[serde(default)]
     pub input_price_per_m: f64,
     #[serde(default)]
     pub output_price_per_m: f64,
@@ -60,6 +62,15 @@ impl MessageContent {
                 .unwrap_or(""),
         }
     }
+
+    pub fn has_images(&self) -> bool {
+        match self {
+            MessageContent::Text(_) => false,
+            MessageContent::Parts(parts) => parts
+                .iter()
+                .any(|p| matches!(p, ContentPart::Image { .. })),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,6 +78,11 @@ impl MessageContent {
 pub enum ContentPart {
     #[serde(rename = "text")]
     Text { text: String },
+    #[serde(rename = "image")]
+    Image {
+        media_type: String,
+        data: String,
+    },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,

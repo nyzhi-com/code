@@ -18,6 +18,7 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 65_536,
         supports_tools: true,
         supports_streaming: true,
+        supports_vision: true,
         input_price_per_m: 0.15,
         output_price_per_m: 0.60,
     },
@@ -28,15 +29,21 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 65_536,
         supports_tools: true,
         supports_streaming: true,
+        supports_vision: true,
         input_price_per_m: 1.25,
         output_price_per_m: 10.0,
     },
 ];
 
+pub enum GeminiAuthMode {
+    ApiKey(String),
+    Bearer(String),
+}
+
 pub struct GeminiProvider {
     client: reqwest::Client,
     base_url: String,
-    api_key: String,
+    auth: GeminiAuthMode,
     default_model: String,
 }
 
@@ -45,7 +52,24 @@ impl GeminiProvider {
         Self {
             client: reqwest::Client::new(),
             base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
-            api_key,
+            auth: GeminiAuthMode::ApiKey(api_key),
+            default_model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+        }
+    }
+
+    pub fn with_credential(
+        credential: nyzhi_auth::Credential,
+        base_url: Option<String>,
+        model: Option<String>,
+    ) -> Self {
+        let auth = match credential {
+            nyzhi_auth::Credential::Bearer(token) => GeminiAuthMode::Bearer(token),
+            nyzhi_auth::Credential::ApiKey(key) => GeminiAuthMode::ApiKey(key),
+        };
+        Self {
+            client: reqwest::Client::new(),
+            base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
+            auth,
             default_model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
         }
     }
@@ -53,11 +77,31 @@ impl GeminiProvider {
     pub fn from_config(config: &nyzhi_config::Config) -> Result<Self> {
         let cred =
             nyzhi_auth::resolve_credential("gemini", config.provider.gemini.api_key.as_deref())?;
-        Ok(Self::new(
-            cred.header_value(),
+        Ok(Self::with_credential(
+            cred,
             config.provider.gemini.base_url.clone(),
             config.provider.gemini.model.clone(),
         ))
+    }
+
+    fn build_url(&self, model: &str, action: &str) -> String {
+        match &self.auth {
+            GeminiAuthMode::ApiKey(key) => {
+                format!("{}/models/{}:{}?key={}", self.base_url, model, action, key)
+            }
+            GeminiAuthMode::Bearer(_) => {
+                format!("{}/models/{}:{}", self.base_url, model, action)
+            }
+        }
+    }
+
+    fn apply_auth(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.auth {
+            GeminiAuthMode::ApiKey(_) => builder,
+            GeminiAuthMode::Bearer(token) => {
+                builder.header("authorization", format!("Bearer {token}"))
+            }
+        }
     }
 
     fn build_contents(&self, request: &ChatRequest) -> Vec<serde_json::Value> {
@@ -76,6 +120,12 @@ impl GeminiProvider {
                         .iter()
                         .map(|p| match p {
                             ContentPart::Text { text } => json!({"text": text}),
+                            ContentPart::Image { media_type, data } => json!({
+                                "inline_data": {
+                                    "mime_type": media_type,
+                                    "data": data,
+                                }
+                            }),
                             ContentPart::ToolUse { name, input, .. } => json!({
                                 "functionCall": {"name": name, "args": input}
                             }),
@@ -151,18 +201,14 @@ impl Provider for GeminiProvider {
             body["generationConfig"] = config;
         }
 
-        let url = format!(
-            "{}/models/{}:generateContent?key={}",
-            self.base_url, model, self.api_key
-        );
+        let url = self.build_url(model, "generateContent");
 
-        let resp = self
+        let req = self
             .client
             .post(&url)
             .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
+            .json(&body);
+        let resp = self.apply_auth(req).send().await?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -231,18 +277,21 @@ impl Provider for GeminiProvider {
             body["generationConfig"] = config;
         }
 
-        let url = format!(
-            "{}/models/{}:streamGenerateContent?alt=sse&key={}",
-            self.base_url, model, self.api_key
-        );
+        let url = {
+            let base = self.build_url(model, "streamGenerateContent");
+            if base.contains('?') {
+                format!("{base}&alt=sse")
+            } else {
+                format!("{base}?alt=sse")
+            }
+        };
 
-        let resp = self
+        let req = self
             .client
             .post(&url)
             .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
+            .json(&body);
+        let resp = self.apply_auth(req).send().await?;
 
         let status = resp.status();
         if !status.is_success() {

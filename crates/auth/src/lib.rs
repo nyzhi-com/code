@@ -1,4 +1,5 @@
 pub mod api_key;
+pub mod oauth;
 pub mod token_store;
 
 mod error;
@@ -17,8 +18,12 @@ impl Credential {
     pub fn header_value(&self) -> String {
         match self {
             Credential::ApiKey(key) => key.clone(),
-            Credential::Bearer(token) => format!("Bearer {token}"),
+            Credential::Bearer(token) => token.clone(),
         }
+    }
+
+    pub fn is_bearer(&self) -> bool {
+        matches!(self, Credential::Bearer(_))
     }
 }
 
@@ -27,5 +32,58 @@ pub fn resolve_credential(provider: &str, config_key: Option<&str>) -> Result<Cr
         return Ok(Credential::ApiKey(key.to_string()));
     }
 
-    api_key::from_env(provider)
+    if let Ok(cred) = api_key::from_env(provider) {
+        return Ok(cred);
+    }
+
+    if let Ok(Some(token)) = token_store::load_token(provider) {
+        if !oauth::refresh::is_expired(&token) {
+            return Ok(Credential::Bearer(token.access_token));
+        }
+    }
+
+    let env_var = api_key::env_var_name(provider);
+    let oauth_hint = if oauth::supports_oauth(provider) {
+        format!(", or run `nyzhi login {provider}`")
+    } else {
+        String::new()
+    };
+
+    Err(AuthError::NoCredential {
+        provider: provider.to_string(),
+        env_var: env_var.to_string(),
+        oauth_hint,
+    }
+    .into())
+}
+
+pub async fn resolve_credential_async(
+    provider: &str,
+    config_key: Option<&str>,
+) -> Result<Credential> {
+    if let Some(key) = config_key {
+        return Ok(Credential::ApiKey(key.to_string()));
+    }
+
+    if let Ok(cred) = api_key::from_env(provider) {
+        return Ok(cred);
+    }
+
+    if let Ok(Some(token)) = oauth::refresh::refresh_if_needed(provider).await {
+        return Ok(Credential::Bearer(token.access_token));
+    }
+
+    let env_var = api_key::env_var_name(provider);
+    let oauth_hint = if oauth::supports_oauth(provider) {
+        format!(", or run `nyzhi login {provider}`")
+    } else {
+        String::new()
+    };
+
+    Err(AuthError::NoCredential {
+        provider: provider.to_string(),
+        env_var: env_var.to_string(),
+        oauth_hint,
+    }
+    .into())
 }

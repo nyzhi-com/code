@@ -1291,6 +1291,7 @@ name = "nyzhi"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "futures",
  "nyzhi-auth",
@@ -1383,8 +1384,10 @@ name = "nyzhi-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "crossterm 0.28.1",
  "futures",
+ "nyzhi-auth",
  "nyzhi-config",
  "nyzhi-core",
  "nyzhi-provider",

@@ -5,6 +5,8 @@ pub mod write;
 pub mod edit;
 pub mod glob;
 pub mod grep;
+pub mod git;
+pub mod task;
 pub mod todo;
 
 use anyhow::Result;
@@ -13,6 +15,7 @@ use permission::ToolPermission;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use tokio::sync::broadcast;
 
 #[async_trait]
 pub trait Tool: Send + Sync {
@@ -29,6 +32,9 @@ pub struct ToolContext {
     pub session_id: String,
     pub cwd: PathBuf,
     pub project_root: PathBuf,
+    /// 0 = main agent, 1 = first sub-agent, etc.
+    pub depth: u32,
+    pub event_tx: Option<broadcast::Sender<crate::agent::AgentEvent>>,
 }
 
 pub struct ToolResult {
@@ -92,6 +98,13 @@ pub fn default_registry() -> ToolRegistry {
     registry.register(Box::new(edit::EditTool));
     registry.register(Box::new(glob::GlobTool));
     registry.register(Box::new(grep::GrepTool));
+    registry.register(Box::new(git::GitStatusTool));
+    registry.register(Box::new(git::GitDiffTool));
+    registry.register(Box::new(git::GitLogTool));
+    registry.register(Box::new(git::GitShowTool));
+    registry.register(Box::new(git::GitBranchTool));
+    registry.register(Box::new(git::GitCommitTool));
+    registry.register(Box::new(git::GitCheckoutTool));
     registry.register(Box::new(todo::TodoWriteTool::new()));
     registry.register(Box::new(todo::TodoReadTool::new()));
     registry

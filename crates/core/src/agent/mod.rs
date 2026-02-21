@@ -112,9 +112,35 @@ pub async fn run_turn(
     model_info: Option<&ModelInfo>,
     session_usage: &mut SessionUsage,
 ) -> Result<()> {
+    run_turn_with_content(
+        provider,
+        thread,
+        MessageContent::Text(user_input.to_string()),
+        config,
+        event_tx,
+        registry,
+        ctx,
+        model_info,
+        session_usage,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_turn_with_content(
+    provider: &dyn Provider,
+    thread: &mut Thread,
+    user_content: MessageContent,
+    config: &AgentConfig,
+    event_tx: &broadcast::Sender<AgentEvent>,
+    registry: &ToolRegistry,
+    ctx: &ToolContext,
+    model_info: Option<&ModelInfo>,
+    session_usage: &mut SessionUsage,
+) -> Result<()> {
     thread.push_message(Message {
         role: Role::User,
-        content: MessageContent::Text(user_input.to_string()),
+        content: user_content,
     });
 
     let tool_defs = registry.definitions();
@@ -130,7 +156,7 @@ pub async fn run_turn(
             if crate::context::should_compact(est, mi.context_window) {
                 let summary_prompt = crate::context::build_compaction_prompt(thread.messages());
                 let summary_request = ChatRequest {
-                    model: String::new(),
+                    model: mi.id.to_string(),
                     messages: vec![Message {
                         role: Role::User,
                         content: MessageContent::Text(summary_prompt),
@@ -148,8 +174,12 @@ pub async fn run_turn(
             }
         }
 
+        let model_id = model_info
+            .map(|m| m.id.to_string())
+            .unwrap_or_default();
+
         let request = ChatRequest {
-            model: String::new(),
+            model: model_id.clone(),
             messages: thread.messages().to_vec(),
             tools: tool_defs.clone(),
             max_tokens,
@@ -212,9 +242,13 @@ pub async fn run_turn(
 
         if acc.has_tool_calls() {
             let mut tool_use_parts = Vec::new();
-            let mut tool_result_parts = Vec::new();
+            let mut indexed_results: Vec<(usize, String)> =
+                Vec::with_capacity(acc.tool_calls.len());
 
-            for tc in &acc.tool_calls {
+            let mut parallel_indices = Vec::new();
+            let mut sequential_indices = Vec::new();
+
+            for (i, tc) in acc.tool_calls.iter().enumerate() {
                 let args: serde_json::Value =
                     serde_json::from_str(&tc.arguments).unwrap_or(serde_json::Value::Null);
 
@@ -224,12 +258,50 @@ pub async fn run_turn(
                     input: args.clone(),
                 });
 
+                let is_readonly = registry
+                    .get(&tc.name)
+                    .map(|t| t.permission() == ToolPermission::ReadOnly)
+                    .unwrap_or(false);
+
+                if is_readonly {
+                    parallel_indices.push((i, args));
+                } else {
+                    sequential_indices.push((i, args));
+                }
+            }
+
+            if !parallel_indices.is_empty() {
+                let futs = parallel_indices.iter().map(|(i, args)| {
+                    let i = *i;
+                    let name = acc.tool_calls[i].name.clone();
+                    let args = args.clone();
+                    async move {
+                        let output = match registry.execute(&name, args, ctx).await {
+                            Ok(r) => r.output,
+                            Err(e) => format!("Error executing tool: {e}"),
+                        };
+                        (i, output)
+                    }
+                });
+                let results = futures::future::join_all(futs).await;
+                for (i, output) in results {
+                    let _ = event_tx.send(AgentEvent::ToolCallDone {
+                        id: acc.tool_calls[i].id.clone(),
+                        name: acc.tool_calls[i].name.clone(),
+                        output: output.clone(),
+                    });
+                    indexed_results.push((i, output));
+                }
+            }
+
+            for (i, args) in sequential_indices {
+                let tc = &acc.tool_calls[i];
                 let output = match execute_with_permission(
                     registry, &tc.name, args, ctx, event_tx,
                 )
                 .await
                 {
-                    Ok(result) => result.output,
+                    Ok(r) => r.output,
                     Err(e) => format!("Error executing tool: {e}"),
                 };
 
@@ -238,12 +310,17 @@ pub async fn run_turn(
                     name: tc.name.clone(),
                     output: output.clone(),
                 });
-
-                tool_result_parts.push(ContentPart::ToolResult {
-                    tool_use_id: tc.id.clone(),
-                    content: output,
-                });
+                indexed_results.push((i, output));
             }
+
+            indexed_results.sort_by_key(|(i, _)| *i);
+            let tool_result_parts: Vec<ContentPart> = indexed_results
+                .into_iter()
+                .map(|(i, output)| ContentPart::ToolResult {
+                    tool_use_id: acc.tool_calls[i].id.clone(),
+                    content: output,
+                })
+                .collect();
 
             thread.push_message(Message {
                 role: Role::Assistant,

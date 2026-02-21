@@ -9,7 +9,7 @@ use nyzhi_core::agent::{AgentConfig, AgentEvent, SessionUsage};
 use nyzhi_core::conversation::Thread;
 use nyzhi_core::tools::{ToolContext, ToolRegistry};
 use nyzhi_core::workspace::WorkspaceContext;
-use nyzhi_provider::{ModelInfo, Provider};
+use nyzhi_provider::Provider;
 use ratatui::prelude::*;
 use tokio::sync::broadcast;
 
@@ -46,6 +46,13 @@ pub enum ToolStatus {
     Denied,
 }
 
+pub struct PendingImage {
+    pub filename: String,
+    pub media_type: String,
+    pub data: String,
+    pub size_bytes: usize,
+}
+
 pub struct App {
     pub mode: AppMode,
     pub input: String,
@@ -63,6 +70,7 @@ pub struct App {
     pub mcp_manager: Option<std::sync::Arc<nyzhi_core::mcp::McpManager>>,
     pub pending_approval:
         Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>>,
+    pub pending_images: Vec<PendingImage>,
 }
 
 impl App {
@@ -88,6 +96,7 @@ impl App {
             workspace,
             mcp_manager: None,
             pending_approval: None,
+            pending_images: Vec::new(),
         }
     }
 
@@ -124,28 +133,39 @@ impl App {
             Vec::new()
         };
 
+        let mut model_info_idx = provider
+            .supported_models()
+            .iter()
+            .position(|m| m.id == self.model_name)
+            .or(if provider.supported_models().is_empty() {
+                None
+            } else {
+                Some(0)
+            });
+
+        let supports_vision = model_info_idx
+            .map(|i| provider.supported_models()[i].supports_vision)
+            .unwrap_or(false);
+
         let agent_config = AgentConfig {
-            system_prompt: nyzhi_core::prompt::build_system_prompt_with_mcp(
+            system_prompt: nyzhi_core::prompt::build_system_prompt_with_vision(
                 Some(&self.workspace),
                 config.agent.custom_instructions.as_deref(),
                 &mcp_tool_summaries,
+                supports_vision,
             ),
             max_steps: config.agent.max_steps.unwrap_or(100),
             max_tokens: config.agent.max_tokens,
             ..AgentConfig::default()
         };
 
-        let model_info: Option<&ModelInfo> = provider
-            .supported_models()
-            .iter()
-            .find(|m| m.id == self.model_name)
-            .or_else(|| provider.supported_models().first());
-
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let tool_ctx = ToolContext {
             session_id: thread.id.clone(),
             cwd,
             project_root: self.workspace.project_root.clone(),
+            depth: 0,
+            event_tx: Some(event_tx.clone()),
         };
 
         loop {
@@ -185,6 +205,7 @@ impl App {
                             _ => {}
                         }
                     } else {
+                        let mi = model_info_idx.map(|i| &provider.supported_models()[i]);
                         handle_key(
                             self,
                             key,
@@ -194,7 +215,8 @@ impl App {
                             &event_tx,
                             registry,
                             &tool_ctx,
-                            model_info,
+                            mi,
+                            &mut model_info_idx,
                         )
                         .await;
                     }

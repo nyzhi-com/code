@@ -38,3 +38,34 @@ pub fn create_provider(
         other => anyhow::bail!("Unknown provider: {other}"),
     }
 }
+
+pub async fn create_provider_async(
+    name: &str,
+    config: &nyzhi_config::Config,
+) -> Result<Box<dyn Provider>> {
+    let provider_conf = config.provider.entry(name);
+    let cred = nyzhi_auth::resolve_credential_async(
+        name,
+        provider_conf.as_ref().and_then(|p| p.api_key.as_deref()),
+    )
+    .await?;
+
+    match name {
+        "openai" => Ok(Box::new(openai::OpenAIProvider::new(
+            cred.header_value(),
+            provider_conf.as_ref().and_then(|p| p.base_url.clone()),
+            provider_conf.as_ref().and_then(|p| p.model.clone()),
+        ))),
+        "anthropic" => Ok(Box::new(anthropic::AnthropicProvider::new(
+            cred.header_value(),
+            provider_conf.as_ref().and_then(|p| p.base_url.clone()),
+            provider_conf.as_ref().and_then(|p| p.model.clone()),
+        ))),
+        "gemini" => Ok(Box::new(gemini::GeminiProvider::with_credential(
+            cred,
+            provider_conf.as_ref().and_then(|p| p.base_url.clone()),
+            provider_conf.as_ref().and_then(|p| p.model.clone()),
+        ))),
+        other => anyhow::bail!("Unknown provider: {other}"),
+    }
+}

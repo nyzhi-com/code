@@ -6,6 +6,13 @@ pub enum AuthError {
         env_var: String,
     },
 
+    #[error("No credentials found for provider '{provider}'. Set {env_var}{oauth_hint}, or configure in ~/.config/nyzhi/config.toml")]
+    NoCredential {
+        provider: String,
+        env_var: String,
+        oauth_hint: String,
+    },
+
     #[error("Token expired for provider '{0}'")]
     TokenExpired(String),
 

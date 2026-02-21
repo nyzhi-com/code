@@ -18,6 +18,7 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 32_768,
         supports_tools: true,
         supports_streaming: true,
+        supports_vision: true,
         input_price_per_m: 2.0,
         output_price_per_m: 8.0,
     },
@@ -28,6 +29,7 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 32_768,
         supports_tools: true,
         supports_streaming: true,
+        supports_vision: true,
         input_price_per_m: 0.4,
         output_price_per_m: 1.6,
     },
@@ -38,6 +40,7 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 100_000,
         supports_tools: true,
         supports_streaming: true,
+        supports_vision: true,
         input_price_per_m: 2.0,
         output_price_per_m: 8.0,
     },
@@ -48,6 +51,7 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 100_000,
         supports_tools: true,
         supports_streaming: true,
+        supports_vision: true,
         input_price_per_m: 1.1,
         output_price_per_m: 4.4,
     },
@@ -100,6 +104,12 @@ impl OpenAIProvider {
                         .iter()
                         .map(|p| match p {
                             ContentPart::Text { text } => json!({"type": "text", "text": text}),
+                            ContentPart::Image { media_type, data } => json!({
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": format!("data:{media_type};base64,{data}")
+                                }
+                            }),
                             ContentPart::ToolUse { id, name, input } => json!({
                                 "type": "function",
                                 "id": id,

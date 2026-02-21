@@ -19,6 +19,7 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 16_384,
         supports_tools: true,
         supports_streaming: true,
+        supports_vision: true,
         input_price_per_m: 3.0,
         output_price_per_m: 15.0,
     },
@@ -29,6 +30,7 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 32_768,
         supports_tools: true,
         supports_streaming: true,
+        supports_vision: true,
         input_price_per_m: 15.0,
         output_price_per_m: 75.0,
     },
@@ -39,6 +41,7 @@ static MODELS: &[ModelInfo] = &[
         max_output_tokens: 8_192,
         supports_tools: true,
         supports_streaming: true,
+        supports_vision: true,
         input_price_per_m: 0.8,
         output_price_per_m: 4.0,
     },
@@ -88,6 +91,14 @@ impl AnthropicProvider {
                                 ContentPart::Text { text } => {
                                     json!({"type": "text", "text": text})
                                 }
+                                ContentPart::Image { media_type, data } => json!({
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media_type,
+                                        "data": data,
+                                    }
+                                }),
                                 ContentPart::ToolUse { id, name, input } => json!({
                                     "type": "tool_use",
                                     "id": id,
