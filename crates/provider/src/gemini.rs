@@ -21,6 +21,8 @@ static MODELS: &[ModelInfo] = &[
         supports_vision: true,
         input_price_per_m: 0.15,
         output_price_per_m: 0.60,
+        cache_read_price_per_m: 0.0375,
+        cache_write_price_per_m: 0.0,
     },
     ModelInfo {
         id: "gemini-2.5-pro",
@@ -32,6 +34,8 @@ static MODELS: &[ModelInfo] = &[
         supports_vision: true,
         input_price_per_m: 1.25,
         output_price_per_m: 10.0,
+        cache_read_price_per_m: 0.3125,
+        cache_write_price_per_m: 0.0,
     },
 ];
 
@@ -235,6 +239,10 @@ impl Provider for GeminiProvider {
             .unwrap_or("")
             .to_string();
 
+        let cached = data["usageMetadata"]["cachedContentTokenCount"]
+            .as_u64()
+            .unwrap_or(0) as u32;
+
         Ok(ChatResponse {
             message: Message {
                 role: Role::Assistant,
@@ -247,6 +255,8 @@ impl Provider for GeminiProvider {
                 output_tokens: data["usageMetadata"]["candidatesTokenCount"]
                     .as_u64()
                     .unwrap_or(0) as u32,
+                cache_read_tokens: cached,
+                cache_creation_tokens: 0,
             }),
             finish_reason: data["candidates"][0]["finishReason"]
                 .as_str()
@@ -349,6 +359,9 @@ impl Provider for GeminiProvider {
                     if let Some(meta) =
                         data.get("usageMetadata").filter(|m| m.is_object())
                     {
+                        let cached = meta["cachedContentTokenCount"]
+                            .as_u64()
+                            .unwrap_or(0) as u32;
                         evts.push(Ok(StreamEvent::Usage(Usage {
                             input_tokens: meta["promptTokenCount"]
                                 .as_u64()
@@ -356,6 +369,8 @@ impl Provider for GeminiProvider {
                             output_tokens: meta["candidatesTokenCount"]
                                 .as_u64()
                                 .unwrap_or(0) as u32,
+                            cache_read_tokens: cached,
+                            cache_creation_tokens: 0,
                         })));
                     }
 

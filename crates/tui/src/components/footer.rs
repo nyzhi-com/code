@@ -46,11 +46,21 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let total_tokens = usage.total_input_tokens + usage.total_output_tokens;
 
     let turn_tokens = usage.turn_input_tokens as u64 + usage.turn_output_tokens as u64;
+    let turn_cached = usage.turn_cache_read_tokens as u64;
     let usage_str = if total_tokens > 0 {
         if turn_tokens > 0 {
+            let turn_str = if turn_cached > 0 {
+                format!(
+                    "turn: {} ({} cached)",
+                    format_tokens(turn_tokens),
+                    format_tokens(turn_cached),
+                )
+            } else {
+                format!("turn: {}", format_tokens(turn_tokens))
+            };
             format!(
-                "turn: {}  total: {}tok  {}",
-                format_tokens(turn_tokens),
+                "{}  total: {}tok  {}",
+                turn_str,
                 format_tokens(total_tokens),
                 format_cost(usage.total_cost_usd),
             )

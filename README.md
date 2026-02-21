@@ -19,6 +19,7 @@ A performance-optimized AI coding agent for the terminal, built in Rust.
 - **Input history** -- persistent across sessions, Ctrl+R reverse search
 - **Syntax highlighting** -- code blocks and inline markdown via syntect
 - **Tab completion** -- slash commands, `@`-mention file paths
+- **Prompt caching** -- Anthropic cache_control + OpenAI/Gemini automatic caching for lower costs
 - **Retry logic** -- exponential backoff for 429/5xx errors
 - **Single binary** -- no runtime dependencies
 

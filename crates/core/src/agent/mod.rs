@@ -16,9 +16,13 @@ use crate::tools::{ToolContext, ToolRegistry};
 pub struct SessionUsage {
     pub total_input_tokens: u64,
     pub total_output_tokens: u64,
+    pub total_cache_read_tokens: u64,
+    pub total_cache_creation_tokens: u64,
     pub total_cost_usd: f64,
     pub turn_input_tokens: u32,
     pub turn_output_tokens: u32,
+    pub turn_cache_read_tokens: u32,
+    pub turn_cache_creation_tokens: u32,
     pub turn_cost_usd: f64,
 }
 
@@ -190,6 +194,8 @@ pub async fn run_turn_with_content(
 
     session_usage.turn_input_tokens = 0;
     session_usage.turn_output_tokens = 0;
+    session_usage.turn_cache_read_tokens = 0;
+    session_usage.turn_cache_creation_tokens = 0;
     session_usage.turn_cost_usd = 0.0;
 
     for step in 0..config.max_steps {
@@ -346,11 +352,17 @@ pub async fn run_turn_with_content(
                 session_usage.turn_input_tokens.saturating_add(usage.input_tokens);
             session_usage.turn_output_tokens =
                 session_usage.turn_output_tokens.saturating_add(usage.output_tokens);
+            session_usage.turn_cache_read_tokens =
+                session_usage.turn_cache_read_tokens.saturating_add(usage.cache_read_tokens);
+            session_usage.turn_cache_creation_tokens =
+                session_usage.turn_cache_creation_tokens.saturating_add(usage.cache_creation_tokens);
             session_usage.total_input_tokens += usage.input_tokens as u64;
             session_usage.total_output_tokens += usage.output_tokens as u64;
+            session_usage.total_cache_read_tokens += usage.cache_read_tokens as u64;
+            session_usage.total_cache_creation_tokens += usage.cache_creation_tokens as u64;
 
             if let Some(mi) = model_info {
-                let step_cost = mi.cost_usd(usage.input_tokens, usage.output_tokens);
+                let step_cost = mi.cost_usd(usage);
                 session_usage.turn_cost_usd += step_cost;
                 session_usage.total_cost_usd += step_cost;
             }

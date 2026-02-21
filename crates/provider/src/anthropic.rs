@@ -22,6 +22,8 @@ static MODELS: &[ModelInfo] = &[
         supports_vision: true,
         input_price_per_m: 3.0,
         output_price_per_m: 15.0,
+        cache_read_price_per_m: 0.3,
+        cache_write_price_per_m: 3.75,
     },
     ModelInfo {
         id: "claude-opus-4-20250514",
@@ -33,6 +35,8 @@ static MODELS: &[ModelInfo] = &[
         supports_vision: true,
         input_price_per_m: 15.0,
         output_price_per_m: 75.0,
+        cache_read_price_per_m: 1.5,
+        cache_write_price_per_m: 18.75,
     },
     ModelInfo {
         id: "claude-haiku-3-5-20241022",
@@ -44,6 +48,8 @@ static MODELS: &[ModelInfo] = &[
         supports_vision: true,
         input_price_per_m: 0.8,
         output_price_per_m: 4.0,
+        cache_read_price_per_m: 0.08,
+        cache_write_price_per_m: 1.0,
     },
 ];
 
@@ -133,14 +139,20 @@ impl AnthropicProvider {
     }
 
     fn build_tools(&self, tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+        let len = tools.len();
         tools
             .iter()
-            .map(|t| {
-                json!({
+            .enumerate()
+            .map(|(i, t)| {
+                let mut tool = json!({
                     "name": t.name,
                     "description": t.description,
                     "input_schema": t.parameters,
-                })
+                });
+                if i == len - 1 {
+                    tool["cache_control"] = json!({"type": "ephemeral"});
+                }
+                tool
             })
             .collect()
     }
@@ -170,7 +182,11 @@ impl Provider for AnthropicProvider {
         });
 
         if let Some(system) = &request.system {
-            body["system"] = json!(system);
+            body["system"] = json!([{
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"}
+            }]);
         }
         if let Some(temp) = request.temperature {
             body["temperature"] = json!(temp);
@@ -208,14 +224,24 @@ impl Provider for AnthropicProvider {
             .unwrap_or("")
             .to_string();
 
+        let cache_read = data["usage"]["cache_read_input_tokens"]
+            .as_u64()
+            .unwrap_or(0) as u32;
+        let cache_creation = data["usage"]["cache_creation_input_tokens"]
+            .as_u64()
+            .unwrap_or(0) as u32;
+        let uncached = data["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32;
+
         Ok(ChatResponse {
             message: Message {
                 role: Role::Assistant,
                 content: MessageContent::Text(content),
             },
             usage: Some(Usage {
-                input_tokens: data["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,
+                input_tokens: uncached + cache_read + cache_creation,
                 output_tokens: data["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
+                cache_read_tokens: cache_read,
+                cache_creation_tokens: cache_creation,
             }),
             finish_reason: data["stop_reason"].as_str().map(String::from),
         })
@@ -239,7 +265,11 @@ impl Provider for AnthropicProvider {
         });
 
         if let Some(system) = &request.system {
-            body["system"] = json!(system);
+            body["system"] = json!([{
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"}
+            }]);
         }
         if let Some(temp) = request.temperature {
             body["temperature"] = json!(temp);
@@ -284,13 +314,22 @@ impl Provider for AnthropicProvider {
 
                     match event_type {
                         "message_start" => {
-                            let input = data["message"]["usage"]["input_tokens"]
+                            let usage = &data["message"]["usage"];
+                            let uncached =
+                                usage["input_tokens"].as_u64().unwrap_or(0) as u32;
+                            let cache_read = usage["cache_read_input_tokens"]
                                 .as_u64()
                                 .unwrap_or(0) as u32;
-                            if input > 0 {
+                            let cache_creation = usage["cache_creation_input_tokens"]
+                                .as_u64()
+                                .unwrap_or(0) as u32;
+                            let total = uncached + cache_read + cache_creation;
+                            if total > 0 {
                                 vec![Ok(StreamEvent::Usage(Usage {
-                                    input_tokens: input,
+                                    input_tokens: total,
                                     output_tokens: 0,
+                                    cache_read_tokens: cache_read,
+                                    cache_creation_tokens: cache_creation,
                                 }))]
                             } else {
                                 vec![]
@@ -335,6 +374,7 @@ impl Provider for AnthropicProvider {
                                 evts.push(Ok(StreamEvent::Usage(Usage {
                                     input_tokens: 0,
                                     output_tokens: output,
+                                    ..Default::default()
                                 })));
                             }
                             if data["delta"]["stop_reason"].is_string() {

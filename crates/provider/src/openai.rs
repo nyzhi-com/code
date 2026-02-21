@@ -21,6 +21,8 @@ static MODELS: &[ModelInfo] = &[
         supports_vision: true,
         input_price_per_m: 2.0,
         output_price_per_m: 8.0,
+        cache_read_price_per_m: 0.5,
+        cache_write_price_per_m: 0.0,
     },
     ModelInfo {
         id: "gpt-4.1-mini",
@@ -32,6 +34,8 @@ static MODELS: &[ModelInfo] = &[
         supports_vision: true,
         input_price_per_m: 0.4,
         output_price_per_m: 1.6,
+        cache_read_price_per_m: 0.1,
+        cache_write_price_per_m: 0.0,
     },
     ModelInfo {
         id: "o3",
@@ -43,6 +47,8 @@ static MODELS: &[ModelInfo] = &[
         supports_vision: true,
         input_price_per_m: 2.0,
         output_price_per_m: 8.0,
+        cache_read_price_per_m: 0.5,
+        cache_write_price_per_m: 0.0,
     },
     ModelInfo {
         id: "o4-mini",
@@ -54,6 +60,8 @@ static MODELS: &[ModelInfo] = &[
         supports_vision: true,
         input_price_per_m: 1.1,
         output_price_per_m: 4.4,
+        cache_read_price_per_m: 0.275,
+        cache_write_price_per_m: 0.0,
     },
 ];
 
@@ -219,6 +227,10 @@ impl Provider for OpenAIProvider {
             .unwrap_or("")
             .to_string();
 
+        let cached = data["usage"]["prompt_tokens_details"]["cached_tokens"]
+            .as_u64()
+            .unwrap_or(0) as u32;
+
         Ok(ChatResponse {
             message: Message {
                 role: Role::Assistant,
@@ -227,6 +239,8 @@ impl Provider for OpenAIProvider {
             usage: Some(Usage {
                 input_tokens: data["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
                 output_tokens: data["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
+                cache_read_tokens: cached,
+                cache_creation_tokens: 0,
             }),
             finish_reason: choice["finish_reason"].as_str().map(String::from),
         })
@@ -287,10 +301,15 @@ impl Provider for OpenAIProvider {
                 let data: serde_json::Value = serde_json::from_str(&sse.data)?;
 
                 if let Some(usage) = data.get("usage").filter(|u| u.is_object()) {
+                    let cached = usage["prompt_tokens_details"]["cached_tokens"]
+                        .as_u64()
+                        .unwrap_or(0) as u32;
                     return Ok(StreamEvent::Usage(Usage {
                         input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0) as u32,
                         output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0)
                             as u32,
+                        cache_read_tokens: cached,
+                        cache_creation_tokens: 0,
                     }));
                 }
 

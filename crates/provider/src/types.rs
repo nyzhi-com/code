@@ -14,6 +14,10 @@ pub struct ModelInfo {
     pub input_price_per_m: f64,
     #[serde(default)]
     pub output_price_per_m: f64,
+    #[serde(default)]
+    pub cache_read_price_per_m: f64,
+    #[serde(default)]
+    pub cache_write_price_per_m: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -111,10 +115,16 @@ pub struct ChatResponse {
 }
 
 impl ModelInfo {
-    pub fn cost_usd(&self, input_tokens: u32, output_tokens: u32) -> f64 {
-        (input_tokens as f64 * self.input_price_per_m
-            + output_tokens as f64 * self.output_price_per_m)
-            / 1_000_000.0
+    pub fn cost_usd(&self, usage: &Usage) -> f64 {
+        let uncached = usage
+            .input_tokens
+            .saturating_sub(usage.cache_read_tokens)
+            .saturating_sub(usage.cache_creation_tokens);
+        let input_cost = uncached as f64 * self.input_price_per_m;
+        let read_cost = usage.cache_read_tokens as f64 * self.cache_read_price_per_m;
+        let write_cost = usage.cache_creation_tokens as f64 * self.cache_write_price_per_m;
+        let output_cost = usage.output_tokens as f64 * self.output_price_per_m;
+        (input_cost + read_cost + write_cost + output_cost) / 1_000_000.0
     }
 }
 
@@ -122,6 +132,8 @@ impl ModelInfo {
 pub struct Usage {
     pub input_tokens: u32,
     pub output_tokens: u32,
+    pub cache_read_tokens: u32,
+    pub cache_creation_tokens: u32,
 }
 
 #[derive(Debug, Clone)]
