@@ -51,6 +51,40 @@ pub struct AgentSettings {
     pub custom_instructions: Option<String>,
     #[serde(default)]
     pub trust: TrustConfig,
+    #[serde(default)]
+    pub retry: RetrySettings,
+}
+
+fn default_max_retries() -> u32 {
+    3
+}
+
+fn default_initial_backoff_ms() -> u64 {
+    1000
+}
+
+fn default_max_backoff_ms() -> u64 {
+    30000
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetrySettings {
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    #[serde(default = "default_initial_backoff_ms")]
+    pub initial_backoff_ms: u64,
+    #[serde(default = "default_max_backoff_ms")]
+    pub max_backoff_ms: u64,
+}
+
+impl Default for RetrySettings {
+    fn default() -> Self {
+        Self {
+            max_retries: default_max_retries(),
+            initial_backoff_ms: default_initial_backoff_ms(),
+            max_backoff_ms: default_max_backoff_ms(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -283,6 +317,27 @@ impl Config {
                     project.agent.trust.clone()
                 } else {
                     global.agent.trust.clone()
+                },
+                retry: RetrySettings {
+                    max_retries: if project.agent.retry.max_retries != default_max_retries() {
+                        project.agent.retry.max_retries
+                    } else {
+                        global.agent.retry.max_retries
+                    },
+                    initial_backoff_ms: if project.agent.retry.initial_backoff_ms
+                        != default_initial_backoff_ms()
+                    {
+                        project.agent.retry.initial_backoff_ms
+                    } else {
+                        global.agent.retry.initial_backoff_ms
+                    },
+                    max_backoff_ms: if project.agent.retry.max_backoff_ms
+                        != default_max_backoff_ms()
+                    {
+                        project.agent.retry.max_backoff_ms
+                    } else {
+                        global.agent.retry.max_backoff_ms
+                    },
                 },
             },
             mcp: McpConfig {

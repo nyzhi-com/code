@@ -2,7 +2,8 @@ use anyhow::Result;
 use futures::StreamExt;
 use nyzhi_config::{TrustConfig, TrustMode};
 use nyzhi_provider::{
-    ChatRequest, ContentPart, Message, MessageContent, ModelInfo, Provider, Role, StreamEvent,
+    ChatRequest, ContentPart, Message, MessageContent, ModelInfo, Provider, ProviderError, Role,
+    StreamEvent,
 };
 use tokio::sync::broadcast;
 
@@ -46,6 +47,12 @@ pub enum AgentEvent {
         tool_name: String,
         args_summary: String,
         respond: std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>,
+    },
+    Retrying {
+        attempt: u32,
+        max_retries: u32,
+        wait_ms: u64,
+        reason: String,
     },
     Usage(SessionUsage),
     TurnComplete,
@@ -94,6 +101,18 @@ impl std::fmt::Debug for AgentEvent {
                 .field("tool_name", tool_name)
                 .field("args_summary", args_summary)
                 .finish(),
+            Self::Retrying {
+                attempt,
+                max_retries,
+                wait_ms,
+                reason,
+            } => f
+                .debug_struct("Retrying")
+                .field("attempt", attempt)
+                .field("max_retries", max_retries)
+                .field("wait_ms", wait_ms)
+                .field("reason", reason)
+                .finish(),
             Self::Usage(u) => f.debug_struct("Usage").field("usage", u).finish(),
             Self::TurnComplete => write!(f, "TurnComplete"),
             Self::Error(s) => f.debug_tuple("Error").field(s).finish(),
@@ -107,6 +126,7 @@ pub struct AgentConfig {
     pub max_steps: u32,
     pub max_tokens: Option<u32>,
     pub trust: TrustConfig,
+    pub retry: nyzhi_config::RetrySettings,
 }
 
 impl Default for AgentConfig {
@@ -117,6 +137,7 @@ impl Default for AgentConfig {
             max_steps: 100,
             max_tokens: None,
             trust: TrustConfig::default(),
+            retry: nyzhi_config::RetrySettings::default(),
         }
     }
 }
@@ -209,40 +230,116 @@ pub async fn run_turn_with_content(
             stream: true,
         };
 
-        let mut stream = provider.chat_stream(&request).await?;
-        let mut acc = StreamAccumulator::new();
-
-        while let Some(event) = stream.next().await {
-            let event = event?;
-            acc.process(&event);
-
-            match &event {
-                StreamEvent::TextDelta(text) => {
-                    let _ = event_tx.send(AgentEvent::TextDelta(text.clone()));
+        let mut stream_attempt = 0u32;
+        let acc = 'stream_retry: loop {
+            let mut stream = match provider.chat_stream(&request).await {
+                Ok(s) => s,
+                Err(e) => {
+                    if let Some(pe) = e.downcast_ref::<ProviderError>() {
+                        if pe.is_retryable()
+                            && stream_attempt < config.retry.max_retries
+                        {
+                            stream_attempt += 1;
+                            let wait = pe
+                                .retry_after_ms()
+                                .unwrap_or_else(|| {
+                                    config
+                                        .retry
+                                        .initial_backoff_ms
+                                        .saturating_mul(
+                                            2u64.saturating_pow(stream_attempt - 1),
+                                        )
+                                })
+                                .min(config.retry.max_backoff_ms);
+                            let _ = event_tx.send(AgentEvent::Retrying {
+                                attempt: stream_attempt,
+                                max_retries: config.retry.max_retries,
+                                wait_ms: wait,
+                                reason: pe.to_string(),
+                            });
+                            tokio::time::sleep(std::time::Duration::from_millis(wait))
+                                .await;
+                            continue 'stream_retry;
+                        }
+                    }
+                    return Err(e);
                 }
-                StreamEvent::ToolCallStart { id, name, .. } => {
-                    let _ = event_tx.send(AgentEvent::ToolCallStart {
-                        id: id.clone(),
-                        name: name.clone(),
-                    });
-                }
-                StreamEvent::ToolCallDelta {
-                    arguments_delta, ..
-                } => {
-                    if let Some(tc) = acc.tool_calls.last() {
-                        let _ = event_tx.send(AgentEvent::ToolCallDelta {
-                            id: tc.id.clone(),
-                            args_delta: arguments_delta.clone(),
+            };
+
+            let mut acc = StreamAccumulator::new();
+            let mut stream_err: Option<anyhow::Error> = None;
+
+            while let Some(event) = stream.next().await {
+                let event = match event {
+                    Ok(ev) => ev,
+                    Err(e) => {
+                        stream_err = Some(e);
+                        break;
+                    }
+                };
+                acc.process(&event);
+
+                match &event {
+                    StreamEvent::TextDelta(text) => {
+                        let _ = event_tx.send(AgentEvent::TextDelta(text.clone()));
+                    }
+                    StreamEvent::ToolCallStart { id, name, .. } => {
+                        let _ = event_tx.send(AgentEvent::ToolCallStart {
+                            id: id.clone(),
+                            name: name.clone(),
                         });
                     }
+                    StreamEvent::ToolCallDelta {
+                        arguments_delta, ..
+                    } => {
+                        if let Some(tc) = acc.tool_calls.last() {
+                            let _ = event_tx.send(AgentEvent::ToolCallDelta {
+                                id: tc.id.clone(),
+                                args_delta: arguments_delta.clone(),
+                            });
+                        }
+                    }
+                    StreamEvent::Error(e) => {
+                        let _ = event_tx.send(AgentEvent::Error(e.clone()));
+                        return Ok(());
+                    }
+                    _ => {}
                 }
-                StreamEvent::Error(e) => {
-                    let _ = event_tx.send(AgentEvent::Error(e.clone()));
-                    return Ok(());
-                }
-                _ => {}
             }
-        }
+
+            if let Some(e) = stream_err {
+                if let Some(pe) = e.downcast_ref::<ProviderError>() {
+                    if pe.is_retryable()
+                        && stream_attempt < config.retry.max_retries
+                    {
+                        stream_attempt += 1;
+                        let wait = pe
+                            .retry_after_ms()
+                            .unwrap_or_else(|| {
+                                config
+                                    .retry
+                                    .initial_backoff_ms
+                                    .saturating_mul(
+                                        2u64.saturating_pow(stream_attempt - 1),
+                                    )
+                            })
+                            .min(config.retry.max_backoff_ms);
+                        let _ = event_tx.send(AgentEvent::Retrying {
+                            attempt: stream_attempt,
+                            max_retries: config.retry.max_retries,
+                            wait_ms: wait,
+                            reason: pe.to_string(),
+                        });
+                        tokio::time::sleep(std::time::Duration::from_millis(wait))
+                            .await;
+                        continue 'stream_retry;
+                    }
+                }
+                return Err(e);
+            }
+
+            break acc;
+        };
 
         if let Some(usage) = &acc.usage {
             session_usage.turn_input_tokens =

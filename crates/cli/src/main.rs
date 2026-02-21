@@ -341,6 +341,7 @@ async fn run_once(
         max_steps: config.agent.max_steps.unwrap_or(100),
         max_tokens: config.agent.max_tokens,
         trust: config.agent.trust.clone(),
+        retry: config.agent.retry.clone(),
         ..AgentConfig::default()
     };
     let (event_tx, mut event_rx) = tokio::sync::broadcast::channel::<AgentEvent>(256);
@@ -381,6 +382,16 @@ async fn run_once(
                         eprintln!("[auto-approved: {tool_name}]");
                         let _ = sender.send(true);
                     }
+                }
+                AgentEvent::Retrying {
+                    attempt,
+                    max_retries,
+                    wait_ms,
+                    reason,
+                } => {
+                    eprintln!(
+                        "\n[retry {attempt}/{max_retries}] waiting {wait_ms}ms: {reason}"
+                    );
                 }
                 AgentEvent::TurnComplete => break,
                 AgentEvent::Error(e) => {

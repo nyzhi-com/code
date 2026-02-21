@@ -91,6 +91,7 @@ impl Tool for TaskTool {
             max_steps: 50,
             max_tokens: None,
             trust: nyzhi_config::TrustConfig::default(),
+            retry: nyzhi_config::RetrySettings::default(),
         };
 
         let mut child_thread = Thread::new();

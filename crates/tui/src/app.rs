@@ -83,6 +83,7 @@ pub struct App {
     pub stream_start: Option<std::time::Instant>,
     pub stream_token_count: usize,
     pub turn_start: Option<std::time::Instant>,
+    pub last_prompt: Option<String>,
 }
 
 impl App {
@@ -121,6 +122,7 @@ impl App {
             stream_start: None,
             stream_token_count: 0,
             turn_start: None,
+            last_prompt: None,
         }
     }
 
@@ -184,6 +186,7 @@ impl App {
             max_steps: config.agent.max_steps.unwrap_or(100),
             max_tokens: config.agent.max_tokens,
             trust: config.agent.trust.clone(),
+            retry: config.agent.retry.clone(),
             ..AgentConfig::default()
         };
         self.trust_mode = agent_config.trust.mode.clone();
@@ -379,6 +382,19 @@ impl App {
                         self.pending_approval = Some(respond);
                         self.mode = AppMode::AwaitingApproval;
                         let _ = args_summary;
+                    }
+                    AgentEvent::Retrying {
+                        attempt,
+                        max_retries,
+                        wait_ms,
+                        reason,
+                    } => {
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "Retrying ({attempt}/{max_retries}) in {wait_ms}ms: {reason}"
+                            ),
+                        });
                     }
                     AgentEvent::Usage(usage) => {
                         self.session_usage = usage;

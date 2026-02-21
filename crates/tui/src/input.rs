@@ -630,6 +630,7 @@ pub async fn handle_key(
                         "  /trust          Show current trust mode",
                         "  /trust <mode>   Set trust mode (off, limited, full)",
                         "  /editor         Open $EDITOR for multi-line input",
+                        "  /retry          Resend the last prompt",
                         "  /undo           Undo the last file change",
                         "  /undo all       Undo all file changes in this session",
                         "  /changes        List all file changes in this session",
@@ -672,6 +673,44 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/retry" {
+                if let Some(ref last) = app.last_prompt {
+                    let retry_input = last.clone();
+                    app.input.clear();
+                    app.cursor_pos = 0;
+                    app.items.push(DisplayItem::Message {
+                        role: "user".to_string(),
+                        content: format!("[retry] {retry_input}"),
+                    });
+                    app.mode = AppMode::Streaming;
+                    let event_tx = event_tx.clone();
+                    let result = nyzhi_core::agent::run_turn(
+                        provider,
+                        thread,
+                        &retry_input,
+                        agent_config,
+                        &event_tx,
+                        registry,
+                        tool_ctx,
+                        model_info,
+                        &mut app.session_usage,
+                    )
+                    .await;
+                    if let Err(e) = result {
+                        let _ = event_tx.send(AgentEvent::Error(e.to_string()));
+                    }
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Nothing to retry".to_string(),
+                    });
+                    app.input.clear();
+                    app.cursor_pos = 0;
+                }
+                return;
+            }
+
+            app.last_prompt = Some(input.clone());
             app.history.push(input.clone());
 
             let mentions = nyzhi_core::context_files::parse_mentions(&input);
