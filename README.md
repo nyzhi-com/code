@@ -13,6 +13,7 @@ A performance-optimized AI coding agent for the terminal, built in Rust.
 - **Context management** -- token estimation, auto-compaction, `@file` mentions
 - **Change tracking** -- undo/revert any file change, diff view on approval
 - **Trust mode** -- auto-approve tools (off / limited / full)
+- **Custom commands** -- user-defined slash commands from `.nyzhi/commands/` and config
 - **Hooks** -- run lint, format, or tests automatically after edits or turns
 - **Multi-line input** -- Alt+Enter for newlines, `/editor` for `$EDITOR`, bracketed paste
 - **Input history** -- persistent across sessions, Ctrl+R reverse search
@@ -74,6 +75,7 @@ Flags:
 | `/login` | Show OAuth login status |
 | `/init` | Initialize `.nyzhi/` project config |
 | `/mcp` | List connected MCP servers |
+| `/commands` | List custom commands |
 | `/hooks` | List configured hooks |
 | `/clear` | Clear session |
 | `/compact` | Compress conversation history |
@@ -155,6 +157,31 @@ event = "after_turn"               # run after each agent turn
 command = "cargo clippy --all -- -D warnings"
 timeout = 60
 ```
+
+### Custom Commands
+
+Define reusable prompt templates as slash commands. Two methods:
+
+**Markdown files** in `.nyzhi/commands/`:
+
+```markdown
+<!-- .nyzhi/commands/review.md -->
+# Review code for issues
+Review $ARGUMENTS for bugs, security issues, and improvements.
+```
+
+Then use as `/review src/main.rs` -- `$ARGUMENTS` is replaced with everything after the command name.
+
+**Inline in config:**
+
+```toml
+[[agent.commands]]
+name = "test"
+prompt = "Write comprehensive tests for $ARGUMENTS"
+description = "Generate tests for a module"
+```
+
+Config entries override file-based commands with the same name. List all with `/commands`.
 
 ### MCP Servers
 

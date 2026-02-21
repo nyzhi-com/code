@@ -494,6 +494,32 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/commands" {
+                if app.custom_commands.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No custom commands defined.\n\nCreate commands as .md files in .nyzhi/commands/ or in .nyzhi/config.toml:\n\n  [[agent.commands]]\n  name = \"review\"\n  prompt = \"Review $ARGUMENTS for bugs and improvements\"\n  description = \"Code review\"".to_string(),
+                    });
+                } else {
+                    let mut lines = vec![format!("Custom commands ({}):", app.custom_commands.len())];
+                    for cmd in &app.custom_commands {
+                        let desc = if cmd.description.is_empty() {
+                            "(no description)".to_string()
+                        } else {
+                            cmd.description.clone()
+                        };
+                        lines.push(format!("  /{:<16} {}", cmd.name, desc));
+                    }
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: lines.join("\n"),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/model" {
                 let models = provider.supported_models();
                 if models.is_empty() {
@@ -760,6 +786,7 @@ pub async fn handle_key(
                         "  /login          Show OAuth login status",
                         "  /init           Initialize .nyzhi/ project config",
                         "  /mcp            List connected MCP servers",
+                        "  /commands       List custom commands",
                         "  /hooks          List configured hooks",
                         "  /clear          Clear the session",
                         "  /compact        Compress conversation history",
@@ -848,6 +875,43 @@ pub async fn handle_key(
                     });
                     app.input.clear();
                     app.cursor_pos = 0;
+                }
+                return;
+            }
+
+            if let Some(cmd) = app.custom_commands.iter().find(|c| {
+                input == format!("/{}", c.name)
+                    || input.starts_with(&format!("/{} ", c.name))
+            }) {
+                let args = input
+                    .strip_prefix(&format!("/{}", cmd.name))
+                    .unwrap_or("")
+                    .trim();
+                let expanded = nyzhi_core::commands::expand_template(&cmd.prompt_template, args);
+                app.last_prompt = Some(expanded.clone());
+                app.history.push(input.clone());
+                app.items.push(DisplayItem::Message {
+                    role: "user".to_string(),
+                    content: format!("/{} {args}", cmd.name).trim().to_string(),
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                app.mode = AppMode::Streaming;
+                let event_tx = event_tx.clone();
+                let result = nyzhi_core::agent::run_turn(
+                    provider,
+                    thread,
+                    &expanded,
+                    agent_config,
+                    &event_tx,
+                    registry,
+                    tool_ctx,
+                    model_info,
+                    &mut app.session_usage,
+                )
+                .await;
+                if let Err(e) = result {
+                    let _ = event_tx.send(AgentEvent::Error(e.to_string()));
                 }
                 return;
             }
@@ -1123,7 +1187,7 @@ fn try_open_completion(app: &mut App, cwd: &std::path::Path) {
     let Some((ctx, prefix, start)) = detect_context(&app.input, app.cursor_pos) else {
         return;
     };
-    let candidates = generate_candidates(&ctx, &prefix, cwd);
+    let candidates = generate_candidates(&ctx, &prefix, cwd, &app.custom_commands);
     if candidates.is_empty() {
         return;
     }
@@ -1145,7 +1209,7 @@ fn accept_completion(app: &mut App, cwd: &std::path::Path) {
 
     if is_dir {
         if let Some((ctx, prefix, start)) = detect_context(&app.input, app.cursor_pos) {
-            let candidates = generate_candidates(&ctx, &prefix, cwd);
+            let candidates = generate_candidates(&ctx, &prefix, cwd, &app.custom_commands);
             if !candidates.is_empty() {
                 app.completion = Some(CompletionState {
                     candidates,

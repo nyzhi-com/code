@@ -55,6 +55,16 @@ pub struct AgentSettings {
     pub retry: RetrySettings,
     #[serde(default)]
     pub hooks: Vec<HookConfig>,
+    #[serde(default)]
+    pub commands: Vec<CommandConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandConfig {
+    pub name: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 fn default_hook_timeout() -> u64 {
@@ -375,6 +385,11 @@ impl Config {
                     let mut hooks = global.agent.hooks.clone();
                     hooks.extend(project.agent.hooks.clone());
                     hooks
+                },
+                commands: {
+                    let mut cmds = global.agent.commands.clone();
+                    cmds.extend(project.agent.commands.clone());
+                    cmds
                 },
             },
             mcp: McpConfig {

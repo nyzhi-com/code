@@ -88,6 +88,7 @@ pub struct App {
     pub hooks_config: Vec<nyzhi_config::HookConfig>,
     pub hook_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
     hook_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
+    pub custom_commands: Vec<nyzhi_core::commands::CustomCommand>,
 }
 
 impl App {
@@ -131,6 +132,7 @@ impl App {
             hooks_config: Vec::new(),
             hook_rx: None,
             hook_tx: None,
+            custom_commands: Vec::new(),
         }
     }
 
@@ -141,6 +143,10 @@ impl App {
         config: &nyzhi_config::Config,
     ) -> Result<()> {
         self.history.load();
+        self.custom_commands = nyzhi_core::commands::load_all_commands(
+            &self.workspace.project_root,
+            &config.agent.commands,
+        );
 
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;

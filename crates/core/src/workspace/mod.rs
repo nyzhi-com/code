@@ -154,5 +154,19 @@ These instructions are injected into every nyzhi conversation in this project.
         created.push(rules_path);
     }
 
+    let commands_dir = nyzhi_dir.join("commands");
+    std::fs::create_dir_all(&commands_dir)?;
+
+    let review_path = commands_dir.join("review.md");
+    if !review_path.exists() {
+        std::fs::write(
+            &review_path,
+            r#"# Review code for issues
+Review $ARGUMENTS for bugs, security issues, and improvements. Be thorough and specific.
+"#,
+        )?;
+        created.push(review_path);
+    }
+
     Ok(created)
 }

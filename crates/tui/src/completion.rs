@@ -5,6 +5,7 @@ const SLASH_COMMANDS: &[&str] = &[
     "/accent",
     "/changes",
     "/clear",
+    "/commands",
     "/compact",
     "/editor",
     "/exit",
@@ -127,9 +128,10 @@ pub fn generate_candidates(
     ctx: &CompletionContext,
     prefix: &str,
     cwd: &Path,
+    custom_commands: &[nyzhi_core::commands::CustomCommand],
 ) -> Vec<String> {
     match ctx {
-        CompletionContext::SlashCommand => generate_slash_candidates(prefix),
+        CompletionContext::SlashCommand => generate_slash_candidates(prefix, custom_commands),
         CompletionContext::AtMention => {
             let path_part = prefix.strip_prefix('@').unwrap_or(prefix);
             let mut candidates = generate_path_candidates(path_part, cwd);
@@ -142,12 +144,18 @@ pub fn generate_candidates(
     }
 }
 
-fn generate_slash_candidates(prefix: &str) -> Vec<String> {
-    SLASH_COMMANDS
-        .iter()
-        .filter(|cmd| cmd.starts_with(prefix) && **cmd != prefix)
+fn generate_slash_candidates(prefix: &str, custom_commands: &[nyzhi_core::commands::CustomCommand]) -> Vec<String> {
+    let mut all: Vec<String> = SLASH_COMMANDS.iter().map(|s| s.to_string()).collect();
+    for cmd in custom_commands {
+        let name = format!("/{}", cmd.name);
+        if !all.contains(&name) {
+            all.push(name);
+        }
+    }
+    all.sort();
+    all.into_iter()
+        .filter(|cmd| cmd.starts_with(prefix) && *cmd != prefix)
         .take(MAX_CANDIDATES)
-        .map(|s| s.to_string())
         .collect()
 }
 
@@ -307,21 +315,32 @@ mod tests {
 
     #[test]
     fn slash_candidates_filter() {
-        let results = generate_slash_candidates("/co");
+        let results = generate_slash_candidates("/co", &[]);
         assert!(results.contains(&"/compact".to_string()));
         assert!(!results.contains(&"/clear".to_string()));
     }
 
     #[test]
     fn slash_candidates_exact_no_duplicate() {
-        let results = generate_slash_candidates("/quit");
+        let results = generate_slash_candidates("/quit", &[]);
         assert!(results.is_empty());
     }
 
     #[test]
     fn slash_candidates_all() {
-        let results = generate_slash_candidates("/");
+        let results = generate_slash_candidates("/", &[]);
         assert!(results.len() > 10);
+    }
+
+    #[test]
+    fn slash_candidates_include_custom() {
+        let custom = vec![nyzhi_core::commands::CustomCommand {
+            name: "review".to_string(),
+            prompt_template: "Review $ARGUMENTS".to_string(),
+            description: "Code review".to_string(),
+        }];
+        let results = generate_slash_candidates("/rev", &custom);
+        assert!(results.contains(&"/review".to_string()));
     }
 
     #[test]
