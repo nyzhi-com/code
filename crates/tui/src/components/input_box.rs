@@ -30,13 +30,30 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
 
     match app.mode {
         AppMode::Streaming => {
-            let content = Line::from(vec![
+            let mut spans = vec![
                 Span::styled(
                     format!("{} ", spinner.current_frame()),
                     Style::default().fg(theme.accent),
                 ),
                 Span::styled("thinking...", Style::default().fg(theme.text_tertiary)),
-            ]);
+            ];
+            if let Some(start) = &app.turn_start {
+                let elapsed_ms = start.elapsed().as_millis() as u64;
+                let elapsed_str = if elapsed_ms < 1000 {
+                    format!("{elapsed_ms}ms")
+                } else if elapsed_ms < 60_000 {
+                    format!("{:.1}s", elapsed_ms as f64 / 1000.0)
+                } else {
+                    let m = elapsed_ms / 60_000;
+                    let s = (elapsed_ms % 60_000) / 1000;
+                    format!("{m}m{s}s")
+                };
+                spans.push(Span::styled(
+                    format!(" ({elapsed_str})"),
+                    Style::default().fg(theme.text_tertiary),
+                ));
+            }
+            let content = Line::from(spans);
             frame.render_widget(
                 Paragraph::new(content).style(Style::default().bg(theme.bg_page)),
                 inner,

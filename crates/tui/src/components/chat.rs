@@ -31,8 +31,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 args_summary,
                 output,
                 status,
+                elapsed_ms,
             } => {
-                render_tool_call(&mut lines, name, args_summary, output, status, theme);
+                render_tool_call(&mut lines, name, args_summary, output, status, elapsed_ms, theme);
             }
         }
     }
@@ -143,12 +144,25 @@ fn render_highlighted_content<'a>(
     }
 }
 
+fn format_elapsed(ms: u64) -> String {
+    if ms < 1000 {
+        format!("{ms}ms")
+    } else if ms < 60_000 {
+        format!("{:.1}s", ms as f64 / 1000.0)
+    } else {
+        let m = ms / 60_000;
+        let s = (ms % 60_000) / 1000;
+        format!("{m}m{s}s")
+    }
+}
+
 fn render_tool_call<'a>(
     lines: &mut Vec<Line<'a>>,
     name: &str,
     args_summary: &str,
     output: &Option<String>,
     status: &ToolStatus,
+    elapsed_ms: &Option<u64>,
     theme: &Theme,
 ) {
     let (icon, icon_color) = match status {
@@ -167,7 +181,7 @@ fn render_tool_call<'a>(
         first_line.to_string()
     };
 
-    lines.push(Line::from(vec![
+    let mut spans = vec![
         Span::styled(
             format!("    {icon} "),
             Style::default().fg(icon_color),
@@ -180,7 +194,18 @@ fn render_tool_call<'a>(
             format!(" {summary}"),
             Style::default().fg(theme.text_tertiary),
         ),
-    ]));
+    ];
+
+    if *status == ToolStatus::Completed {
+        if let Some(ms) = elapsed_ms {
+            spans.push(Span::styled(
+                format!("  ({})", format_elapsed(*ms)),
+                Style::default().fg(theme.text_tertiary),
+            ));
+        }
+    }
+
+    lines.push(Line::from(spans));
 
     if *status == ToolStatus::WaitingApproval {
         for diff_line in summary_lines {

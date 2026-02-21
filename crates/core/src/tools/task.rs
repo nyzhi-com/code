@@ -108,13 +108,17 @@ impl Tool for TaskTool {
                             id,
                             name: format!("[sub-task] {name}"),
                         },
-                        AgentEvent::ToolCallDone { id, name, output } => {
-                            AgentEvent::ToolCallDone {
-                                id,
-                                name: format!("[sub-task] {name}"),
-                                output,
-                            }
-                        }
+                        AgentEvent::ToolCallDone {
+                            id,
+                            name,
+                            output,
+                            elapsed_ms,
+                        } => AgentEvent::ToolCallDone {
+                            id,
+                            name: format!("[sub-task] {name}"),
+                            output,
+                            elapsed_ms,
+                        },
                         AgentEvent::TurnComplete => break,
                         other => other,
                     };

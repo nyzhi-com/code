@@ -10,6 +10,7 @@ pub mod grep;
 pub mod git;
 pub mod task;
 pub mod todo;
+pub mod filesystem;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -112,5 +113,12 @@ pub fn default_registry() -> ToolRegistry {
     registry.register(Box::new(git::GitCheckoutTool));
     registry.register(Box::new(todo::TodoWriteTool::new()));
     registry.register(Box::new(todo::TodoReadTool::new()));
+    registry.register(Box::new(filesystem::ListDirTool));
+    registry.register(Box::new(filesystem::DirectoryTreeTool));
+    registry.register(Box::new(filesystem::FileInfoTool));
+    registry.register(Box::new(filesystem::DeleteFileTool));
+    registry.register(Box::new(filesystem::MoveFileTool));
+    registry.register(Box::new(filesystem::CopyFileTool));
+    registry.register(Box::new(filesystem::CreateDirTool));
     registry
 }

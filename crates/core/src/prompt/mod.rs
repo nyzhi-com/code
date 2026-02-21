@@ -94,6 +94,13 @@ fn build_full_system_prompt(
 - `git_branch`: List local and remote branches. No approval needed.
 - `git_commit`: Stage files and create a commit. Requires approval.
 - `git_checkout`: Switch to or create a branch. Requires approval.
+- `list_dir`: List directory contents with file sizes. No approval needed.
+- `directory_tree`: Recursive tree view of a directory. No approval needed.
+- `file_info`: Get file metadata (size, type, permissions, timestamps). No approval needed.
+- `delete_file`: Delete a file or empty directory. Requires approval. Undoable.
+- `move_file`: Move or rename a file/directory. Requires approval. Undoable.
+- `copy_file`: Copy a file. Requires approval. Undoable.
+- `create_dir`: Create a directory including parents. Requires approval.
 - `todowrite` / `todoread`: Manage a task list for complex multi-step work.
 - `task`: Delegate a sub-task to a child agent. The sub-agent runs independently with its own conversation and returns the result. Use for research, analysis, or implementation sub-tasks that benefit from focused attention.
 
@@ -107,6 +114,7 @@ fn build_full_system_prompt(
 - Always use absolute paths when referring to files.
 - Never expose secrets, API keys, or sensitive information.
 - Use git tools (`git_status`, `git_diff`, `git_log`) instead of `bash` for git operations -- they are faster and don't require approval.
+- Use `list_dir` and `directory_tree` instead of `bash ls` or `bash find` for directory exploration -- they are faster and produce structured output.
 - When editing code, preserve existing style and conventions.
 - For bug fixes, understand the root cause before applying a fix.
 - Suggest running tests after changes when a test suite is available.

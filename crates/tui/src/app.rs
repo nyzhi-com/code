@@ -18,6 +18,7 @@ use crate::spinner::SpinnerState;
 use crate::theme::Theme;
 use crate::ui::draw;
 
+#[derive(PartialEq)]
 pub enum AppMode {
     Input,
     Streaming,
@@ -35,6 +36,7 @@ pub enum DisplayItem {
         args_summary: String,
         output: Option<String>,
         status: ToolStatus,
+        elapsed_ms: Option<u64>,
     },
 }
 
@@ -78,6 +80,9 @@ pub struct App {
     pub history_search: Option<crate::history::HistorySearch>,
     pub highlighter: crate::highlight::SyntaxHighlighter,
     pub completion: Option<crate::completion::CompletionState>,
+    pub stream_start: Option<std::time::Instant>,
+    pub stream_token_count: usize,
+    pub turn_start: Option<std::time::Instant>,
 }
 
 impl App {
@@ -113,6 +118,9 @@ impl App {
             history_search: None,
             highlighter: crate::highlight::SyntaxHighlighter::new(),
             completion: None,
+            stream_start: None,
+            stream_token_count: 0,
+            turn_start: None,
         }
     }
 
@@ -267,9 +275,20 @@ impl App {
             while let Ok(agent_event) = event_rx.try_recv() {
                 match agent_event {
                     AgentEvent::TextDelta(text) => {
+                        if self.turn_start.is_none() {
+                            self.turn_start = Some(std::time::Instant::now());
+                        }
+                        if self.stream_start.is_none() {
+                            self.stream_start = Some(std::time::Instant::now());
+                        }
+                        let word_count = text.split_whitespace().count();
+                        self.stream_token_count += (word_count as f64 * 1.3) as usize;
                         self.current_stream.push_str(&text);
                     }
                     AgentEvent::ToolCallStart { name, .. } => {
+                        if self.turn_start.is_none() {
+                            self.turn_start = Some(std::time::Instant::now());
+                        }
                         if !self.current_stream.is_empty() {
                             self.items.push(DisplayItem::Message {
                                 role: "assistant".to_string(),
@@ -281,6 +300,7 @@ impl App {
                             args_summary: String::new(),
                             output: None,
                             status: ToolStatus::Running,
+                            elapsed_ms: None,
                         });
                     }
                     AgentEvent::ToolCallDelta { args_delta, .. } => {
@@ -295,11 +315,17 @@ impl App {
                             }
                         }
                     }
-                    AgentEvent::ToolCallDone { name, output, .. } => {
+                    AgentEvent::ToolCallDone {
+                        name,
+                        output,
+                        elapsed_ms: ev_elapsed,
+                        ..
+                    } => {
                         if let Some(DisplayItem::ToolCall {
                             name: ref item_name,
                             output: ref mut item_output,
                             status,
+                            elapsed_ms,
                             ..
                         }) = self.items.last_mut()
                         {
@@ -309,6 +335,7 @@ impl App {
                             {
                                 *item_output = Some(truncate_display(&output, 500));
                                 *status = ToolStatus::Completed;
+                                *elapsed_ms = Some(ev_elapsed);
                             }
                         }
                     }
@@ -363,6 +390,9 @@ impl App {
                                 content: std::mem::take(&mut self.current_stream),
                             });
                         }
+                        self.stream_start = None;
+                        self.stream_token_count = 0;
+                        self.turn_start = None;
                         self.mode = AppMode::Input;
                         if thread.message_count() > 0 {
                             let _ = nyzhi_core::session::save_session(

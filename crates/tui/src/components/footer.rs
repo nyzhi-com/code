@@ -26,20 +26,41 @@ fn format_cost(usd: f64) -> String {
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let left = match app.mode {
-        AppMode::Input => "enter send",
-        AppMode::Streaming => "esc interrupt",
-        AppMode::AwaitingApproval => "y approve  n deny",
+    let mut left = match app.mode {
+        AppMode::Input => "enter send".to_string(),
+        AppMode::Streaming => "esc interrupt".to_string(),
+        AppMode::AwaitingApproval => "y approve  n deny".to_string(),
     };
+
+    if app.mode == AppMode::Streaming {
+        if let Some(start) = &app.stream_start {
+            let elapsed = start.elapsed();
+            if elapsed.as_millis() > 500 && app.stream_token_count > 0 {
+                let tok_s = app.stream_token_count as f64 / elapsed.as_secs_f64();
+                left = format!("{left}  {:.0} tok/s", tok_s);
+            }
+        }
+    }
 
     let usage = &app.session_usage;
     let total_tokens = usage.total_input_tokens + usage.total_output_tokens;
+
+    let turn_tokens = usage.turn_input_tokens as u64 + usage.turn_output_tokens as u64;
     let usage_str = if total_tokens > 0 {
-        format!(
-            "{}tok  {}",
-            format_tokens(total_tokens),
-            format_cost(usage.total_cost_usd),
-        )
+        if turn_tokens > 0 {
+            format!(
+                "turn: {}  total: {}tok  {}",
+                format_tokens(turn_tokens),
+                format_tokens(total_tokens),
+                format_cost(usage.total_cost_usd),
+            )
+        } else {
+            format!(
+                "{}tok  {}",
+                format_tokens(total_tokens),
+                format_cost(usage.total_cost_usd),
+            )
+        }
     } else {
         String::new()
     };

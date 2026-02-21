@@ -36,6 +36,7 @@ pub enum AgentEvent {
         id: String,
         name: String,
         output: String,
+        elapsed_ms: u64,
     },
     ToolOutputDelta {
         tool_name: String,
@@ -65,11 +66,17 @@ impl std::fmt::Debug for AgentEvent {
                 .field("id", id)
                 .field("args_delta", args_delta)
                 .finish(),
-            Self::ToolCallDone { id, name, output } => f
+            Self::ToolCallDone {
+                id,
+                name,
+                output,
+                elapsed_ms,
+            } => f
                 .debug_struct("ToolCallDone")
                 .field("id", id)
                 .field("name", name)
                 .field("output", output)
+                .field("elapsed_ms", elapsed_ms)
                 .finish(),
             Self::ToolOutputDelta {
                 tool_name, delta, ..
@@ -290,19 +297,22 @@ pub async fn run_turn_with_content(
                     let name = acc.tool_calls[i].name.clone();
                     let args = args.clone();
                     async move {
+                        let start = std::time::Instant::now();
                         let output = match registry.execute(&name, args, ctx).await {
                             Ok(r) => r.output,
                             Err(e) => format!("Error executing tool: {e}"),
                         };
-                        (i, output)
+                        let elapsed_ms = start.elapsed().as_millis() as u64;
+                        (i, output, elapsed_ms)
                     }
                 });
                 let results = futures::future::join_all(futs).await;
-                for (i, output) in results {
+                for (i, output, elapsed_ms) in results {
                     let _ = event_tx.send(AgentEvent::ToolCallDone {
                         id: acc.tool_calls[i].id.clone(),
                         name: acc.tool_calls[i].name.clone(),
                         output: output.clone(),
+                        elapsed_ms,
                     });
                     indexed_results.push((i, output));
                 }
@@ -310,6 +320,7 @@ pub async fn run_turn_with_content(
 
             for (i, args) in sequential_indices {
                 let tc = &acc.tool_calls[i];
+                let start = std::time::Instant::now();
                 let output = match execute_with_permission(
                     registry, &tc.name, args, ctx, event_tx, &config.trust,
                 )
@@ -318,11 +329,13 @@ pub async fn run_turn_with_content(
                     Ok(r) => r.output,
                     Err(e) => format!("Error executing tool: {e}"),
                 };
+                let elapsed_ms = start.elapsed().as_millis() as u64;
 
                 let _ = event_tx.send(AgentEvent::ToolCallDone {
                     id: tc.id.clone(),
                     name: tc.name.clone(),
                     output: output.clone(),
+                    elapsed_ms,
                 });
                 indexed_results.push((i, output));
             }

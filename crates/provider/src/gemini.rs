@@ -50,7 +50,10 @@ pub struct GeminiProvider {
 impl GeminiProvider {
     pub fn new(api_key: String, base_url: Option<String>, model: Option<String>) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .unwrap_or_default(),
             base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
             auth: GeminiAuthMode::ApiKey(api_key),
             default_model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
@@ -67,7 +70,10 @@ impl GeminiProvider {
             nyzhi_auth::Credential::ApiKey(key) => GeminiAuthMode::ApiKey(key),
         };
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .unwrap_or_default(),
             base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
             auth,
             default_model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
@@ -212,12 +218,15 @@ impl Provider for GeminiProvider {
 
         let status = resp.status();
         if !status.is_success() {
+            let retry_after = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::HttpError {
-                status: status.as_u16(),
-                body,
-            }
-            .into());
+            return Err(
+                ProviderError::from_http(status.as_u16(), body, retry_after.as_deref()).into(),
+            );
         }
 
         let data: serde_json::Value = resp.json().await?;
@@ -295,12 +304,15 @@ impl Provider for GeminiProvider {
 
         let status = resp.status();
         if !status.is_success() {
+            let retry_after = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::HttpError {
-                status: status.as_u16(),
-                body,
-            }
-            .into());
+            return Err(
+                ProviderError::from_http(status.as_u16(), body, retry_after.as_deref()).into(),
+            );
         }
 
         let sse_stream = parse_sse_stream(resp);
