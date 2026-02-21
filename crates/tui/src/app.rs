@@ -89,6 +89,9 @@ pub struct App {
     pub hook_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
     hook_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
     pub custom_commands: Vec<nyzhi_core::commands::CustomCommand>,
+    pub search_query: Option<String>,
+    pub search_matches: Vec<usize>,
+    pub search_match_idx: usize,
 }
 
 impl App {
@@ -133,7 +136,61 @@ impl App {
             hook_rx: None,
             hook_tx: None,
             custom_commands: Vec::new(),
+            search_query: None,
+            search_matches: Vec::new(),
+            search_match_idx: 0,
         }
+    }
+
+    pub fn run_search(&mut self, query: &str) {
+        let q = query.to_lowercase();
+        self.search_matches.clear();
+        self.search_match_idx = 0;
+
+        for (i, item) in self.items.iter().enumerate() {
+            let text = match item {
+                DisplayItem::Message { content, .. } => content.to_lowercase(),
+                DisplayItem::ToolCall {
+                    args_summary,
+                    output,
+                    ..
+                } => {
+                    let mut t = args_summary.to_lowercase();
+                    if let Some(o) = output {
+                        t.push(' ');
+                        t.push_str(&o.to_lowercase());
+                    }
+                    t
+                }
+            };
+            if text.contains(&q) {
+                self.search_matches.push(i);
+            }
+        }
+
+        self.search_query = Some(query.to_string());
+    }
+
+    pub fn search_next(&mut self) {
+        if !self.search_matches.is_empty() {
+            self.search_match_idx = (self.search_match_idx + 1) % self.search_matches.len();
+        }
+    }
+
+    pub fn search_prev(&mut self) {
+        if !self.search_matches.is_empty() {
+            self.search_match_idx = if self.search_match_idx == 0 {
+                self.search_matches.len() - 1
+            } else {
+                self.search_match_idx - 1
+            };
+        }
+    }
+
+    pub fn clear_search(&mut self) {
+        self.search_query = None;
+        self.search_matches.clear();
+        self.search_match_idx = 0;
     }
 
     pub async fn run(

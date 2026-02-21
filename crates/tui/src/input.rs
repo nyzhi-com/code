@@ -40,6 +40,22 @@ pub async fn handle_key(
         return;
     }
 
+    if key.modifiers.contains(KeyModifiers::CONTROL)
+        && key.code == KeyCode::Char('n')
+        && app.search_query.is_some()
+    {
+        app.search_next();
+        return;
+    }
+
+    if key.modifiers.contains(KeyModifiers::CONTROL)
+        && key.code == KeyCode::Char('p')
+        && app.search_query.is_some()
+    {
+        app.search_prev();
+        return;
+    }
+
     match key.code {
         KeyCode::Tab => {
             if let Some(ref mut state) = app.completion {
@@ -56,6 +72,8 @@ pub async fn handle_key(
         KeyCode::Esc => {
             if app.completion.is_some() {
                 app.completion = None;
+            } else if app.search_query.is_some() {
+                app.clear_search();
             }
         }
         KeyCode::Enter => {
@@ -520,6 +538,84 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/export" || input.starts_with("/export ") {
+                let arg = input.strip_prefix("/export").unwrap().trim();
+                let path = if arg.is_empty() {
+                    std::path::PathBuf::from(crate::export::default_export_path())
+                } else if let Some(rest) = arg.strip_prefix('~') {
+                    if let Some(home) = dirs::home_dir() {
+                        home.join(rest.strip_prefix('/').unwrap_or(rest))
+                    } else {
+                        std::path::PathBuf::from(arg)
+                    }
+                } else {
+                    std::path::PathBuf::from(arg)
+                };
+
+                let meta = crate::export::ExportMeta {
+                    provider: app.provider_name.clone(),
+                    model: app.model_name.clone(),
+                    usage: app.session_usage.clone(),
+                    timestamp: chrono::Utc::now(),
+                };
+                let markdown = crate::export::export_session_markdown(&app.items, &meta);
+
+                match std::fs::write(&path, &markdown) {
+                    Ok(()) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "Exported {} items ({} bytes) to {}",
+                                app.items.len() - 1,
+                                markdown.len(),
+                                path.display(),
+                            ),
+                        });
+                    }
+                    Err(e) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Export failed: {e}"),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input.starts_with("/search ") {
+                let query = input.strip_prefix("/search ").unwrap().trim();
+                if query.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /search <query>".to_string(),
+                    });
+                } else {
+                    app.run_search(query);
+                    if app.search_matches.is_empty() {
+                        app.clear_search();
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("No results for \"{query}\""),
+                        });
+                    } else {
+                        let count = app.search_matches.len();
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "Found {count} match{} for \"{query}\" -- Ctrl+N/Ctrl+P to navigate, Esc to clear",
+                                if count == 1 { "" } else { "es" },
+                            ),
+                        });
+                        app.scroll_offset = 0;
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/model" {
                 let models = provider.supported_models();
                 if models.is_empty() {
@@ -803,6 +899,8 @@ pub async fn handle_key(
                         "  /undo           Undo the last file change",
                         "  /undo all       Undo all file changes in this session",
                         "  /changes        List all file changes in this session",
+                        "  /export [path]  Export conversation as markdown",
+                        "  /search <q>     Search session (Ctrl+N/P next/prev, Esc clear)",
                         "  /quit           Exit nyzhi",
                         "",
                         "Agent tools:",

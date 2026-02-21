@@ -21,7 +21,19 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let dark = theme.mode == ThemeMode::Dark;
     let mut lines: Vec<Line> = Vec::new();
 
-    for item in &app.items {
+    let search_q = app.search_query.as_deref();
+    let current_match_item = if !app.search_matches.is_empty() {
+        app.search_matches.get(app.search_match_idx).copied()
+    } else {
+        None
+    };
+
+    for (item_idx, item) in app.items.iter().enumerate() {
+        let is_match = search_q.is_some()
+            && app.search_matches.contains(&item_idx);
+        let is_current = current_match_item == Some(item_idx);
+        let line_start = lines.len();
+
         match item {
             DisplayItem::Message { role, content } => {
                 render_message(&mut lines, role, content, theme, &app.highlighter, dark);
@@ -34,6 +46,19 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 elapsed_ms,
             } => {
                 render_tool_call(&mut lines, name, args_summary, output, status, elapsed_ms, theme);
+            }
+        }
+
+        if is_match {
+            if let Some(q) = search_q {
+                let hl_style = if is_current {
+                    Style::default().bg(Color::Yellow).fg(Color::Black)
+                } else {
+                    Style::default().bg(Color::DarkGray).fg(Color::White)
+                };
+                for line in &mut lines[line_start..] {
+                    *line = highlight_search_in_line(line.clone(), q, hl_style);
+                }
             }
         }
     }
@@ -63,6 +88,41 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         .style(Style::default().bg(theme.bg_page));
 
     frame.render_widget(paragraph, inner);
+}
+
+fn highlight_search_in_line<'a>(line: Line<'a>, query: &str, hl_style: Style) -> Line<'a> {
+    let query_lower = query.to_lowercase();
+    let mut new_spans: Vec<Span<'a>> = Vec::new();
+
+    for span in line.spans {
+        let text = span.content.to_string();
+        let text_lower = text.to_lowercase();
+        let base_style = span.style;
+
+        let mut start = 0;
+        let mut found = false;
+        while let Some(pos) = text_lower[start..].find(&query_lower) {
+            found = true;
+            let abs_pos = start + pos;
+            if abs_pos > start {
+                new_spans.push(Span::styled(text[start..abs_pos].to_string(), base_style));
+            }
+            new_spans.push(Span::styled(
+                text[abs_pos..abs_pos + query.len()].to_string(),
+                hl_style,
+            ));
+            start = abs_pos + query.len();
+        }
+        if found {
+            if start < text.len() {
+                new_spans.push(Span::styled(text[start..].to_string(), base_style));
+            }
+        } else {
+            new_spans.push(Span::styled(text, base_style));
+        }
+    }
+
+    Line::from(new_spans)
 }
 
 fn render_message<'a>(

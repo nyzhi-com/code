@@ -19,6 +19,8 @@ A performance-optimized AI coding agent for the terminal, built in Rust.
 - **Input history** -- persistent across sessions, Ctrl+R reverse search
 - **Syntax highlighting** -- code blocks and inline markdown via syntect
 - **Tab completion** -- slash commands, `@`-mention file paths
+- **Conversation export** -- `/export` to save session as markdown
+- **In-session search** -- `/search` with highlighted matches and Ctrl+N/P navigation
 - **Prompt caching** -- Anthropic cache_control + OpenAI/Gemini automatic caching for lower costs
 - **Retry logic** -- exponential backoff for 429/5xx errors
 - **Single binary** -- no runtime dependencies
@@ -92,9 +94,11 @@ Flags:
 | `/undo` | Undo the last file change |
 | `/undo all` | Undo all file changes |
 | `/changes` | List file changes in session |
+| `/export [path]` | Export conversation as markdown |
+| `/search <query>` | Search session (Ctrl+N/P to navigate, Esc to clear) |
 | `/quit` | Exit |
 
-**Shortcuts:** Tab (completion), Alt+Enter (newline), Ctrl+R (history search), Ctrl+T (theme), Ctrl+A (accent), Ctrl+L (clear), Ctrl+C (exit)
+**Shortcuts:** Tab (completion), Alt+Enter (newline), Ctrl+R (history search), Ctrl+N/P (search next/prev), Ctrl+T (theme), Ctrl+A (accent), Ctrl+L (clear), Ctrl+C (exit)
 
 ## Built-in Tools
 
