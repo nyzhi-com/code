@@ -1,0 +1,83 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cli",
+    "crates/core",
+    "crates/provider",
+    "crates/auth",
+    "crates/tui",
+    "crates/config",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/nyzhi-com/code"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP + streaming
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+eventsource-stream = "0.2"
+futures = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# OAuth2
+oauth2 = "5"
+
+# Credential storage
+keyring = "3"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Markdown rendering in terminal
+termimad = "0.30"
+
+# Async trait
+async-trait = "0.1"
+
+# Tokio utilities
+tokio-util = "0.7"
+
+# Pin projection
+pin-project-lite = "0.2"
+
+# UUID
+uuid = { version = "1", features = ["v4"] }
+
+# Chrono
+chrono = { version = "0.4", features = ["serde"] }
+
+# Directories
+dirs = "6"
+
+# Open browser
+open = "5"
+
+# Workspace crates
+nyzhi-core = { path = "crates/core" }
+nyzhi-provider = { path = "crates/provider" }
+nyzhi-auth = { path = "crates/auth" }
+nyzhi-tui = { path = "crates/tui" }
+nyzhi-config = { path = "crates/config" }

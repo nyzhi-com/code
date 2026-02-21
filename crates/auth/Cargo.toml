@@ -1,0 +1,23 @@
+[package]
+name = "nyzhi-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Authentication for nyzhi (OAuth2 PKCE, device code, API key)"
+
+[dependencies]
+tokio.workspace = true
+reqwest.workspace = true
+oauth2.workspace = true
+keyring.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+open.workspace = true
+dirs.workspace = true
+chrono.workspace = true

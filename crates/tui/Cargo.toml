@@ -1,0 +1,20 @@
+[package]
+name = "nyzhi-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Terminal UI for nyzhi"
+
+[dependencies]
+nyzhi-core.workspace = true
+nyzhi-provider.workspace = true
+nyzhi-config.workspace = true
+tokio.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+futures.workspace = true
+termimad.workspace = true
