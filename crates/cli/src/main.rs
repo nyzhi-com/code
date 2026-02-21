@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
                     .unwrap_or("default"),
             );
 
-            let mut app = nyzhi_tui::App::new(provider_name, model_name);
+            let mut app = nyzhi_tui::App::new(provider_name, model_name, &config.tui);
             app.run(&*provider, &registry).await?;
         }
     }

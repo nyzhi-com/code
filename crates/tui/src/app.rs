@@ -13,6 +13,8 @@ use ratatui::prelude::*;
 use tokio::sync::broadcast;
 
 use crate::input::handle_key;
+use crate::spinner::SpinnerState;
+use crate::theme::Theme;
 use crate::ui::draw;
 
 pub enum AppMode {
@@ -49,28 +51,30 @@ pub struct App {
     pub cursor_pos: usize,
     pub items: Vec<DisplayItem>,
     pub current_stream: String,
-    pub status: String,
     pub should_quit: bool,
     pub provider_name: String,
     pub model_name: String,
     pub scroll_offset: u16,
+    pub theme: Theme,
+    pub spinner: SpinnerState,
     pub pending_approval:
         Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>>,
 }
 
 impl App {
-    pub fn new(provider_name: &str, model_name: &str) -> Self {
+    pub fn new(provider_name: &str, model_name: &str, config: &nyzhi_config::TuiConfig) -> Self {
         Self {
             mode: AppMode::Input,
             input: String::new(),
             cursor_pos: 0,
             items: Vec::new(),
             current_stream: String::new(),
-            status: format!("{provider_name}/{model_name}"),
             should_quit: false,
             provider_name: provider_name.to_string(),
             model_name: model_name.to_string(),
             scroll_offset: 0,
+            theme: Theme::from_config(config),
+            spinner: SpinnerState::new(),
             pending_approval: None,
         }
     }
@@ -97,7 +101,9 @@ impl App {
         };
 
         loop {
-            terminal.draw(|frame| draw(frame, self))?;
+            self.spinner.tick();
+
+            terminal.draw(|frame| draw(frame, self, &self.theme, &self.spinner))?;
 
             if event::poll(std::time::Duration::from_millis(16))? {
                 if let Event::Key(key) = event::read()? {
@@ -105,6 +111,21 @@ impl App {
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
                         self.should_quit = true;
+                    } else if key.code == KeyCode::Char('t')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        self.theme.toggle_mode();
+                    } else if key.code == KeyCode::Char('a')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        self.theme.next_accent();
+                    } else if key.code == KeyCode::Char('l')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        self.items.clear();
+                        thread.clear();
+                        self.input.clear();
+                        self.cursor_pos = 0;
                     } else if matches!(self.mode, AppMode::AwaitingApproval) {
                         match key.code {
                             KeyCode::Char('y') | KeyCode::Char('Y') => {
@@ -137,6 +158,12 @@ impl App {
                         self.current_stream.push_str(&text);
                     }
                     AgentEvent::ToolCallStart { name, .. } => {
+                        if !self.current_stream.is_empty() {
+                            self.items.push(DisplayItem::Message {
+                                role: "assistant".to_string(),
+                                content: std::mem::take(&mut self.current_stream),
+                            });
+                        }
                         self.items.push(DisplayItem::ToolCall {
                             name,
                             args_summary: String::new(),
@@ -190,8 +217,7 @@ impl App {
                         }
                         self.pending_approval = Some(respond);
                         self.mode = AppMode::AwaitingApproval;
-                        self.status =
-                            format!("Allow {tool_name}: {args_summary}? [y/n]");
+                        let _ = args_summary;
                     }
                     AgentEvent::TurnComplete => {
                         if !self.current_stream.is_empty() {
@@ -201,10 +227,12 @@ impl App {
                             });
                         }
                         self.mode = AppMode::Input;
-                        self.status = format!("{}/{}", self.provider_name, self.model_name);
                     }
                     AgentEvent::Error(e) => {
-                        self.status = format!("Error: {e}");
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Error: {e}"),
+                        });
                         self.mode = AppMode::Input;
                     }
                 }
@@ -235,7 +263,6 @@ impl App {
             }
         }
         self.mode = AppMode::Streaming;
-        self.status = "continuing...".to_string();
     }
 }
 

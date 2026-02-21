@@ -46,6 +46,10 @@ pub struct TuiConfig {
     pub markdown: bool,
     #[serde(default = "default_true")]
     pub streaming: bool,
+    #[serde(default = "default_theme")]
+    pub theme: String,
+    #[serde(default = "default_accent")]
+    pub accent: String,
 }
 
 fn default_provider() -> String {
@@ -58,6 +62,14 @@ fn default_max_tokens() -> u32 {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_theme() -> String {
+    "dark".to_string()
+}
+
+fn default_accent() -> String {
+    "copper".to_string()
 }
 
 impl Default for ProviderConfig {
@@ -85,6 +97,8 @@ impl Default for TuiConfig {
         Self {
             markdown: true,
             streaming: true,
+            theme: default_theme(),
+            accent: default_accent(),
         }
     }
 }

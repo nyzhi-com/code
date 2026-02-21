@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nyzhi_core::agent::{AgentConfig, AgentEvent};
 use nyzhi_core::conversation::Thread;
 use nyzhi_core::tools::{ToolContext, ToolRegistry};
@@ -22,6 +22,12 @@ pub async fn handle_key(
         return;
     }
 
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('u') {
+        app.input.clear();
+        app.cursor_pos = 0;
+        return;
+    }
+
     match key.code {
         KeyCode::Enter => {
             let input = app.input.trim().to_string();
@@ -42,6 +48,45 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/theme" {
+                app.theme.toggle_mode();
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/accent" {
+                app.theme.next_accent();
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/help" {
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: [
+                        "Commands:",
+                        "  /help     Show this help",
+                        "  /clear    Clear the session",
+                        "  /theme    Toggle light/dark theme",
+                        "  /accent   Cycle accent color",
+                        "  /quit     Exit nyzhi",
+                        "",
+                        "Shortcuts:",
+                        "  ctrl+t    Toggle theme",
+                        "  ctrl+a    Cycle accent",
+                        "  ctrl+l    Clear session",
+                        "  ctrl+u    Clear input line",
+                        "  ctrl+c    Exit",
+                    ]
+                    .join("\n"),
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             app.items.push(DisplayItem::Message {
                 role: "user".to_string(),
                 content: input.clone(),
@@ -50,7 +95,6 @@ pub async fn handle_key(
             app.input.clear();
             app.cursor_pos = 0;
             app.mode = AppMode::Streaming;
-            app.status = "thinking...".to_string();
 
             let event_tx = event_tx.clone();
             if let Err(e) = nyzhi_core::agent::run_turn(
@@ -86,6 +130,12 @@ pub async fn handle_key(
             if app.cursor_pos < app.input.len() {
                 app.cursor_pos += 1;
             }
+        }
+        KeyCode::Home => {
+            app.cursor_pos = 0;
+        }
+        KeyCode::End => {
+            app.cursor_pos = app.input.len();
         }
         KeyCode::Up => {
             app.scroll_offset = app.scroll_offset.saturating_add(1);

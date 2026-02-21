@@ -1,6 +1,4 @@
-// Component modules will be added as the TUI grows:
-// pub mod chat;
-// pub mod composer;
-// pub mod status;
-// pub mod tool_output;
-// pub mod todo;
+pub mod chat;
+pub mod footer;
+pub mod input_box;
+pub mod welcome;
