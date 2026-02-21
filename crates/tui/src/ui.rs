@@ -11,11 +11,14 @@ pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState)
         frame.area(),
     );
 
+    let input_lines = app.input.lines().count().max(1) as u16;
+    let input_height = (input_lines + 2).min(12); // +2 for borders, cap at 12
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),
-            Constraint::Length(3),
+            Constraint::Length(input_height),
             Constraint::Length(1),
         ])
         .split(frame.area());

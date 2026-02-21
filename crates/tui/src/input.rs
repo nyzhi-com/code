@@ -32,6 +32,14 @@ pub async fn handle_key(
 
     match key.code {
         KeyCode::Enter => {
+            if key.modifiers.contains(KeyModifiers::ALT)
+                || key.modifiers.contains(KeyModifiers::SHIFT)
+            {
+                app.input.insert(app.cursor_pos, '\n');
+                app.cursor_pos += 1;
+                return;
+            }
+
             let input = app.input.trim().to_string();
             if input.is_empty() {
                 return;
@@ -562,6 +570,13 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/editor" {
+                app.wants_editor = true;
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/help" {
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
@@ -582,6 +597,7 @@ pub async fn handle_key(
                         "  /accent         Choose accent color",
                         "  /trust          Show current trust mode",
                         "  /trust <mode>   Set trust mode (off, limited, full)",
+                        "  /editor         Open $EDITOR for multi-line input",
                         "  /undo           Undo the last file change",
                         "  /undo all       Undo all file changes in this session",
                         "  /changes        List all file changes in this session",
@@ -596,6 +612,11 @@ pub async fn handle_key(
                         "  nyzhi login <provider>    Log in via OAuth (gemini, openai)",
                         "  nyzhi logout <provider>   Remove stored OAuth token",
                         "  nyzhi whoami              Show auth status for all providers",
+                        "",
+                        "Input:",
+                        "  alt+enter       Insert newline (multi-line mode)",
+                        "  shift+enter     Insert newline (kitty protocol)",
+                        "  enter           Submit message",
                         "",
                         "Shortcuts:",
                         "  ctrl+t          Open theme picker",
@@ -686,19 +707,70 @@ pub async fn handle_key(
             }
         }
         KeyCode::Home => {
-            app.cursor_pos = 0;
+            let before = &app.input[..app.cursor_pos];
+            let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
+            app.cursor_pos = line_start;
         }
         KeyCode::End => {
-            app.cursor_pos = app.input.len();
+            let after = &app.input[app.cursor_pos..];
+            let line_end = after
+                .find('\n')
+                .map(|i| app.cursor_pos + i)
+                .unwrap_or(app.input.len());
+            app.cursor_pos = line_end;
         }
         KeyCode::Up => {
-            app.scroll_offset = app.scroll_offset.saturating_add(1);
+            if app.input.contains('\n') {
+                move_cursor_up(app);
+            } else {
+                app.scroll_offset = app.scroll_offset.saturating_add(1);
+            }
         }
         KeyCode::Down => {
-            app.scroll_offset = app.scroll_offset.saturating_sub(1);
+            if app.input.contains('\n') {
+                move_cursor_down(app);
+            } else {
+                app.scroll_offset = app.scroll_offset.saturating_sub(1);
+            }
         }
         _ => {}
     }
+}
+
+fn move_cursor_up(app: &mut App) {
+    let before = &app.input[..app.cursor_pos];
+    let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    if line_start == 0 {
+        // already on the first line, scroll chat instead
+        app.scroll_offset = app.scroll_offset.saturating_add(1);
+        return;
+    }
+    let col = app.cursor_pos - line_start;
+    // prev_line is the line before current
+    let prev_line_end = line_start - 1; // the '\n' separating previous and current line
+    let prev_line_start = before[..prev_line_end]
+        .rfind('\n')
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let prev_line_len = prev_line_end - prev_line_start;
+    app.cursor_pos = prev_line_start + col.min(prev_line_len);
+}
+
+fn move_cursor_down(app: &mut App) {
+    let after = &app.input[app.cursor_pos..];
+    let Some(nl_offset) = after.find('\n') else {
+        // already on the last line, scroll chat instead
+        app.scroll_offset = app.scroll_offset.saturating_sub(1);
+        return;
+    };
+    let before = &app.input[..app.cursor_pos];
+    let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let col = app.cursor_pos - line_start;
+
+    let next_line_start = app.cursor_pos + nl_offset + 1;
+    let rest = &app.input[next_line_start..];
+    let next_line_len = rest.find('\n').unwrap_or(rest.len());
+    app.cursor_pos = next_line_start + col.min(next_line_len);
 }
 
 fn load_image(path_str: &str) -> anyhow::Result<PendingImage> {

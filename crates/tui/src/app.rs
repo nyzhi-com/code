@@ -2,7 +2,7 @@ use std::io;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use nyzhi_core::agent::{AgentConfig, AgentEvent, SessionUsage};
@@ -73,6 +73,7 @@ pub struct App {
     pub pending_images: Vec<PendingImage>,
     pub trust_mode: nyzhi_config::TrustMode,
     pub selector: Option<crate::components::selector::SelectorState>,
+    pub wants_editor: bool,
 }
 
 impl App {
@@ -101,6 +102,7 @@ impl App {
             pending_images: Vec::new(),
             trust_mode: nyzhi_config::TrustMode::Off,
             selector: None,
+            wants_editor: false,
         }
     }
 
@@ -112,6 +114,7 @@ impl App {
     ) -> Result<()> {
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
+        io::stdout().execute(EnableBracketedPaste)?;
 
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
@@ -184,7 +187,14 @@ impl App {
             terminal.draw(|frame| draw(frame, self, &self.theme, &self.spinner))?;
 
             if event::poll(std::time::Duration::from_millis(16))? {
-                if let Event::Key(key) = event::read()? {
+                match event::read()? {
+                Event::Paste(text) => {
+                    if matches!(self.mode, AppMode::Input) {
+                        self.input.insert_str(self.cursor_pos, &text);
+                        self.cursor_pos += text.len();
+                    }
+                }
+                Event::Key(key) => {
                     if self.selector.is_some() {
                         self.handle_selector_key(key, &mut model_info_idx);
                     } else if key.code == KeyCode::Char('c')
@@ -233,6 +243,13 @@ impl App {
                         .await;
                     }
                 }
+                _ => {}
+                }
+            }
+
+            if self.wants_editor {
+                self.wants_editor = false;
+                Self::open_external_editor(self, &mut terminal)?;
             }
 
             while let Ok(agent_event) = event_rx.try_recv() {
@@ -358,6 +375,7 @@ impl App {
             }
         }
 
+        io::stdout().execute(DisableBracketedPaste)?;
         terminal::disable_raw_mode()?;
         io::stdout().execute(LeaveAlternateScreen)?;
         Ok(())
@@ -486,6 +504,67 @@ impl App {
             }
         }
         self.mode = AppMode::Streaming;
+    }
+
+    fn open_external_editor(
+        &mut self,
+        terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    ) -> Result<()> {
+        use std::io::Write;
+
+        let tmp_path = std::env::temp_dir().join(format!(
+            "nyzhi_edit_{}.md",
+            std::process::id()
+        ));
+        std::fs::write(&tmp_path, &self.input)?;
+
+        terminal::disable_raw_mode()?;
+        io::stdout().execute(LeaveAlternateScreen)?;
+
+        let editor = std::env::var("VISUAL")
+            .or_else(|_| std::env::var("EDITOR"))
+            .unwrap_or_else(|_| "vi".to_string());
+
+        let status = std::process::Command::new(&editor)
+            .arg(&tmp_path)
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status();
+
+        terminal::enable_raw_mode()?;
+        io::stdout().execute(EnterAlternateScreen)?;
+        io::stdout().flush()?;
+        // Force full redraw
+        terminal.clear()?;
+
+        match status {
+            Ok(s) if s.success() => {
+                let content = std::fs::read_to_string(&tmp_path).unwrap_or_default();
+                let line_count = content.lines().count();
+                self.input = content;
+                self.cursor_pos = self.input.len();
+                self.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!("Loaded {line_count} line(s) from editor"),
+                });
+            }
+            Ok(s) => {
+                self.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!("Editor exited with status: {s}"),
+                });
+            }
+            Err(e) => {
+                self.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!("Failed to open editor ({editor}): {e}"),
+                });
+            }
+        }
+
+        let _ = std::fs::remove_file(&tmp_path);
+        Ok(())
     }
 }
 
