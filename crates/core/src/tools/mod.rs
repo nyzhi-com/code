@@ -11,6 +11,7 @@ pub mod git;
 pub mod task;
 pub mod todo;
 pub mod filesystem;
+pub mod lsp;
 pub mod notepad;
 pub mod verify;
 
@@ -133,5 +134,7 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(verify::VerifyTool));
     registry.register(Box::new(notepad::NotepadWriteTool));
     registry.register(Box::new(notepad::NotepadReadTool));
+    registry.register(Box::new(lsp::LspDiagnosticsTool));
+    registry.register(Box::new(lsp::AstSearchTool));
     RegistryBundle { registry, todo_store }
 }

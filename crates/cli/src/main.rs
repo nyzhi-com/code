@@ -87,6 +87,12 @@ enum Commands {
         #[arg(default_value = "daily")]
         period: String,
     },
+    /// Deep-initialize project with AGENTS.md and structure analysis
+    Deepinit,
+    /// List learned skills
+    Skills,
+    /// Check rate limit status or wait for rate limits to clear
+    Wait,
     /// Replay a session's event timeline
     Replay {
         /// Session ID
@@ -412,6 +418,42 @@ async fn main() -> Result<()> {
                 });
                 println!("Total entries:  {}", entries.len());
             }
+            return Ok(());
+        }
+        Some(Commands::Deepinit) => {
+            let path = nyzhi_core::deepinit::write_agents_md(&workspace.project_root)?;
+            println!("Generated {}", path.display());
+            let scan = nyzhi_core::deepinit::scan_project(&workspace.project_root)?;
+            if !scan.languages.is_empty() {
+                println!("Languages: {}", scan.languages.join(", "));
+            }
+            if !scan.frameworks.is_empty() {
+                println!("Frameworks: {}", scan.frameworks.join(", "));
+            }
+            println!("Directories: {}", scan.directories.len());
+            return Ok(());
+        }
+        Some(Commands::Skills) => {
+            let skills = nyzhi_core::skills::load_skills(&workspace.project_root)?;
+            if skills.is_empty() {
+                println!("No learned skills found.");
+                println!("Use /learn in the TUI to extract patterns from your session.");
+            } else {
+                println!("Learned skills ({}):", skills.len());
+                for skill in &skills {
+                    println!("  - {} ({})", skill.name, skill.path.display());
+                }
+            }
+            return Ok(());
+        }
+        Some(Commands::Wait) => {
+            println!("Rate limit daemon not yet active.");
+            println!("If you hit rate limits during a session, nyzhi will auto-retry with backoff.");
+            println!("Configure retry in .nyzhi/config.toml:\n");
+            println!("  [agent.retry]");
+            println!("  max_retries = 3");
+            println!("  initial_backoff_ms = 1000");
+            println!("  max_backoff_ms = 30000");
             return Ok(());
         }
         Some(Commands::Replay { id, filter }) => {

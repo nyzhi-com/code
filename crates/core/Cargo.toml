@@ -24,3 +24,4 @@ glob.workspace = true
 regex.workspace = true
 dirs.workspace = true
 rmcp.workspace = true
+reqwest.workspace = true

@@ -16,6 +16,22 @@ pub struct Config {
     pub agent: AgentSettings,
     #[serde(default)]
     pub mcp: McpConfig,
+    #[serde(default)]
+    pub external_notify: ExternalNotifyConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExternalNotifyConfig {
+    #[serde(default)]
+    pub webhook_url: Option<String>,
+    #[serde(default)]
+    pub telegram_bot_token: Option<String>,
+    #[serde(default)]
+    pub telegram_chat_id: Option<String>,
+    #[serde(default)]
+    pub discord_webhook_url: Option<String>,
+    #[serde(default)]
+    pub slack_webhook_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -81,7 +97,7 @@ pub struct VerifyCheckConfig {
     pub command: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RoutingConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -89,16 +105,6 @@ pub struct RoutingConfig {
     pub low_keywords: Vec<String>,
     #[serde(default)]
     pub high_keywords: Vec<String>,
-}
-
-impl Default for RoutingConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            low_keywords: vec![],
-            high_keywords: vec![],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -517,6 +523,18 @@ impl Config {
             },
             mcp: McpConfig {
                 servers: mcp_servers,
+            },
+            external_notify: ExternalNotifyConfig {
+                webhook_url: project.external_notify.webhook_url.clone()
+                    .or_else(|| global.external_notify.webhook_url.clone()),
+                telegram_bot_token: project.external_notify.telegram_bot_token.clone()
+                    .or_else(|| global.external_notify.telegram_bot_token.clone()),
+                telegram_chat_id: project.external_notify.telegram_chat_id.clone()
+                    .or_else(|| global.external_notify.telegram_chat_id.clone()),
+                discord_webhook_url: project.external_notify.discord_webhook_url.clone()
+                    .or_else(|| global.external_notify.discord_webhook_url.clone()),
+                slack_webhook_url: project.external_notify.slack_webhook_url.clone()
+                    .or_else(|| global.external_notify.slack_webhook_url.clone()),
             },
         }
     }

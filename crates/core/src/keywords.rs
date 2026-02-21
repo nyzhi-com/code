@@ -31,7 +31,8 @@ pub fn detect_keywords(prompt: &str) -> (TurnFlags, String) {
     let mut flags = TurnFlags::default();
     let mut cleaned = prompt.to_string();
 
-    let keywords: &[(&str, fn(&mut TurnFlags))] = &[
+    type KeywordSetter = (&'static str, fn(&mut TurnFlags));
+    let keywords: &[KeywordSetter] = &[
         ("plan:", |f| f.plan = true),
         ("persist:", |f| f.persist = true),
         ("parallel:", |f| f.parallel = true),

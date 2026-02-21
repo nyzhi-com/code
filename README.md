@@ -6,15 +6,28 @@ A performance-optimized AI coding agent for the terminal, built in Rust.
 
 - **Multi-provider** -- OpenAI, Anthropic, and Google Gemini with streaming
 - **Rich TUI** -- ratatui-based interface with 8 built-in themes, persistent theme/accent selection, ASCII logo, animated spinner
-- **30+ built-in tools** -- file ops, git, grep, glob, bash, sub-agents, todo
+- **35+ built-in tools** -- file ops, git, grep, glob, bash, sub-agents, todo, verify, notepad, LSP, AST search
 - **MCP support** -- connect external tool servers via stdio or HTTP
 - **OAuth + API key auth** -- Google PKCE, OpenAI device code, or plain API keys
 - **Session persistence** -- auto-save, resume, search, rename, delete sessions
-- **Context management** -- token estimation, auto-compaction, `@file` mentions
+- **Context management** -- token estimation, configurable auto-compaction, `@file` mentions
+- **Smart model routing** -- auto-select model tier (low/medium/high) based on task complexity
 - **Change tracking** -- undo/revert any file change, diff view on approval
 - **Trust mode** -- auto-approve tools (off / limited / full)
 - **Custom commands** -- user-defined slash commands from `.nyzhi/commands/` and config
 - **Hooks** -- run lint, format, or tests automatically after edits or turns
+- **Magic keywords** -- `plan:`, `persist:`, `eco:`, `tdd:`, `review:`, `parallel:` prefixes
+- **Verification protocol** -- auto-detect build/test/lint for Rust, Node, Go, Python projects
+- **Token analytics** -- track costs per provider/model, daily/weekly/monthly reports
+- **Notepad wisdom** -- persist learnings, decisions, issues across sessions
+- **Session replay** -- event-level replay of past sessions
+- **Iterative planning** -- planner/critic loop for complex tasks
+- **LSP integration** -- detect available language servers, structural AST search
+- **External notifications** -- webhook, Telegram, Discord, Slack on turn complete
+- **Deep init** -- `nyzhi deepinit` generates AGENTS.md with project analysis
+- **Skill learning** -- `/learn` extracts reusable patterns from sessions
+- **Team orchestration** -- `/team N <task>` spawns coordinated sub-agents
+- **Autopilot** -- `/autopilot <idea>` for fully autonomous 5-phase execution
 - **Multi-line input** -- Alt+Enter for newlines, `/editor` for `$EDITOR`, bracketed paste
 - **Input history** -- persistent across sessions, Ctrl+R reverse search
 - **Syntax highlighting** -- code blocks and inline markdown via syntect
@@ -64,6 +77,12 @@ nyzhi sessions [query]       List saved sessions
 nyzhi export <id> [-o path]  Export session to markdown
 nyzhi session delete <id>    Delete a saved session
 nyzhi session rename <id> <t> Rename a saved session
+nyzhi stats                  Show all-time session statistics
+nyzhi cost [daily|weekly|monthly] Show cost report by period
+nyzhi replay <id> [--filter] Replay session event timeline
+nyzhi deepinit               Generate AGENTS.md from project analysis
+nyzhi skills                 List learned skills
+nyzhi wait                   Check rate limit status
 
 Flags:
   -p, --provider <name>      Provider (openai, anthropic, gemini)
@@ -102,6 +121,15 @@ Flags:
 | `/export [path]` | Export conversation as markdown |
 | `/search <query>` | Search session (Ctrl+N/P to navigate, Esc to clear) |
 | `/notify` | Show or toggle notification settings (bell, desktop, duration) |
+| `/autopilot <idea>` | Start autonomous 5-phase execution |
+| `/team N <task>` | Spawn N coordinated sub-agents |
+| `/plan [name]` | List/view saved plans |
+| `/persist` | Activate verify/fix loop mode |
+| `/qa` | Activate autonomous QA cycling |
+| `/verify` | Show detected verification checks |
+| `/todo` | View current todo list |
+| `/learn [name]` | List/create skill templates |
+| `/notepad [plan]` | List/view notepad entries |
 | `/quit` | Exit |
 
 **Shortcuts:** Tab (completion), Alt+Enter (newline), Ctrl+R (history search), Ctrl+N/P (search next/prev), Ctrl+T (theme), Ctrl+A (accent), Ctrl+L (clear), PageUp/PageDown (scroll), Ctrl+C (exit)
@@ -118,7 +146,13 @@ Flags:
 `git_status`, `git_diff`, `git_log`, `git_show`, `git_branch` (read-only), `git_commit`, `git_checkout` (require approval)
 
 ### Agent
-`task` -- delegate sub-tasks to child agents, `todowrite`, `todoread`
+`task` -- delegate sub-tasks to child agents, `todowrite`, `todoread`, `notepad_write`, `notepad_read`
+
+### Verification
+`verify` -- run project build/test/lint checks with structured results
+
+### LSP / AST
+`lsp_diagnostics` -- detect available language servers, `ast_search` -- structural code pattern matching
 
 ## Configuration
 
@@ -156,6 +190,12 @@ min_duration_ms = 5000  # only notify if turn took longer than this (default: 50
 [agent]
 max_steps = 100
 custom_instructions = "Always write tests."
+auto_compact_threshold = 0.8  # auto-compact at 80% context window
+enforce_todos = false          # continue until all todos complete
+auto_simplify = false          # simplify code after each turn
+
+[agent.routing]
+enabled = false                # auto-select model tier by prompt complexity
 
 [agent.trust]
 mode = "off"              # off, limited, full

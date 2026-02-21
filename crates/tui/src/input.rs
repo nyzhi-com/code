@@ -608,6 +608,176 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/autopilot" || input.starts_with("/autopilot ") {
+                let arg = input.strip_prefix("/autopilot").unwrap().trim();
+                if arg.is_empty() {
+                    match nyzhi_core::autopilot::load_state(&tool_ctx.project_root) {
+                        Ok(Some(state)) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: state.summary(),
+                            });
+                        }
+                        _ => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: "No autopilot session active.\nUsage: /autopilot <idea> or use `autopilot:` prefix".to_string(),
+                            });
+                        }
+                    }
+                } else if arg == "cancel" {
+                    if let Ok(Some(mut state)) = nyzhi_core::autopilot::load_state(&tool_ctx.project_root) {
+                        state.cancel();
+                        let _ = nyzhi_core::autopilot::save_state(&tool_ctx.project_root, &state);
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Autopilot cancelled.".to_string(),
+                        });
+                    }
+                } else if arg == "clear" {
+                    let _ = nyzhi_core::autopilot::clear_state(&tool_ctx.project_root);
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Autopilot state cleared.".to_string(),
+                    });
+                } else {
+                    let state = nyzhi_core::autopilot::AutopilotState::new(arg);
+                    let _ = nyzhi_core::autopilot::save_state(&tool_ctx.project_root, &state);
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Autopilot initialized for: {arg}\n\n{}\n\nSending expansion prompt...", state.summary()),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input.starts_with("/team ") {
+                let arg = input.strip_prefix("/team").unwrap().trim();
+                let parts: Vec<&str> = arg.splitn(2, ' ').collect();
+                if parts.len() < 2 {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /team <N> <task description>\nSpawns N coordinated sub-agents.".to_string(),
+                    });
+                } else if let Ok(n) = parts[0].parse::<u32>() {
+                    let task = parts[1].to_string();
+                    let config = nyzhi_core::team::TeamConfig { team_size: n, task: task.clone() };
+                    let state = nyzhi_core::team::TeamState::new(&config);
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Team created for: {task}\n\n{}", state.summary()),
+                    });
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "First argument must be a number. Usage: /team 3 refactor auth module".to_string(),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/learn" || input.starts_with("/learn ") {
+                let arg = input.strip_prefix("/learn").unwrap().trim();
+                if arg.is_empty() {
+                    let skills = nyzhi_core::skills::load_skills(&tool_ctx.project_root).unwrap_or_default();
+                    if skills.is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "No skills learned yet.\nUsage: /learn <skill-name> to create a skill from this session.".to_string(),
+                        });
+                    } else {
+                        let names: Vec<String> = skills.iter().map(|s| format!("  - {}", s.name)).collect();
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Learned skills:\n{}", names.join("\n")),
+                        });
+                    }
+                } else {
+                    let template = nyzhi_core::skills::build_skill_template(arg, "Extracted from session", &[]);
+                    match nyzhi_core::skills::save_skill(&tool_ctx.project_root, arg, &template) {
+                        Ok(path) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Skill template saved to {}\nEdit the file to fill in details.", path.display()),
+                            });
+                        }
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Error saving skill: {e}"),
+                            });
+                        }
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/notepad" || input.starts_with("/notepad ") {
+                let arg = input.strip_prefix("/notepad").unwrap().trim();
+                if arg.is_empty() {
+                    let plans = nyzhi_core::notepad::list_notepads(&tool_ctx.project_root).unwrap_or_default();
+                    if plans.is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "No notepads found.".to_string(),
+                        });
+                    } else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Notepads:\n{}", plans.iter().map(|p| format!("  - {p}")).collect::<Vec<_>>().join("\n")),
+                        });
+                    }
+                } else if let Ok(content) = nyzhi_core::notepad::read_notepad(&tool_ctx.project_root, arg) {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content,
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/plan" || input.starts_with("/plan ") {
+                let arg = input.strip_prefix("/plan").unwrap().trim();
+                if arg.is_empty() {
+                    let plans = nyzhi_core::planning::list_plans(&tool_ctx.project_root).unwrap_or_default();
+                    if plans.is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "No plans saved.\nUse `plan: <task>` prefix to activate iterative planning.".to_string(),
+                        });
+                    } else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "Saved plans:\n{}",
+                                plans.iter().map(|p| format!("  - {p}")).collect::<Vec<_>>().join("\n"),
+                            ),
+                        });
+                    }
+                } else if let Ok(Some(content)) = nyzhi_core::planning::load_plan(&tool_ctx.project_root, arg) {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content,
+                    });
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Plan '{arg}' not found."),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/persist" || input.starts_with("/persist ") {
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
