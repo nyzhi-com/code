@@ -335,6 +335,9 @@ async fn run_once(
         project_root: workspace.project_root.clone(),
         depth: 0,
         event_tx: Some(event_tx.clone()),
+        change_tracker: std::sync::Arc::new(tokio::sync::Mutex::new(
+            nyzhi_core::tools::change_tracker::ChangeTracker::new(),
+        )),
     };
 
     let tx = event_tx.clone();

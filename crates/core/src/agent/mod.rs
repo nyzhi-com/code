@@ -364,7 +364,7 @@ async fn execute_with_permission(
         .ok_or_else(|| anyhow::anyhow!("Unknown tool: {tool_name}"))?;
 
     if tool.permission() == ToolPermission::NeedsApproval {
-        let args_summary = summarize_args(tool_name, &args);
+        let args_summary = summarize_args(tool_name, &args).await;
         let (tx, rx) = tokio::sync::oneshot::channel();
         let respond = std::sync::Arc::new(tokio::sync::Mutex::new(Some(tx)));
 
@@ -387,23 +387,77 @@ async fn execute_with_permission(
     registry.execute(tool_name, args, ctx).await
 }
 
-fn summarize_args(tool_name: &str, args: &serde_json::Value) -> String {
+async fn summarize_args(tool_name: &str, args: &serde_json::Value) -> String {
     match tool_name {
         "bash" => args
             .get("command")
             .and_then(|v| v.as_str())
             .unwrap_or("(unknown command)")
             .to_string(),
-        "write" => args
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("(unknown file)")
-            .to_string(),
-        "edit" => args
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("(unknown file)")
-            .to_string(),
+        "edit" => summarize_edit_args(args).await,
+        "write" => summarize_write_args(args).await,
         _ => serde_json::to_string(args).unwrap_or_default(),
+    }
+}
+
+async fn summarize_edit_args(args: &serde_json::Value) -> String {
+    let file_path = args
+        .get("file_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(unknown file)");
+    let old_string = args.get("old_string").and_then(|v| v.as_str());
+    let new_string = args.get("new_string").and_then(|v| v.as_str());
+
+    let (Some(old_str), Some(new_str)) = (old_string, new_string) else {
+        return file_path.to_string();
+    };
+
+    let Ok(content) = tokio::fs::read_to_string(file_path).await else {
+        return file_path.to_string();
+    };
+
+    if content.matches(old_str).count() != 1 {
+        return file_path.to_string();
+    }
+
+    let new_content = content.replacen(old_str, new_str, 1);
+    let diff = crate::tools::diff::unified_diff(file_path, &content, &new_content, 3);
+    let preview = crate::tools::diff::truncate_diff(&diff, 30);
+
+    if preview.is_empty() {
+        file_path.to_string()
+    } else {
+        format!("{file_path}\n{preview}")
+    }
+}
+
+async fn summarize_write_args(args: &serde_json::Value) -> String {
+    let file_path = args
+        .get("file_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(unknown file)");
+    let content = args.get("content").and_then(|v| v.as_str());
+
+    let Some(new_content) = content else {
+        return file_path.to_string();
+    };
+
+    if let Ok(old_content) = tokio::fs::read_to_string(file_path).await {
+        let diff = crate::tools::diff::unified_diff(file_path, &old_content, new_content, 3);
+        let preview = crate::tools::diff::truncate_diff(&diff, 30);
+        if preview.is_empty() {
+            file_path.to_string()
+        } else {
+            format!("{file_path}\n{preview}")
+        }
+    } else {
+        let lines: Vec<&str> = new_content.lines().take(15).collect();
+        let preview = lines.join("\n");
+        let total = new_content.lines().count();
+        if total > 15 {
+            format!("{file_path} (new file, {total} lines)\n{preview}\n... ({} more lines)", total - 15)
+        } else {
+            format!("{file_path} (new file)\n{preview}")
+        }
     }
 }

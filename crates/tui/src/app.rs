@@ -160,12 +160,16 @@ impl App {
         };
 
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let change_tracker = std::sync::Arc::new(tokio::sync::Mutex::new(
+            nyzhi_core::tools::change_tracker::ChangeTracker::new(),
+        ));
         let tool_ctx = ToolContext {
             session_id: thread.id.clone(),
             cwd,
             project_root: self.workspace.project_root.clone(),
             depth: 0,
             event_tx: Some(event_tx.clone()),
+            change_tracker: change_tracker.clone(),
         };
 
         loop {

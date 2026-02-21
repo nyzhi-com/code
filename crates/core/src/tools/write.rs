@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::path::Path;
 
+use super::change_tracker::FileChange;
+use super::diff::{truncate_diff, unified_diff};
 use super::permission::ToolPermission;
 use super::{Tool, ToolContext, ToolResult};
 
@@ -57,11 +59,50 @@ impl Tool for WriteTool {
             tokio::fs::create_dir_all(parent).await?;
         }
 
+        let original = if path.exists() {
+            tokio::fs::read_to_string(&path).await.ok()
+        } else {
+            None
+        };
+
         let bytes = content.len();
         tokio::fs::write(&path, content).await?;
 
+        let diff = match &original {
+            Some(old) => {
+                let d = unified_diff(file_path, old, content, 3);
+                truncate_diff(&d, 50)
+            }
+            None => {
+                let lines: Vec<&str> = content.lines().take(20).collect();
+                let preview = lines.join("\n");
+                if content.lines().count() > 20 {
+                    format!("{preview}\n... ({} more lines)", content.lines().count() - 20)
+                } else {
+                    preview
+                }
+            }
+        };
+
+        {
+            let mut tracker = ctx.change_tracker.lock().await;
+            tracker.record(FileChange {
+                path: path.clone(),
+                original,
+                new_content: content.to_string(),
+                tool_name: "write".to_string(),
+                timestamp: chrono::Utc::now(),
+            });
+        }
+
+        let output = if diff.is_empty() {
+            format!("Wrote {bytes} bytes to {}", path.display())
+        } else {
+            format!("Wrote {bytes} bytes to {}\n\n{diff}", path.display())
+        };
+
         Ok(ToolResult {
-            output: format!("Wrote {bytes} bytes to {}", path.display()),
+            output,
             title: format!("write: {file_path}"),
             metadata: json!({ "bytes_written": bytes }),
         })

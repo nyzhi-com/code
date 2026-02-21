@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::path::Path;
 
+use super::change_tracker::FileChange;
+use super::diff::{truncate_diff, unified_diff};
 use super::permission::ToolPermission;
 use super::{Tool, ToolContext, ToolResult};
 
@@ -95,8 +97,28 @@ impl Tool for EditTool {
         let new_content = content.replacen(old_string, new_string, 1);
         tokio::fs::write(&path, &new_content).await?;
 
+        let diff = unified_diff(file_path, &content, &new_content, 3);
+        let diff_preview = truncate_diff(&diff, 50);
+
+        {
+            let mut tracker = ctx.change_tracker.lock().await;
+            tracker.record(FileChange {
+                path: path.clone(),
+                original: Some(content),
+                new_content,
+                tool_name: "edit".to_string(),
+                timestamp: chrono::Utc::now(),
+            });
+        }
+
+        let output = if diff_preview.is_empty() {
+            format!("Applied edit to {}", path.display())
+        } else {
+            format!("Applied edit to {}\n\n{diff_preview}", path.display())
+        };
+
         Ok(ToolResult {
-            output: format!("Applied edit to {}", path.display()),
+            output,
             title: format!("edit: {file_path}"),
             metadata: json!({ "applied": true }),
         })

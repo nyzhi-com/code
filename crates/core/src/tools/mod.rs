@@ -1,5 +1,7 @@
 pub mod permission;
 pub mod bash;
+pub mod change_tracker;
+pub mod diff;
 pub mod read;
 pub mod write;
 pub mod edit;
@@ -9,12 +11,14 @@ pub mod git;
 pub mod task;
 pub mod todo;
 
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use permission::ToolPermission;
 use serde_json::Value;
-use std::collections::HashMap;
-use std::path::PathBuf;
 use tokio::sync::broadcast;
 
 #[async_trait]
@@ -35,6 +39,7 @@ pub struct ToolContext {
     /// 0 = main agent, 1 = first sub-agent, etc.
     pub depth: u32,
     pub event_tx: Option<broadcast::Sender<crate::agent::AgentEvent>>,
+    pub change_tracker: Arc<tokio::sync::Mutex<change_tracker::ChangeTracker>>,
 }
 
 pub struct ToolResult {

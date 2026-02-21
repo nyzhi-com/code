@@ -110,7 +110,8 @@ fn build_full_system_prompt(
 - When editing code, preserve existing style and conventions.
 - For bug fixes, understand the root cause before applying a fix.
 - Suggest running tests after changes when a test suite is available.
-- Before committing, review changes with `git_diff` to verify correctness."#,
+- Before committing, review changes with `git_diff` to verify correctness.
+- File changes made by `edit` and `write` tools are tracked and can be undone by the user via `/undo`. The user can also view the change history with `/changes`."#,
     );
 
     if supports_vision {

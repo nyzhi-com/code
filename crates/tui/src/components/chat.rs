@@ -103,10 +103,13 @@ fn render_tool_call<'a>(
         ToolStatus::Denied => ("x", theme.danger),
     };
 
-    let summary = if args_summary.len() > 60 {
-        format!("{}...", &args_summary[..57])
+    let mut summary_lines = args_summary.lines();
+    let first_line = summary_lines.next().unwrap_or("");
+
+    let summary = if first_line.len() > 60 {
+        format!("{}...", &first_line[..57])
     } else {
-        args_summary.to_string()
+        first_line.to_string()
     };
 
     lines.push(Line::from(vec![
@@ -124,6 +127,12 @@ fn render_tool_call<'a>(
         ),
     ]));
 
+    if *status == ToolStatus::WaitingApproval {
+        for diff_line in summary_lines {
+            lines.push(render_diff_line(diff_line, theme));
+        }
+    }
+
     if let Some(out) = output {
         for line in out.lines().take(3) {
             lines.push(Line::from(Span::styled(
@@ -132,4 +141,20 @@ fn render_tool_call<'a>(
             )));
         }
     }
+}
+
+fn render_diff_line<'a>(line: &str, theme: &Theme) -> Line<'a> {
+    let color = if line.starts_with('+') {
+        theme.success
+    } else if line.starts_with('-') {
+        theme.danger
+    } else if line.starts_with("@@") {
+        theme.info
+    } else {
+        theme.text_tertiary
+    };
+    Line::from(Span::styled(
+        format!("      {line}"),
+        Style::default().fg(color),
+    ))
 }

@@ -420,6 +420,111 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/undo" {
+                let mut tracker = tool_ctx.change_tracker.lock().await;
+                match tracker.undo_last().await {
+                    Ok(Some(change)) => {
+                        let action = if change.original.is_some() {
+                            "Reverted"
+                        } else {
+                            "Removed (was newly created)"
+                        };
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "{action}: {} ({})",
+                                change.path.display(),
+                                change.tool_name,
+                            ),
+                        });
+                    }
+                    Ok(None) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "No changes to undo.".to_string(),
+                        });
+                    }
+                    Err(e) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Undo failed: {e}"),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/undo all" {
+                let mut tracker = tool_ctx.change_tracker.lock().await;
+                match tracker.undo_all().await {
+                    Ok(reverted) => {
+                        if reverted.is_empty() {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: "No changes to undo.".to_string(),
+                            });
+                        } else {
+                            let mut msg = format!("Reverted {} change(s):", reverted.len());
+                            for c in &reverted {
+                                msg.push_str(&format!(
+                                    "\n  {} ({})",
+                                    c.path.display(),
+                                    c.tool_name,
+                                ));
+                            }
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: msg,
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Undo all failed: {e}"),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/changes" {
+                let tracker = tool_ctx.change_tracker.lock().await;
+                if tracker.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No file changes in this session.".to_string(),
+                    });
+                } else {
+                    let mut msg = format!("{} change(s):", tracker.len());
+                    for c in tracker.changes() {
+                        let kind = if c.original.is_some() {
+                            "modified"
+                        } else {
+                            "created"
+                        };
+                        msg.push_str(&format!(
+                            "\n  {} ({}, {}, {})",
+                            c.path.display(),
+                            c.tool_name,
+                            kind,
+                            c.timestamp.format("%H:%M:%S"),
+                        ));
+                    }
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: msg,
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/help" {
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
@@ -438,6 +543,9 @@ pub async fn handle_key(
                         "  /resume <id>    Restore a saved session",
                         "  /theme          Toggle light/dark theme",
                         "  /accent         Cycle accent color",
+                        "  /undo           Undo the last file change",
+                        "  /undo all       Undo all file changes in this session",
+                        "  /changes        List all file changes in this session",
                         "  /quit           Exit nyzhi",
                         "",
                         "Agent tools:",

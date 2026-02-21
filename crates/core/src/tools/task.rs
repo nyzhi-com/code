@@ -134,6 +134,7 @@ impl Tool for TaskTool {
             project_root: ctx.project_root.clone(),
             depth: ctx.depth + 1,
             event_tx: Some(child_tx.clone()),
+            change_tracker: ctx.change_tracker.clone(),
         };
 
         let mut session_usage = SessionUsage::default();
