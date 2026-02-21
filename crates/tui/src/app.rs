@@ -77,6 +77,7 @@ pub struct App {
     pub history: crate::history::InputHistory,
     pub history_search: Option<crate::history::HistorySearch>,
     pub highlighter: crate::highlight::SyntaxHighlighter,
+    pub completion: Option<crate::completion::CompletionState>,
 }
 
 impl App {
@@ -111,6 +112,7 @@ impl App {
             ),
             history_search: None,
             highlighter: crate::highlight::SyntaxHighlighter::new(),
+            completion: None,
         }
     }
 

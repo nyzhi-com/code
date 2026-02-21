@@ -2,6 +2,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{App, AppMode};
+use crate::completion::{CompletionContext, CompletionState};
 use crate::spinner::SpinnerState;
 use crate::theme::Theme;
 
@@ -59,6 +60,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
             }
         }
     }
+
+    if let Some(state) = &app.completion {
+        render_completion_popup(frame, area, state, theme);
+    }
 }
 
 fn render_normal_input(frame: &mut Frame, inner: Rect, app: &App, theme: &Theme) {
@@ -98,6 +103,88 @@ fn render_normal_input(frame: &mut Frame, inner: Rect, app: &App, theme: &Theme)
         inner.x + prefix_len + cursor_col,
         inner.y + cursor_row - scroll_offset,
     ));
+}
+
+fn render_completion_popup(
+    frame: &mut Frame,
+    input_area: Rect,
+    state: &CompletionState,
+    theme: &Theme,
+) {
+    let max_visible: usize = 8;
+    let count = state.candidates.len();
+    let visible = count.min(max_visible);
+    let popup_height = visible as u16 + 2; // +2 for borders
+
+    if input_area.y < popup_height {
+        return;
+    }
+
+    let max_label_width = state
+        .candidates
+        .iter()
+        .map(|c| c.len())
+        .max()
+        .unwrap_or(10) as u16;
+    let popup_width = (max_label_width + 4).min(input_area.width).max(16);
+
+    let popup_area = Rect {
+        x: input_area.x + 1,
+        y: input_area.y - popup_height,
+        width: popup_width,
+        height: popup_height,
+    };
+
+    let title = match state.context {
+        CompletionContext::SlashCommand => "Commands",
+        CompletionContext::AtMention | CompletionContext::FilePath => "Files",
+    };
+
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_strong))
+        .title(Span::styled(
+            format!(" {title} "),
+            Style::default().fg(theme.text_secondary),
+        ))
+        .style(Style::default().bg(theme.bg_elevated));
+
+    let inner = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
+
+    let visible_candidates: Vec<Line> = state
+        .candidates
+        .iter()
+        .enumerate()
+        .skip(state.scroll_offset)
+        .take(max_visible)
+        .map(|(i, candidate)| {
+            let display = if candidate.len() as u16 > inner.width {
+                format!("{}...", &candidate[..(inner.width as usize).saturating_sub(3)])
+            } else {
+                candidate.clone()
+            };
+
+            if i == state.selected {
+                Line::from(Span::styled(
+                    format!("{display:<width$}", width = inner.width as usize),
+                    Style::default()
+                        .fg(theme.bg_page)
+                        .bg(theme.accent),
+                ))
+            } else {
+                Line::from(Span::styled(
+                    display,
+                    Style::default().fg(theme.text_primary),
+                ))
+            }
+        })
+        .collect();
+
+    let paragraph = Paragraph::new(visible_candidates).style(Style::default().bg(theme.bg_elevated));
+    frame.render_widget(paragraph, inner);
 }
 
 fn render_history_search(

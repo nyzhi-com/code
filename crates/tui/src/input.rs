@@ -41,7 +41,29 @@ pub async fn handle_key(
     }
 
     match key.code {
+        KeyCode::Tab => {
+            if let Some(ref mut state) = app.completion {
+                state.cycle_forward();
+            } else {
+                try_open_completion(app, &tool_ctx.cwd);
+            }
+        }
+        KeyCode::BackTab => {
+            if let Some(ref mut state) = app.completion {
+                state.cycle_backward();
+            }
+        }
+        KeyCode::Esc => {
+            if app.completion.is_some() {
+                app.completion = None;
+            }
+        }
         KeyCode::Enter => {
+            if app.completion.is_some() {
+                accept_completion(app, &tool_ctx.cwd);
+                return;
+            }
+
             if key.modifiers.contains(KeyModifiers::ALT)
                 || key.modifiers.contains(KeyModifiers::SHIFT)
             {
@@ -628,9 +650,11 @@ pub async fn handle_key(
                         "                  e.g. explain @src/main.rs or list @src/",
                         "",
                         "Input:",
+                        "  tab             Auto-complete commands, @paths, file paths",
+                        "  shift+tab       Cycle completion backward",
                         "  alt+enter       Insert newline (multi-line mode)",
                         "  shift+enter     Insert newline (kitty protocol)",
-                        "  enter           Submit message",
+                        "  enter           Submit message / accept completion",
                         "  up/down         Navigate input history (single-line)",
                         "  ctrl+r          Reverse search history",
                         "",
@@ -735,12 +759,14 @@ pub async fn handle_key(
             app.input.insert(app.cursor_pos, c);
             app.cursor_pos += 1;
             app.history.reset_cursor();
+            app.completion = None;
         }
         KeyCode::Backspace => {
             if app.cursor_pos > 0 {
                 app.cursor_pos -= 1;
                 app.input.remove(app.cursor_pos);
             }
+            app.completion = None;
         }
         KeyCode::Left => {
             if app.cursor_pos > 0 {
@@ -908,6 +934,49 @@ fn load_image(path_str: &str) -> anyhow::Result<PendingImage> {
         data,
         size_bytes,
     })
+}
+
+fn try_open_completion(app: &mut App, cwd: &std::path::Path) {
+    use crate::completion::{detect_context, generate_candidates, CompletionState};
+
+    let Some((ctx, prefix, start)) = detect_context(&app.input, app.cursor_pos) else {
+        return;
+    };
+    let candidates = generate_candidates(&ctx, &prefix, cwd);
+    if candidates.is_empty() {
+        return;
+    }
+    app.completion = Some(CompletionState {
+        candidates,
+        selected: 0,
+        prefix,
+        prefix_start: start,
+        context: ctx,
+        scroll_offset: 0,
+    });
+}
+
+fn accept_completion(app: &mut App, cwd: &std::path::Path) {
+    use crate::completion::{apply_completion, detect_context, generate_candidates, CompletionState};
+
+    let state = app.completion.take().unwrap();
+    let is_dir = apply_completion(&mut app.input, &mut app.cursor_pos, &state);
+
+    if is_dir {
+        if let Some((ctx, prefix, start)) = detect_context(&app.input, app.cursor_pos) {
+            let candidates = generate_candidates(&ctx, &prefix, cwd);
+            if !candidates.is_empty() {
+                app.completion = Some(CompletionState {
+                    candidates,
+                    selected: 0,
+                    prefix,
+                    prefix_start: start,
+                    context: ctx,
+                    scroll_offset: 0,
+                });
+            }
+        }
+    }
 }
 
 fn build_multimodal_content(text: &str, images: &[PendingImage]) -> MessageContent {
