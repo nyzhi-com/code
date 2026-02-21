@@ -687,6 +687,7 @@ async fn run_once(
         change_tracker: std::sync::Arc::new(tokio::sync::Mutex::new(
             nyzhi_core::tools::change_tracker::ChangeTracker::new(),
         )),
+        allowed_tool_names: None,
     };
 
     let tx = event_tx.clone();

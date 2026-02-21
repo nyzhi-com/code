@@ -181,6 +181,7 @@ impl AgentManager {
         parent_depth: u32,
         parent_ctx: &ToolContext,
         agent_config: AgentConfig,
+        tool_filter: Option<Vec<String>>,
     ) -> Result<(AgentId, String)> {
         let child_depth = parent_depth + 1;
         if self.guards.exceeds_depth(child_depth) {
@@ -235,8 +236,9 @@ impl AgentManager {
             cwd: parent_ctx.cwd.clone(),
             project_root: parent_ctx.project_root.clone(),
             depth: child_depth,
-            event_tx: None, // will be set below
+            event_tx: None,
             change_tracker: parent_ctx.change_tracker.clone(),
+            allowed_tool_names: tool_filter,
         };
 
         let join_handle = tokio::spawn(async move {

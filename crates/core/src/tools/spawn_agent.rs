@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -6,17 +7,31 @@ use serde_json::{json, Value};
 
 use crate::agent::AgentConfig;
 use crate::agent_manager::AgentManager;
-use crate::agent_roles::{apply_role, resolve_role};
+use crate::agent_roles::{apply_role, resolve_role, AgentRoleConfig};
 
 use super::{Tool, ToolContext, ToolResult};
 
 pub struct SpawnAgentTool {
     manager: Arc<AgentManager>,
+    user_roles: HashMap<String, AgentRoleConfig>,
 }
 
 impl SpawnAgentTool {
     pub fn new(manager: Arc<AgentManager>) -> Self {
-        Self { manager }
+        Self {
+            manager,
+            user_roles: HashMap::new(),
+        }
+    }
+
+    pub fn with_user_roles(
+        manager: Arc<AgentManager>,
+        user_roles: HashMap<String, AgentRoleConfig>,
+    ) -> Self {
+        Self {
+            manager,
+            user_roles,
+        }
     }
 }
 
@@ -33,6 +48,7 @@ impl Tool for SpawnAgentTool {
     }
 
     fn parameters_schema(&self) -> Value {
+        let role_desc = crate::agent_roles::build_spawn_tool_description(&self.user_roles);
         json!({
             "type": "object",
             "properties": {
@@ -42,7 +58,7 @@ impl Tool for SpawnAgentTool {
                 },
                 "agent_type": {
                     "type": "string",
-                    "description": "Optional role for the agent (default, explorer, worker, reviewer)"
+                    "description": role_desc
                 }
             },
             "required": ["message"]
@@ -69,7 +85,7 @@ impl Tool for SpawnAgentTool {
             .map(str::trim)
             .filter(|s| !s.is_empty());
 
-        let role = resolve_role(role_name, &std::collections::HashMap::new());
+        let role = resolve_role(role_name, &self.user_roles);
 
         let mut agent_config = AgentConfig {
             name: format!("sub-agent/{}", role.name),
@@ -95,6 +111,8 @@ impl Tool for SpawnAgentTool {
 
         apply_role(&mut agent_config, &role);
 
+        let tool_filter = compute_tool_filter(&role);
+
         match self
             .manager
             .spawn_agent(
@@ -103,6 +121,7 @@ impl Tool for SpawnAgentTool {
                 ctx.depth,
                 ctx,
                 agent_config,
+                tool_filter,
             )
             .await
         {
@@ -124,5 +143,42 @@ impl Tool for SpawnAgentTool {
                 metadata: json!({ "error": e.to_string() }),
             }),
         }
+    }
+}
+
+/// Compute the effective tool filter from a role's allowed/disallowed lists.
+/// Returns None (no filtering) if neither list is set.
+fn compute_tool_filter(role: &AgentRoleConfig) -> Option<Vec<String>> {
+    let all_tools: Vec<String> = vec![
+        "bash", "read", "write", "edit", "glob", "grep",
+        "git_status", "git_diff", "git_log", "git_show", "git_branch",
+        "git_commit", "git_checkout",
+        "list_dir", "directory_tree", "file_info",
+        "delete_file", "move_file", "copy_file", "create_dir",
+        "todowrite", "todoread",
+        "verify", "notepad_write", "notepad_read",
+        "lsp_diagnostics", "ast_search",
+    ].into_iter().map(String::from).collect();
+
+    match (&role.allowed_tools, &role.disallowed_tools) {
+        (Some(allowed), _) => {
+            let mut names = allowed.clone();
+            if let Some(denied) = &role.disallowed_tools {
+                let deny_set: std::collections::HashSet<&str> =
+                    denied.iter().map(|s| s.as_str()).collect();
+                names.retain(|n| !deny_set.contains(n.as_str()));
+            }
+            Some(names)
+        }
+        (None, Some(denied)) => {
+            let deny_set: std::collections::HashSet<&str> =
+                denied.iter().map(|s| s.as_str()).collect();
+            let filtered: Vec<String> = all_tools
+                .into_iter()
+                .filter(|n| !deny_set.contains(n.as_str()))
+                .collect();
+            Some(filtered)
+        }
+        (None, None) => None,
     }
 }

@@ -309,6 +309,7 @@ impl App {
             depth: 0,
             event_tx: Some(event_tx.clone()),
             change_tracker: change_tracker.clone(),
+            allowed_tool_names: None,
         };
 
         let agent_registry = std::sync::Arc::new(nyzhi_core::tools::default_registry().registry);
@@ -320,8 +321,14 @@ impl App {
             config.agent.agents.max_depth,
         ));
 
+        let user_agent_roles =
+            nyzhi_core::agent_roles::convert_user_roles(&config.agent.agents.roles);
+
         registry.register(Box::new(
-            nyzhi_core::tools::spawn_agent::SpawnAgentTool::new(agent_manager.clone()),
+            nyzhi_core::tools::spawn_agent::SpawnAgentTool::with_user_roles(
+                agent_manager.clone(),
+                user_agent_roles,
+            ),
         ));
         registry.register(Box::new(
             nyzhi_core::tools::send_input::SendInputTool::new(agent_manager.clone()),

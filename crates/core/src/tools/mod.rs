@@ -49,6 +49,8 @@ pub struct ToolContext {
     pub depth: u32,
     pub event_tx: Option<broadcast::Sender<crate::agent::AgentEvent>>,
     pub change_tracker: Arc<tokio::sync::Mutex<change_tracker::ChangeTracker>>,
+    /// If set, only these tools are visible to the agent (role-based filtering).
+    pub allowed_tool_names: Option<Vec<String>>,
 }
 
 pub struct ToolResult {
@@ -91,6 +93,11 @@ impl ToolRegistry {
     }
 
     pub async fn execute(&self, name: &str, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
+        if let Some(allowed) = &ctx.allowed_tool_names {
+            if !allowed.iter().any(|a| a == name) {
+                anyhow::bail!("Tool `{name}` is not available for this agent role");
+            }
+        }
         let tool = self
             .get(name)
             .ok_or_else(|| anyhow::anyhow!("Unknown tool: {name}"))?;
@@ -101,6 +108,56 @@ impl ToolRegistry {
 impl Default for ToolRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl ToolRegistry {
+    /// Create a new registry containing only tools allowed by the given filters.
+    /// `allowed`: if Some, only tools whose name is in the set are kept.
+    /// `disallowed`: if Some, tools whose name is in the set are removed.
+    /// Allowed is applied first (whitelist), then disallowed (blacklist).
+    pub fn filtered(
+        &self,
+        allowed: Option<&[String]>,
+        disallowed: Option<&[String]>,
+    ) -> Vec<String> {
+        let mut names: Vec<String> = self.tools.keys().cloned().collect();
+
+        if let Some(allow_list) = allowed {
+            let allow_set: std::collections::HashSet<&str> =
+                allow_list.iter().map(|s| s.as_str()).collect();
+            names.retain(|n| allow_set.contains(n.as_str()));
+        }
+
+        if let Some(deny_list) = disallowed {
+            let deny_set: std::collections::HashSet<&str> =
+                deny_list.iter().map(|s| s.as_str()).collect();
+            names.retain(|n| !deny_set.contains(n.as_str()));
+        }
+
+        names
+    }
+
+    pub fn names(&self) -> Vec<String> {
+        self.tools.keys().cloned().collect()
+    }
+
+    /// Return tool definitions filtered to only the given tool names.
+    pub fn definitions_filtered(&self, allowed_names: &[String]) -> Vec<nyzhi_provider::ToolDefinition> {
+        let allow_set: std::collections::HashSet<&str> =
+            allowed_names.iter().map(|s| s.as_str()).collect();
+        let mut defs: Vec<_> = self
+            .tools
+            .values()
+            .filter(|t| allow_set.contains(t.name()))
+            .map(|t| nyzhi_provider::ToolDefinition {
+                name: t.name().to_string(),
+                description: t.description().to_string(),
+                parameters: t.parameters_schema(),
+            })
+            .collect();
+        defs.sort_by(|a, b| a.name.cmp(&b.name));
+        defs
     }
 }
 

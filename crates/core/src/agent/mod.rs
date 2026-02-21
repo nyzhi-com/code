@@ -244,7 +244,11 @@ pub async fn run_turn_with_content(
         content: user_content,
     });
 
-    let tool_defs = registry.definitions();
+    let tool_defs = if let Some(allowed) = &ctx.allowed_tool_names {
+        registry.definitions_filtered(allowed)
+    } else {
+        registry.definitions()
+    };
     let max_tokens = config.max_tokens.or_else(|| model_info.map(|m| m.max_output_tokens));
 
     session_usage.turn_input_tokens = 0;

@@ -101,6 +101,8 @@ pub struct AgentManagerConfig {
     pub max_threads: usize,
     #[serde(default = "default_max_agent_depth")]
     pub max_depth: u32,
+    #[serde(default)]
+    pub roles: HashMap<String, AgentRoleToml>,
 }
 
 impl Default for AgentManagerConfig {
@@ -108,8 +110,29 @@ impl Default for AgentManagerConfig {
         Self {
             max_threads: default_max_agents(),
             max_depth: default_max_agent_depth(),
+            roles: HashMap::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentRoleToml {
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub config_file: Option<String>,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub max_steps: Option<u32>,
+    #[serde(default)]
+    pub read_only: Option<bool>,
+    #[serde(default)]
+    pub allowed_tools: Option<Vec<String>>,
+    #[serde(default)]
+    pub disallowed_tools: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -557,6 +580,11 @@ impl Config {
                         project.agent.agents.max_depth
                     } else {
                         global.agent.agents.max_depth
+                    },
+                    roles: {
+                        let mut roles = global.agent.agents.roles.clone();
+                        roles.extend(project.agent.agents.roles.clone());
+                        roles
                     },
                 },
             },
