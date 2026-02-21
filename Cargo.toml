@@ -81,6 +81,9 @@ glob = "0.3"
 # Regex
 regex = "1"
 
+# MCP (Model Context Protocol) client
+rmcp = { version = "0.16", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
+
 # Workspace crates
 nyzhi-core = { path = "crates/core" }
 nyzhi-provider = { path = "crates/provider" }

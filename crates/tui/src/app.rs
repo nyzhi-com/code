@@ -8,6 +8,7 @@ use crossterm::ExecutableCommand;
 use nyzhi_core::agent::{AgentConfig, AgentEvent, SessionUsage};
 use nyzhi_core::conversation::Thread;
 use nyzhi_core::tools::{ToolContext, ToolRegistry};
+use nyzhi_core::workspace::WorkspaceContext;
 use nyzhi_provider::{ModelInfo, Provider};
 use ratatui::prelude::*;
 use tokio::sync::broadcast;
@@ -58,12 +59,19 @@ pub struct App {
     pub theme: Theme,
     pub spinner: SpinnerState,
     pub session_usage: SessionUsage,
+    pub workspace: WorkspaceContext,
+    pub mcp_manager: Option<std::sync::Arc<nyzhi_core::mcp::McpManager>>,
     pub pending_approval:
         Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>>,
 }
 
 impl App {
-    pub fn new(provider_name: &str, model_name: &str, config: &nyzhi_config::TuiConfig) -> Self {
+    pub fn new(
+        provider_name: &str,
+        model_name: &str,
+        config: &nyzhi_config::TuiConfig,
+        workspace: WorkspaceContext,
+    ) -> Self {
         Self {
             mode: AppMode::Input,
             input: String::new(),
@@ -77,6 +85,8 @@ impl App {
             theme: Theme::from_config(config),
             spinner: SpinnerState::new(),
             session_usage: SessionUsage::default(),
+            workspace,
+            mcp_manager: None,
             pending_approval: None,
         }
     }
@@ -85,6 +95,7 @@ impl App {
         &mut self,
         provider: &dyn Provider,
         registry: &ToolRegistry,
+        config: &nyzhi_config::Config,
     ) -> Result<()> {
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
@@ -94,7 +105,35 @@ impl App {
 
         let (event_tx, mut event_rx) = broadcast::channel::<AgentEvent>(256);
         let mut thread = Thread::new();
-        let agent_config = AgentConfig::default();
+
+        let mcp_tool_summaries = if let Some(mgr) = &self.mcp_manager {
+            let mut summaries = Vec::new();
+            for (server, tool_def) in mgr.all_tools().await {
+                summaries.push(nyzhi_core::prompt::McpToolSummary {
+                    server_name: server,
+                    tool_name: tool_def.name.to_string(),
+                    description: tool_def
+                        .description
+                        .as_deref()
+                        .unwrap_or("MCP tool")
+                        .to_string(),
+                });
+            }
+            summaries
+        } else {
+            Vec::new()
+        };
+
+        let agent_config = AgentConfig {
+            system_prompt: nyzhi_core::prompt::build_system_prompt_with_mcp(
+                Some(&self.workspace),
+                config.agent.custom_instructions.as_deref(),
+                &mcp_tool_summaries,
+            ),
+            max_steps: config.agent.max_steps.unwrap_or(100),
+            max_tokens: config.agent.max_tokens,
+            ..AgentConfig::default()
+        };
 
         let model_info: Option<&ModelInfo> = provider
             .supported_models()
@@ -106,6 +145,7 @@ impl App {
         let tool_ctx = ToolContext {
             session_id: thread.id.clone(),
             cwd,
+            project_root: self.workspace.project_root.clone(),
         };
 
         loop {

@@ -28,6 +28,7 @@ pub trait Tool: Send + Sync {
 pub struct ToolContext {
     pub session_id: String,
     pub cwd: PathBuf,
+    pub project_root: PathBuf,
 }
 
 pub struct ToolResult {

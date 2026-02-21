@@ -1,7 +1,9 @@
 pub mod agent;
 pub mod context;
 pub mod conversation;
+pub mod mcp;
 pub mod session;
 pub mod tools;
 pub mod streaming;
 pub mod prompt;
+pub mod workspace;

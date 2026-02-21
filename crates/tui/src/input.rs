@@ -239,12 +239,86 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/init" {
+                match nyzhi_core::workspace::scaffold_nyzhi_dir(&app.workspace.project_root) {
+                    Ok(created) => {
+                        if created.is_empty() {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!(
+                                    ".nyzhi/ already exists in {}",
+                                    app.workspace.project_root.display()
+                                ),
+                            });
+                        } else {
+                            let mut lines = vec![format!(
+                                "Initialized .nyzhi/ in {}",
+                                app.workspace.project_root.display()
+                            )];
+                            for p in &created {
+                                lines.push(format!("  created {}", p.display()));
+                            }
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: lines.join("\n"),
+                            });
+                            app.workspace.has_nyzhi_config = true;
+                        }
+                    }
+                    Err(e) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Failed to initialize: {e}"),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/mcp" {
+                if let Some(mgr) = &app.mcp_manager {
+                    let servers = mgr.server_info_list().await;
+                    if servers.is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "No MCP servers connected.".to_string(),
+                        });
+                    } else {
+                        let mut lines = vec![format!("MCP servers ({}):", servers.len())];
+                        for s in &servers {
+                            lines.push(format!(
+                                "  {}  ({} tools: {})",
+                                s.name,
+                                s.tool_count,
+                                s.tool_names.join(", "),
+                            ));
+                        }
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: lines.join("\n"),
+                        });
+                    }
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No MCP servers configured.".to_string(),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/help" {
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
                     content: [
                         "Commands:",
                         "  /help        Show this help",
+                        "  /init        Initialize .nyzhi/ project config",
+                        "  /mcp         List connected MCP servers",
                         "  /clear       Clear the session",
                         "  /compact     Compress conversation history",
                         "  /sessions    List saved sessions",

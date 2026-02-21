@@ -44,17 +44,34 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         String::new()
     };
 
-    let right = format!(
-        "{}{}{}  {}  {}",
-        usage_str,
-        if usage_str.is_empty() { "" } else { "  " },
-        app.provider_name,
-        app.model_name,
-        match theme.mode {
-            crate::theme::ThemeMode::Dark => "dark",
-            crate::theme::ThemeMode::Light => "light",
-        }
-    );
+    let mut right_parts: Vec<&str> = Vec::new();
+    let usage_owned;
+    if !usage_str.is_empty() {
+        usage_owned = usage_str;
+        right_parts.push(&usage_owned);
+    }
+
+    let project_label;
+    if let Some(pt) = &app.workspace.project_type {
+        project_label = pt.name().to_string();
+        right_parts.push(&project_label);
+    }
+
+    let branch_label;
+    if let Some(branch) = &app.workspace.git_branch {
+        branch_label = branch.clone();
+        right_parts.push(&branch_label);
+    }
+
+    right_parts.push(&app.provider_name);
+    right_parts.push(&app.model_name);
+    let theme_label = match theme.mode {
+        crate::theme::ThemeMode::Dark => "dark",
+        crate::theme::ThemeMode::Light => "light",
+    };
+    right_parts.push(theme_label);
+
+    let right = right_parts.join("  ");
 
     let shortcuts = "ctrl+t theme  ctrl+a accent";
 
