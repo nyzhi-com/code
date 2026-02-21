@@ -1,11 +1,13 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use nyzhi_core::agent::{AgentConfig, AgentEvent};
 use nyzhi_core::conversation::Thread;
+use nyzhi_core::tools::{ToolContext, ToolRegistry};
 use nyzhi_provider::Provider;
 use tokio::sync::broadcast;
 
-use crate::app::{App, AppMode, DisplayMessage};
+use crate::app::{App, AppMode, DisplayItem};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_key(
     app: &mut App,
     key: KeyEvent,
@@ -13,8 +15,10 @@ pub async fn handle_key(
     thread: &mut Thread,
     agent_config: &AgentConfig,
     event_tx: &broadcast::Sender<AgentEvent>,
+    registry: &ToolRegistry,
+    tool_ctx: &ToolContext,
 ) {
-    if matches!(app.mode, AppMode::Streaming) {
+    if matches!(app.mode, AppMode::Streaming | AppMode::AwaitingApproval) {
         return;
     }
 
@@ -31,14 +35,14 @@ pub async fn handle_key(
             }
 
             if input == "/clear" {
-                app.messages.clear();
+                app.items.clear();
                 thread.clear();
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
             }
 
-            app.messages.push(DisplayMessage {
+            app.items.push(DisplayItem::Message {
                 role: "user".to_string(),
                 content: input.clone(),
             });
@@ -49,9 +53,16 @@ pub async fn handle_key(
             app.status = "thinking...".to_string();
 
             let event_tx = event_tx.clone();
-            if let Err(e) =
-                nyzhi_core::agent::run_turn(provider, thread, &input, agent_config, &event_tx)
-                    .await
+            if let Err(e) = nyzhi_core::agent::run_turn(
+                provider,
+                thread,
+                &input,
+                agent_config,
+                &event_tx,
+                registry,
+                tool_ctx,
+            )
+            .await
             {
                 let _ = event_tx.send(AgentEvent::Error(e.to_string()));
             }

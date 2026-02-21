@@ -75,6 +75,12 @@ dirs = "6"
 # Open browser
 open = "5"
 
+# File globbing
+glob = "0.3"
+
+# Regex
+regex = "1"
+
 # Workspace crates
 nyzhi-core = { path = "crates/core" }
 nyzhi-provider = { path = "crates/provider" }

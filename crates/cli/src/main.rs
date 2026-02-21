@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "nyzhi", about = "AI coding agent for the terminal", version)]
@@ -52,10 +53,11 @@ async fn main() -> Result<()> {
         .unwrap_or(&config.provider.default);
 
     let provider = nyzhi_provider::create_provider(provider_name, &config)?;
+    let registry = nyzhi_core::tools::default_registry();
 
     match cli.command {
         Some(Commands::Run { prompt }) => {
-            run_once(&*provider, &prompt).await?;
+            run_once(&*provider, &prompt, &registry).await?;
         }
         Some(Commands::Login { provider: prov }) => {
             eprintln!("OAuth login for '{prov}' is not yet implemented.");
@@ -75,46 +77,80 @@ async fn main() -> Result<()> {
             );
 
             let mut app = nyzhi_tui::App::new(provider_name, model_name);
-            app.run(&*provider).await?;
+            app.run(&*provider, &registry).await?;
         }
     }
 
     Ok(())
 }
 
-async fn run_once(provider: &dyn nyzhi_provider::Provider, prompt: &str) -> Result<()> {
-    use futures::StreamExt;
-    use nyzhi_provider::*;
+async fn run_once(
+    provider: &dyn nyzhi_provider::Provider,
+    prompt: &str,
+    registry: &nyzhi_core::tools::ToolRegistry,
+) -> Result<()> {
+    use nyzhi_core::agent::{AgentConfig, AgentEvent};
+    use nyzhi_core::conversation::Thread;
+    use nyzhi_core::tools::ToolContext;
 
-    let request = ChatRequest {
-        model: String::new(),
-        messages: vec![Message {
-            role: Role::User,
-            content: MessageContent::Text(prompt.to_string()),
-        }],
-        tools: Vec::new(),
-        max_tokens: Some(4096),
-        temperature: None,
-        system: Some(nyzhi_core::prompt::default_system_prompt()),
-        stream: true,
+    let mut thread = Thread::new();
+    let agent_config = AgentConfig::default();
+    let (event_tx, mut event_rx) = tokio::sync::broadcast::channel::<AgentEvent>(256);
+
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let tool_ctx = ToolContext {
+        session_id: thread.id.clone(),
+        cwd,
     };
 
-    let mut stream = provider.chat_stream(&request).await?;
-
-    while let Some(event) = stream.next().await {
-        match event? {
-            StreamEvent::TextDelta(text) => {
-                print!("{text}");
+    let tx = event_tx.clone();
+    let handle = tokio::spawn(async move {
+        while let Ok(event) = event_rx.recv().await {
+            match event {
+                AgentEvent::TextDelta(text) => print!("{text}"),
+                AgentEvent::ToolCallStart { name, .. } => {
+                    eprint!("\n[tool: {name}] ");
+                }
+                AgentEvent::ToolCallDone { name, output, .. } => {
+                    let preview = if output.len() > 200 {
+                        format!("{}...", &output[..197])
+                    } else {
+                        output
+                    };
+                    eprintln!("{name} done: {preview}");
+                }
+                AgentEvent::ApprovalRequest {
+                    tool_name, respond, ..
+                } => {
+                    // Auto-approve in non-interactive mode
+                    let mut guard = respond.lock().await;
+                    if let Some(sender) = guard.take() {
+                        eprintln!("[auto-approved: {tool_name}]");
+                        let _ = sender.send(true);
+                    }
+                }
+                AgentEvent::TurnComplete => break,
+                AgentEvent::Error(e) => {
+                    eprintln!("\nError: {e}");
+                    break;
+                }
+                _ => {}
             }
-            StreamEvent::Done => break,
-            StreamEvent::Error(e) => {
-                eprintln!("\nError: {e}");
-                break;
-            }
-            _ => {}
         }
-    }
+    });
 
+    nyzhi_core::agent::run_turn(
+        provider,
+        &mut thread,
+        prompt,
+        &agent_config,
+        &tx,
+        registry,
+        &tool_ctx,
+    )
+    .await?;
+
+    let _ = handle.await;
     println!();
     Ok(())
 }

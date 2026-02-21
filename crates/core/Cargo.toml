@@ -20,3 +20,5 @@ async-trait.workspace = true
 futures.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+glob.workspace = true
+regex.workspace = true

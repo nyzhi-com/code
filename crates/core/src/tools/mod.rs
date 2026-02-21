@@ -1,5 +1,15 @@
+pub mod permission;
+pub mod bash;
+pub mod read;
+pub mod write;
+pub mod edit;
+pub mod glob;
+pub mod grep;
+pub mod todo;
+
 use anyhow::Result;
 use async_trait::async_trait;
+use permission::ToolPermission;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -9,6 +19,9 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
+    fn permission(&self) -> ToolPermission {
+        ToolPermission::ReadOnly
+    }
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult>;
 }
 
@@ -43,14 +56,17 @@ impl ToolRegistry {
     }
 
     pub fn definitions(&self) -> Vec<nyzhi_provider::ToolDefinition> {
-        self.tools
+        let mut defs: Vec<_> = self
+            .tools
             .values()
             .map(|t| nyzhi_provider::ToolDefinition {
                 name: t.name().to_string(),
                 description: t.description().to_string(),
                 parameters: t.parameters_schema(),
             })
-            .collect()
+            .collect();
+        defs.sort_by(|a, b| a.name.cmp(&b.name));
+        defs
     }
 
     pub async fn execute(&self, name: &str, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
@@ -65,4 +81,17 @@ impl Default for ToolRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub fn default_registry() -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    registry.register(Box::new(bash::BashTool));
+    registry.register(Box::new(read::ReadTool));
+    registry.register(Box::new(write::WriteTool));
+    registry.register(Box::new(edit::EditTool));
+    registry.register(Box::new(glob::GlobTool));
+    registry.register(Box::new(grep::GrepTool));
+    registry.register(Box::new(todo::TodoWriteTool::new()));
+    registry.register(Box::new(todo::TodoReadTool::new()));
+    registry
 }
