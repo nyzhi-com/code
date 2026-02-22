@@ -56,9 +56,9 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/nyzhi dist/
+          cp target/${{ matrix.target }}/release/nyz dist/
           cd dist
-          tar czf ../${{ matrix.artifact }}.tar.gz nyzhi
+          tar czf ../${{ matrix.artifact }}.tar.gz nyz
 
       - name: Compute SHA256
         id: sha

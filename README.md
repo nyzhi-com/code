@@ -8,7 +8,7 @@ A performance-optimized AI coding agent for the terminal, built in Rust.
 curl -fsSL https://get.nyzhi.com | sh
 ```
 
-This installs the `nyzhi` binary to `~/.nyzhi/bin/` and adds it to your PATH.
+This installs the `nyz` binary to `~/.nyzhi/bin/` and adds it to your PATH.
 Your config (`~/.config/nyzhi/`), data (`~/.local/share/nyzhi/`), and OAuth tokens are never touched by installs or updates.
 
 **Self-update:**
@@ -296,7 +296,7 @@ Place an `AGENTS.md` or `.nyzhi/rules.md` in your project root to give the agent
 
 | What | Path | Touched by updates? |
 |------|------|---------------------|
-| Binary | `~/.nyzhi/bin/nyzhi` | Yes (replaced, old version backed up) |
+| Binary | `~/.nyzhi/bin/nyz` | Yes (replaced, old version backed up) |
 | Config | `~/.config/nyzhi/config.toml` | **Never** |
 | Project config | `.nyzhi/config.toml` | **Never** |
 | Sessions & history | `~/.local/share/nyzhi/` | **Never** |
@@ -309,7 +309,7 @@ Place an `AGENTS.md` or `.nyzhi/rules.md` in your project root to give the agent
 cargo build --release
 ```
 
-The binary is at `target/release/nyzhi`.
+The binary is at `target/release/nyz`.
 
 ## Releasing
 

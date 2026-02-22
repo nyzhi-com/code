@@ -4,7 +4,7 @@
 #        curl -fsSL https://get.nyzhi.com | sh -s -- --uninstall
 #
 # This script ONLY touches:
-#   - $NYZHI_HOME/bin/nyzhi  (the binary)
+#   - $NYZHI_HOME/bin/nyz  (the binary)
 #   - Shell profile (append PATH if needed)
 #
 # It NEVER touches:
@@ -93,7 +93,7 @@ do_uninstall() {
 
   printf '\n  nyzhi has been uninstalled.\n'
   printf '  Note: OAuth tokens in your OS keyring are not removed by this script.\n'
-  printf '  To clear them, run: nyzhi uninstall --yes  (before uninstalling)\n\n'
+  printf '  To clear them, run: nyz uninstall --yes  (before uninstalling)\n\n'
 }
 
 # ---- progress bar --------------------------------------------------------
@@ -184,7 +184,7 @@ fetch_version_info() {
 # ---- existing install check ----------------------------------------------
 
 check_existing_install() {
-  EXISTING_BIN="${INSTALL_DIR}/nyzhi"
+  EXISTING_BIN="${INSTALL_DIR}/nyz"
   EXISTING_VERSION=""
 
   if [ -f "$EXISTING_BIN" ]; then
@@ -208,7 +208,7 @@ show_header() {
 download_binary() {
   TMPDIR="$(mktemp -d)"
   trap 'rm -rf "$TMPDIR"' EXIT
-  TARBALL="${TMPDIR}/nyzhi.tar.gz"
+  TARBALL="${TMPDIR}/nyz.tar.gz"
 
   curl -fsSL "${RELEASE_URL}/download/${OS}/${ARCH}?version=${VERSION}" -o "$TARBALL" \
     || err "Download failed"
@@ -229,7 +229,7 @@ verify_checksum() {
 # ---- backup --------------------------------------------------------------
 
 backup_existing() {
-  EXISTING_BIN="${INSTALL_DIR}/nyzhi"
+  EXISTING_BIN="${INSTALL_DIR}/nyz"
   if [ ! -f "$EXISTING_BIN" ]; then
     return
   fi
@@ -238,7 +238,7 @@ backup_existing() {
   mkdir -p "$BACKUP_DIR"
 
   TIMESTAMP="$(date +%s)"
-  BACKUP_NAME="nyzhi-v${EXISTING_VERSION:-unknown}-${TIMESTAMP}"
+  BACKUP_NAME="nyz-v${EXISTING_VERSION:-unknown}-${TIMESTAMP}"
   BACKUP_PATH="${BACKUP_DIR}/${BACKUP_NAME}"
 
   cp "$EXISTING_BIN" "$BACKUP_PATH"
@@ -258,22 +258,22 @@ install_binary() {
   mkdir -p "$INSTALL_DIR"
   tar -xzf "$TARBALL" -C "$TMPDIR"
 
-  EXTRACTED="${TMPDIR}/nyzhi"
+  EXTRACTED="${TMPDIR}/nyz"
   if [ ! -f "$EXTRACTED" ]; then
-    EXTRACTED="$(find "$TMPDIR" -name nyzhi -type f | head -1)"
+    EXTRACTED="$(find "$TMPDIR" -name nyz -type f | head -1)"
   fi
   if [ -z "$EXTRACTED" ] || [ ! -f "$EXTRACTED" ]; then
-    err "Could not find nyzhi binary in archive"
+    err "Could not find nyz binary in archive"
   fi
 
   chmod +x "$EXTRACTED"
-  mv "$EXTRACTED" "${INSTALL_DIR}/nyzhi"
+  mv "$EXTRACTED" "${INSTALL_DIR}/nyz"
 }
 
 # ---- post-install verification -------------------------------------------
 
 verify_install() {
-  NEW_BIN="${INSTALL_DIR}/nyzhi"
+  NEW_BIN="${INSTALL_DIR}/nyz"
   if [ ! -x "$NEW_BIN" ]; then
     err "Installation failed: binary not executable"
   fi
@@ -335,7 +335,7 @@ print_success() {
     printf '  To get started:\n'
     printf '\n'
     printf '  \033[1mcd <project>\033[0m    # Open directory\n'
-    printf '  \033[1mnyzhi\033[0m           # Run command\n'
+    printf '  \033[1mnyz\033[0m             # Run command\n'
   fi
   printf '\n'
   printf '  For more information visit \033[4mhttps://nyzhi.com/docs\033[0m\n'

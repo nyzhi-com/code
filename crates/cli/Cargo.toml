@@ -6,10 +6,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "A performance-optimized AI coding CLI"
-default-run = "nyzhi"
+default-run = "nyz"
 
 [[bin]]
-name = "nyzhi"
+name = "nyz"
 path = "src/main.rs"
 
 [dependencies]

@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "nyzhi", about = "AI coding agent for the terminal", version)]
+#[command(name = "nyz", about = "AI coding agent for the terminal", version)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -815,7 +815,7 @@ async fn main() -> Result<()> {
                     eprintln!("{e}");
                 }
             }
-            println!("\nnyzhi has been uninstalled. Restart your shell to update PATH.");
+            println!("\nnyz has been uninstalled. Restart your shell to update PATH.");
             return Ok(());
         }
         Some(Commands::Cost { period }) => {

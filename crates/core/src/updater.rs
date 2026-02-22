@@ -113,7 +113,7 @@ fn backup_current_binary(version: &str) -> Result<PathBuf> {
     std::fs::create_dir_all(&dir)?;
 
     let timestamp = now_epoch();
-    let backup_name = format!("nyzhi-v{version}-{timestamp}");
+    let backup_name = format!("nyz-v{version}-{timestamp}");
     let backup_path = dir.join(&backup_name);
 
     std::fs::copy(&current_exe, &backup_path)
@@ -140,7 +140,7 @@ fn prune_old_backups() {
         .filter(|e| {
             e.file_name()
                 .to_str()
-                .is_some_and(|n| n.starts_with("nyzhi-v"))
+                .is_some_and(|n| n.starts_with("nyz-v") || n.starts_with("nyzhi-v"))
         })
         .filter_map(|e| {
             e.metadata()
@@ -178,7 +178,7 @@ pub fn list_backups() -> Vec<PathBuf> {
         .filter(|e| {
             e.file_name()
                 .to_str()
-                .is_some_and(|n| n.starts_with("nyzhi-v"))
+                .is_some_and(|n| n.starts_with("nyz-v") || n.starts_with("nyzhi-v"))
         })
         .filter_map(|e| {
             e.metadata()
@@ -547,32 +547,30 @@ async fn download_and_extract(info: &UpdateInfo) -> Result<PathBuf> {
     let _ = std::fs::remove_dir_all(&extract_dir);
     std::fs::create_dir_all(&extract_dir)?;
 
-    let tarball = extract_dir.join("nyzhi.tar.gz");
+    let tarball = extract_dir.join("nyz.tar.gz");
     std::fs::write(&tarball, &bytes)?;
 
     let tar_gz = std::fs::File::open(&tarball)?;
     let tar = flate2::read::GzDecoder::new(tar_gz);
     let mut archive = tar::Archive::new(tar);
 
-    // unpack_in() prevents path traversal (rejects entries with ".." components)
     archive.unpack(&extract_dir)?;
 
-    // Walk the extracted tree to find the nyzhi binary
     let binary_path = find_binary_in_dir(&extract_dir)
-        .context("Could not find nyzhi binary in archive")?;
+        .context("Could not find nyz binary in archive")?;
 
     Ok(binary_path)
 }
 
 fn find_binary_in_dir(dir: &std::path::Path) -> Option<PathBuf> {
-    let direct = dir.join("nyzhi");
+    let direct = dir.join("nyz");
     if direct.is_file() {
         return Some(direct);
     }
     let walker = std::fs::read_dir(dir).ok()?;
     for entry in walker.flatten() {
         let path = entry.path();
-        if path.is_file() && path.file_name().and_then(|n| n.to_str()) == Some("nyzhi") {
+        if path.is_file() && path.file_name().and_then(|n| n.to_str()) == Some("nyz") {
             return Some(path);
         }
         if path.is_dir() {
