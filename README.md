@@ -29,7 +29,7 @@ Or via a package manager:
 
 ```bash
 cargo install nyzhi           # Cargo
-npm install -g nyz             # npm
+npm install -g nyzhi            # npm
 ```
 
 <details>
