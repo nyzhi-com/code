@@ -761,7 +761,20 @@ fn should_auto_approve(trust: &TrustConfig, tool_name: &str, args: &serde_json::
 
 fn extract_target_path(tool_name: &str, args: &serde_json::Value) -> Option<String> {
     match tool_name {
-        "edit" | "write" | "read" => args
+        "edit" | "multi_edit" | "write" | "read" | "delete_file" => args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        "move_file" | "copy_file" => args
+            .get("destination")
+            .or_else(|| args.get("source"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        "create_dir" => args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        "apply_patch" => args
             .get("file_path")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),

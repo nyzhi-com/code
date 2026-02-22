@@ -531,7 +531,7 @@ impl App {
                 match event::read()? {
                 Event::Paste(text) => {
                     if let Some(ref mut sel) = self.selector {
-                        if matches!(sel.kind, SelectorKind::ApiKeyInput) {
+                        if matches!(sel.kind, SelectorKind::ApiKeyInput | SelectorKind::CustomModelInput) {
                             sel.search.push_str(&text);
                         }
                     } else if matches!(self.mode, AppMode::Input) {
@@ -546,19 +546,19 @@ impl App {
                     } else if self.text_prompt.is_some() {
                         self.handle_text_prompt_key(key, config).await;
                     } else if self.selector.is_some() {
-                        self.handle_selector_key(key, &mut model_info_idx);
+                        self.handle_selector_key(key, &mut model_info_idx, &mut agent_config);
                     } else if key.code == KeyCode::Char('c')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
                         self.should_quit = true;
+                    } else if key.code == KeyCode::Char('k')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        self.open_command_selector();
                     } else if key.code == KeyCode::Char('t')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
                         self.open_theme_selector();
-                    } else if key.code == KeyCode::Char('a')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        self.open_accent_selector();
                     } else if key.code == KeyCode::Char('l')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
@@ -1303,7 +1303,7 @@ impl App {
         }
     }
 
-    fn handle_selector_key(&mut self, key: crossterm::event::KeyEvent, model_info_idx: &mut Option<usize>) {
+    fn handle_selector_key(&mut self, key: crossterm::event::KeyEvent, model_info_idx: &mut Option<usize>, agent_config: &mut AgentConfig) {
         use crate::components::selector::{SelectorAction, SelectorKind};
         use crate::theme::{Accent, ThemePreset};
 
@@ -1344,6 +1344,11 @@ impl App {
                                 role: "system".to_string(),
                                 content: format!("Thinking level set to: {}", label),
                             });
+                        } else if value.starts_with("__custom__/") {
+                            let provider_id = value.strip_prefix("__custom__/").unwrap().to_string();
+                            self.selector = None;
+                            self.open_custom_model_input(&provider_id);
+                            return;
                         } else if let Some((prov, model_id)) = value.split_once('/') {
                             self.provider_name = prov.to_string();
                             self.model_name = model_id.to_string();
@@ -1383,10 +1388,68 @@ impl App {
                     }
                     SelectorKind::Command => {
                         self.selector = None;
-                        self.input = value;
+                        match value.as_str() {
+                            "/style" => { self.open_style_selector(); return; }
+                            "/trust" => { self.open_trust_selector(); return; }
+                            "/resume" | "/sessions" => { self.open_session_selector(); return; }
+                            "/theme" => { self.open_theme_selector(); return; }
+                            "/accent" => { self.open_accent_selector(); return; }
+                            "/model" => { self.open_model_selector(); return; }
+                            "/connect" => { self.open_provider_selector(); return; }
+                            _ => {
+                                self.input = value;
+                                self.cursor_pos = self.input.len();
+                                self.pending_command_dispatch = true;
+                                return;
+                            }
+                        }
+                    }
+                    SelectorKind::Style => {
+                        match value.as_str() {
+                            "normal" => self.output_style = nyzhi_config::OutputStyle::Normal,
+                            "verbose" => self.output_style = nyzhi_config::OutputStyle::Verbose,
+                            "minimal" => self.output_style = nyzhi_config::OutputStyle::Minimal,
+                            "structured" => self.output_style = nyzhi_config::OutputStyle::Structured,
+                            _ => {}
+                        }
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Output style: {}", self.output_style),
+                        });
+                    }
+                    SelectorKind::Trust => {
+                        if let Ok(mode) = value.parse::<nyzhi_config::TrustMode>() {
+                            agent_config.trust.mode = mode.clone();
+                            self.trust_mode = mode;
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Trust mode: {}", value),
+                            });
+                        }
+                    }
+                    SelectorKind::Session => {
+                        self.selector = None;
+                        self.input = format!("/resume {}", value);
                         self.cursor_pos = self.input.len();
                         self.pending_command_dispatch = true;
                         return;
+                    }
+                    SelectorKind::CustomModelInput => {
+                        let provider_id = self.selector.as_ref()
+                            .and_then(|s| s.context_value.clone())
+                            .unwrap_or_default();
+                        let model_id = self.selector.as_ref()
+                            .map(|s| s.search.trim().to_string())
+                            .unwrap_or_default();
+                        if !model_id.is_empty() {
+                            self.provider_name = provider_id;
+                            self.model_name = model_id.clone();
+                            *model_info_idx = None;
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Switched to custom model: {}", model_id),
+                            });
+                        }
                     }
                     SelectorKind::ApiKeyInput => {
                         let provider_id = self.selector.as_ref()
@@ -1553,20 +1616,21 @@ impl App {
         ));
     }
 
-    pub fn open_model_selector(&mut self, _models: &[nyzhi_provider::ModelInfo]) {
+    pub fn open_model_selector(&mut self) {
         use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
 
         let registry = nyzhi_provider::ModelRegistry::new();
         let mut all_providers = registry.providers();
-        let priority = ["openai", "anthropic", "gemini", "antigravity", "deepseek", "groq"];
+        let priority = ["openai", "anthropic", "gemini", "openrouter", "antigravity", "deepseek", "groq", "together", "ollama"];
         all_providers.sort_by_key(|p| {
             priority.iter().position(|&x| x == *p).unwrap_or(priority.len())
         });
         let mut items = Vec::new();
 
+        let supports_custom = ["openrouter", "ollama", "together"];
         for provider_id in &all_providers {
             let models = registry.models_for(provider_id);
-            if models.is_empty() {
+            if models.is_empty() && !supports_custom.contains(provider_id) {
                 continue;
             }
             let status = nyzhi_auth::auth_status(provider_id);
@@ -1586,12 +1650,15 @@ impl App {
                 let value = format!("{}/{}", provider_id, m.id);
                 items.push(SelectorItem::entry(&label, &value));
             }
+            if supports_custom.contains(provider_id) {
+                let label = format!("{:<24} enter model ID", "Custom model...");
+                let value = format!("__custom__/{}", provider_id);
+                items.push(SelectorItem::entry(&label, &value));
+            }
         }
 
         let current = format!("{}/{}", self.provider_name, self.model_name);
-        let mut state = SelectorState::new(SelectorKind::Model, "Model", items, &current);
-        state.kind = SelectorKind::Provider;
-        self.selector = Some(state);
+        self.selector = Some(SelectorState::new(SelectorKind::Model, "Model", items, &current));
     }
 
     pub fn open_provider_selector(&mut self) {
@@ -1789,6 +1856,114 @@ impl App {
             items,
             "",
         ));
+    }
+
+    pub fn open_style_selector(&mut self) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let current = self.output_style.to_string();
+        let options = [
+            ("normal", "Default output"),
+            ("verbose", "Expand all tool args/outputs"),
+            ("minimal", "Hide tool details"),
+            ("structured", "JSON output"),
+        ];
+        let items: Vec<SelectorItem> = options.iter().map(|(id, desc)| {
+            let marker = if *id == current { " ●" } else { "" };
+            SelectorItem::entry(&format!("{:<14} {}{}", id, desc, marker), id)
+        }).collect();
+
+        self.selector = Some(SelectorState::new(
+            SelectorKind::Style,
+            "Output Style",
+            items,
+            "",
+        ));
+    }
+
+    pub fn open_trust_selector(&mut self) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let current = self.trust_mode.to_string();
+        let options = [
+            ("off", "Confirm every action"),
+            ("limited", "Auto-approve reads, confirm writes"),
+            ("autoedit", "Auto-approve reads + edits"),
+            ("full", "Auto-approve everything"),
+        ];
+        let items: Vec<SelectorItem> = options.iter().map(|(id, desc)| {
+            let marker = if *id == current { " ●" } else { "" };
+            SelectorItem::entry(&format!("{:<14} {}{}", id, desc, marker), id)
+        }).collect();
+
+        self.selector = Some(SelectorState::new(
+            SelectorKind::Trust,
+            "Trust Mode",
+            items,
+            "",
+        ));
+    }
+
+    pub fn open_custom_model_input(&mut self, provider_id: &str) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let display_name = nyzhi_config::find_provider_def(provider_id)
+            .map(|d| d.name)
+            .unwrap_or(provider_id);
+
+        let items = vec![
+            SelectorItem::entry(
+                &format!("Type a model ID for {} and press Enter", display_name),
+                "submit",
+            ),
+        ];
+        let mut state = SelectorState::new(
+            SelectorKind::CustomModelInput,
+            &format!("{} Model ID", display_name),
+            items,
+            "",
+        );
+        state.context_value = Some(provider_id.to_string());
+        self.selector = Some(state);
+    }
+
+    pub fn open_session_selector(&mut self) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        match nyzhi_core::session::list_sessions() {
+            Ok(mut sessions) => {
+                sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                if sessions.is_empty() {
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No saved sessions.".to_string(),
+                    });
+                    return;
+                }
+                let items: Vec<SelectorItem> = sessions.iter().take(20).map(|s| {
+                    let label = format!(
+                        "{} ({} msgs, {})",
+                        s.title,
+                        s.message_count,
+                        s.updated_at.format("%m/%d %H:%M"),
+                    );
+                    SelectorItem::entry(&label, &s.id)
+                }).collect();
+
+                self.selector = Some(SelectorState::new(
+                    SelectorKind::Session,
+                    "Resume Session",
+                    items,
+                    "",
+                ));
+            }
+            Err(e) => {
+                self.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!("Error listing sessions: {e}"),
+                });
+            }
+        }
     }
 
     async fn respond_approval(&mut self, approved: bool) {

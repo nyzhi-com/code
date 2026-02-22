@@ -49,6 +49,7 @@ pub struct OpenAIProvider {
     models: Vec<ModelInfo>,
     is_codex_sub: bool,
     account_id: Option<String>,
+    is_openrouter: bool,
 }
 
 impl OpenAIProvider {
@@ -64,6 +65,7 @@ impl OpenAIProvider {
         } else {
             base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string())
         };
+        let is_openrouter = effective_base.contains("openrouter.ai");
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(120))
@@ -75,6 +77,7 @@ impl OpenAIProvider {
             models: default_models(),
             is_codex_sub,
             account_id,
+            is_openrouter,
         }
     }
 
@@ -93,6 +96,17 @@ impl OpenAIProvider {
             entry.and_then(|e| e.base_url.clone()),
             entry.and_then(|e| e.model.clone()),
         ))
+    }
+
+    fn chat_request(&self, url: &str) -> reqwest::RequestBuilder {
+        let mut req = self.client.post(url)
+            .header("Authorization", format!("Bearer {}", self.api_key));
+        if self.is_openrouter {
+            req = req
+                .header("HTTP-Referer", "https://github.com/nyzhi/code")
+                .header("X-Title", "nyzhi");
+        }
+        req
     }
 
     fn build_messages(&self, request: &ChatRequest) -> Vec<serde_json::Value> {
@@ -253,13 +267,8 @@ impl Provider for OpenAIProvider {
             body["tools"] = json!(self.build_tools_chat(&request.tools));
         }
 
-        let resp = self
-            .client
-            .post(format!("{}/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body)
-            .send()
-            .await?;
+        let url = format!("{}/chat/completions", self.base_url);
+        let resp = self.chat_request(&url).json(&body).send().await?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -354,13 +363,8 @@ impl Provider for OpenAIProvider {
             body["tools"] = json!(self.build_tools_chat(&request.tools));
         }
 
-        let resp = self
-            .client
-            .post(format!("{}/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body)
-            .send()
-            .await?;
+        let url = format!("{}/chat/completions", self.base_url);
+        let resp = self.chat_request(&url).json(&body).send().await?;
 
         let status = resp.status();
         if !status.is_success() {

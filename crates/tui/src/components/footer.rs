@@ -29,7 +29,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let left = match app.mode {
         AppMode::Streaming => "esc cancel",
         AppMode::AwaitingApproval => "y approve  n deny",
-        AppMode::Input => "",
+        AppMode::Input => "^K cmds  Tab thinking",
     };
 
     let mut right_parts: Vec<String> = Vec::new();
@@ -53,6 +53,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         } else {
             right_parts.push(format!("{tok} {cost}"));
         }
+    }
+
+    if let Some(ref level) = app.thinking_level {
+        right_parts.push(format!("think:{level}"));
     }
 
     let auth = nyzhi_auth::auth_status(&app.provider_name);

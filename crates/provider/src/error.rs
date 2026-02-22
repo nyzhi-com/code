@@ -1,9 +1,29 @@
+fn extract_error_message(body: &str) -> String {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
+        if let Some(msg) = v["error"]["message"].as_str() {
+            return msg.to_string();
+        }
+        if let Some(msg) = v["message"].as_str() {
+            return msg.to_string();
+        }
+        if let Some(msg) = v["error"].as_str() {
+            return msg.to_string();
+        }
+    }
+    let trimmed = body.trim();
+    if trimmed.len() > 200 {
+        format!("{}...", &trimmed[..200])
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
-    #[error("HTTP error: {status} - {body}")]
+    #[error("{status}: {}", extract_error_message(body))]
     HttpError { status: u16, body: String },
 
-    #[error("Server error: {status} - {body}")]
+    #[error("{status}: {}", extract_error_message(body))]
     ServerError { status: u16, body: String },
 
     #[error("SSE stream error: {0}")]

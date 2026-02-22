@@ -86,18 +86,24 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
 fn render_normal_input(frame: &mut Frame, inner: Rect, app: &App, theme: &Theme) {
     let prompt = "> ";
     let cont = "  ";
-    let lines: Vec<Line> = app
-        .input
-        .split('\n')
-        .enumerate()
-        .map(|(i, line_text)| {
-            let prefix = if i == 0 { prompt } else { cont };
-            Line::from(vec![
-                Span::styled(prefix, Style::default().fg(theme.accent).bold()),
-                Span::styled(line_text, Style::default().fg(theme.text_primary)),
-            ])
-        })
-        .collect();
+    let lines: Vec<Line> = if app.input.is_empty() {
+        vec![Line::from(vec![
+            Span::styled(prompt, Style::default().fg(theme.accent).bold()),
+            Span::styled("Ask anything, Ctrl+K for commands", Style::default().fg(theme.text_disabled)),
+        ])]
+    } else {
+        app.input
+            .split('\n')
+            .enumerate()
+            .map(|(i, line_text)| {
+                let prefix = if i == 0 { prompt } else { cont };
+                Line::from(vec![
+                    Span::styled(prefix, Style::default().fg(theme.accent).bold()),
+                    Span::styled(line_text, Style::default().fg(theme.text_primary)),
+                ])
+            })
+            .collect()
+    };
 
     let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
     let visible_height = inner.height;

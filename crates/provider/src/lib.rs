@@ -155,6 +155,9 @@ impl ModelRegistry {
         models.insert("glm".into(), glm.clone());
         models.insert("glm-coding".into(), glm);
         models.insert("antigravity".into(), antigravity_models());
+        models.insert("openrouter".into(), vec![]);
+        models.insert("together".into(), together_models());
+        models.insert("ollama".into(), ollama_models());
         Self { models }
     }
 
@@ -380,6 +383,67 @@ fn glm_models() -> Vec<ModelInfo> {
             input_price_per_m: 0.07, output_price_per_m: 0.40,
             cache_read_price_per_m: 0.01, cache_write_price_per_m: 0.0,
             tier: ModelTier::Low, thinking: None,
+        },
+    ]
+}
+
+fn together_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-Turbo".into(),
+            name: "Llama 4 Maverick".into(), provider: "together".into(),
+            context_window: 524_288, max_output_tokens: 65_536,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 0.27, output_price_per_m: 0.85,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
+        },
+        ModelInfo {
+            id: "Qwen/Qwen3-235B-A22B-Instruct-Turbo".into(),
+            name: "Qwen3 235B".into(), provider: "together".into(),
+            context_window: 131_072, max_output_tokens: 32_768,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.20, output_price_per_m: 0.60,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
+        },
+        ModelInfo {
+            id: "deepseek-ai/DeepSeek-R1".into(),
+            name: "DeepSeek R1".into(), provider: "together".into(),
+            context_window: 164_000, max_output_tokens: 16_384,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.55, output_price_per_m: 2.19,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: None,
+        },
+    ]
+}
+
+fn ollama_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "qwen3:32b".into(), name: "Qwen3 32B".into(), provider: "ollama".into(),
+            context_window: 131_072, max_output_tokens: 32_768,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.0, output_price_per_m: 0.0,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
+        },
+        ModelInfo {
+            id: "llama3.3:70b".into(), name: "Llama 3.3 70B".into(), provider: "ollama".into(),
+            context_window: 128_000, max_output_tokens: 32_768,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.0, output_price_per_m: 0.0,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
+        },
+        ModelInfo {
+            id: "devstral:24b".into(), name: "Devstral 24B".into(), provider: "ollama".into(),
+            context_window: 131_072, max_output_tokens: 32_768,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.0, output_price_per_m: 0.0,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
         },
     ]
 }

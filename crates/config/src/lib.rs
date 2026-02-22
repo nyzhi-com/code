@@ -496,6 +496,8 @@ pub struct ProviderEntry {
     pub base_url: Option<String>,
     pub model: Option<String>,
     pub api_style: Option<String>,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -909,5 +911,7 @@ fn merge_provider_entry(global: &ProviderEntry, project: &ProviderEntry) -> Prov
         base_url: project.base_url.clone().or_else(|| global.base_url.clone()),
         model: project.model.clone().or_else(|| global.model.clone()),
         api_style: project.api_style.clone().or_else(|| global.api_style.clone()),
+        max_tokens: project.max_tokens.or(global.max_tokens),
+        temperature: project.temperature.or(global.temperature),
     }
 }

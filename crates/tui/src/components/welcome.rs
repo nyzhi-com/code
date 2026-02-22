@@ -16,7 +16,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let logo_width = logo_lines.iter().map(|l| l.len()).max().unwrap_or(0);
     let inner_w = inner.width as usize;
 
-    let content_height = logo_lines.len() + 4;
+    let content_height = logo_lines.len() + 6;
     let vert_pad = inner.height.saturating_sub(content_height as u16) / 2;
 
     for _ in 0..vert_pad {
@@ -43,14 +43,38 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     lines.push(Line::from(""));
 
     let auth = nyzhi_auth::auth_status(&app.provider_name);
-    let footer = if auth == "not connected" {
-        "type /connect to get started".to_string()
+    if auth == "not connected" {
+        let hint = "type /connect to get started";
+        let h_pad = inner_w.saturating_sub(hint.len()) / 2;
+        lines.push(Line::from(Span::styled(
+            format!("{:>h_pad$}{hint}", ""),
+            Style::default().fg(theme.text_disabled),
+        )));
     } else {
-        format!("{} · {}", app.provider_name, app.model_name)
-    };
-    let f_pad = inner_w.saturating_sub(footer.len()) / 2;
+        let status = format!("{} · {}", app.provider_name, app.model_name);
+        let s_pad = inner_w.saturating_sub(status.len()) / 2;
+        lines.push(Line::from(Span::styled(
+            format!("{:>s_pad$}{status}", ""),
+            Style::default().fg(theme.text_tertiary),
+        )));
+    }
+
+    lines.push(Line::from(""));
+
+    let shortcuts = [
+        ("Ctrl+K", "commands"),
+        ("Tab", "thinking"),
+        ("Ctrl+J", "newline"),
+        ("Ctrl+L", "clear"),
+    ];
+    let hint_text: String = shortcuts
+        .iter()
+        .map(|(k, d)| format!("{} {}", k, d))
+        .collect::<Vec<_>>()
+        .join("   ");
+    let ht_pad = inner_w.saturating_sub(hint_text.len()) / 2;
     lines.push(Line::from(Span::styled(
-        format!("{:>f_pad$}{footer}", ""),
+        format!("{:>ht_pad$}{hint_text}", ""),
         Style::default().fg(theme.text_disabled),
     )));
 

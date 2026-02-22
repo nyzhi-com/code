@@ -35,8 +35,31 @@ pub async fn handle_key(
     }
 
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('u') {
-        app.input.clear();
+        app.input.drain(..app.cursor_pos);
         app.cursor_pos = 0;
+        return;
+    }
+
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('w') {
+        if app.cursor_pos > 0 {
+            let before = &app.input[..app.cursor_pos];
+            let trimmed = before.trim_end();
+            let new_end = trimmed.rfind(|c: char| c.is_whitespace())
+                .map(|i| i + 1)
+                .unwrap_or(0);
+            app.input.drain(new_end..app.cursor_pos);
+            app.cursor_pos = new_end;
+        }
+        return;
+    }
+
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('a') {
+        app.cursor_pos = 0;
+        return;
+    }
+
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('e') {
+        app.cursor_pos = app.input.len();
         return;
     }
 
@@ -221,48 +244,39 @@ pub async fn handle_key(
                 return;
             }
 
-            if input == "/sessions" || input.starts_with("/sessions ") {
-                let query = input.strip_prefix("/sessions").unwrap().trim();
-                let result = if query.is_empty() {
-                    nyzhi_core::session::list_sessions()
-                } else {
-                    nyzhi_core::session::find_sessions(query)
-                };
-                match result {
+            if input == "/sessions" {
+                app.open_session_selector();
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input.starts_with("/sessions ") {
+                let query = input.strip_prefix("/sessions ").unwrap().trim();
+                match nyzhi_core::session::find_sessions(query) {
                     Ok(sessions) => {
                         if sessions.is_empty() {
-                            let msg = if query.is_empty() {
-                                "No saved sessions.".to_string()
-                            } else {
-                                format!("No sessions matching '{query}'.")
-                            };
                             app.items.push(DisplayItem::Message {
                                 role: "system".to_string(),
-                                content: msg,
+                                content: format!("No sessions matching '{query}'."),
                             });
                         } else {
-                            let header = if query.is_empty() {
-                                "Saved sessions:".to_string()
-                            } else {
-                                format!("Sessions matching '{query}':")
-                            };
-                            let mut lines = vec![header];
-                            for (i, s) in sessions.iter().take(20).enumerate() {
-                                lines.push(format!(
-                                    "  {}. [{}] {} ({} msgs, {})",
-                                    i + 1,
-                                    &s.id[..8],
+                            use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+                            let items: Vec<SelectorItem> = sessions.iter().take(20).map(|s| {
+                                let label = format!(
+                                    "{} ({} msgs, {})",
                                     s.title,
                                     s.message_count,
-                                    s.updated_at.format("%Y-%m-%d %H:%M"),
-                                ));
-                            }
-                            lines.push(String::new());
-                            lines.push("Use /resume <id-prefix> to restore a session.".to_string());
-                            app.items.push(DisplayItem::Message {
-                                role: "system".to_string(),
-                                content: lines.join("\n"),
-                            });
+                                    s.updated_at.format("%m/%d %H:%M"),
+                                );
+                                SelectorItem::entry(&label, &s.id)
+                            }).collect();
+                            app.selector = Some(SelectorState::new(
+                                SelectorKind::Session,
+                                &format!("Sessions matching '{}'", query),
+                                items,
+                                "",
+                            ));
                         }
                     }
                     Err(e) => {
@@ -272,6 +286,13 @@ pub async fn handle_key(
                         });
                     }
                 }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/resume" {
+                app.open_session_selector();
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
@@ -984,7 +1005,7 @@ pub async fn handle_key(
                         content: "No models available. Configure a provider first.".to_string(),
                     });
                 } else {
-                    app.open_model_selector(models);
+                    app.open_model_selector();
                 }
                 app.input.clear();
                 app.cursor_pos = 0;
@@ -1234,28 +1255,7 @@ pub async fn handle_key(
             }
 
             if input == "/trust" {
-                let mode = &agent_config.trust.mode;
-                let tools = &agent_config.trust.allow_tools;
-                let paths = &agent_config.trust.allow_paths;
-                let deny_tools = &agent_config.trust.deny_tools;
-                let deny_paths = &agent_config.trust.deny_paths;
-                let mut msg = format!("Trust mode: {mode}");
-                if !tools.is_empty() {
-                    msg.push_str(&format!("\nAllowed tools: {}", tools.join(", ")));
-                }
-                if !paths.is_empty() {
-                    msg.push_str(&format!("\nAllowed paths: {}", paths.join(", ")));
-                }
-                if !deny_tools.is_empty() {
-                    msg.push_str(&format!("\nDenied tools: {}", deny_tools.join(", ")));
-                }
-                if !deny_paths.is_empty() {
-                    msg.push_str(&format!("\nDenied paths: {}", deny_paths.join(", ")));
-                }
-                app.items.push(DisplayItem::Message {
-                    role: "system".to_string(),
-                    content: msg,
-                });
+                app.open_trust_selector();
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
@@ -1481,50 +1481,34 @@ pub async fn handle_key(
                 return;
             }
 
-            if input == "/style" || input.starts_with("/style ") {
-                let arg = input.strip_prefix("/style").unwrap().trim();
+            if input == "/style" {
+                app.open_style_selector();
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input.starts_with("/style ") {
+                let arg = input.strip_prefix("/style ").unwrap().trim();
                 match arg {
-                    "normal" => {
-                        app.output_style = nyzhi_config::OutputStyle::Normal;
-                        app.items.push(DisplayItem::Message {
-                            role: "system".to_string(),
-                            content: "Output style: normal".to_string(),
-                        });
-                    }
-                    "verbose" => {
-                        app.output_style = nyzhi_config::OutputStyle::Verbose;
-                        app.items.push(DisplayItem::Message {
-                            role: "system".to_string(),
-                            content: "Output style: verbose (all tool args/outputs expanded)".to_string(),
-                        });
-                    }
-                    "minimal" => {
-                        app.output_style = nyzhi_config::OutputStyle::Minimal;
-                        app.items.push(DisplayItem::Message {
-                            role: "system".to_string(),
-                            content: "Output style: minimal (tool details hidden)".to_string(),
-                        });
-                    }
-                    "structured" => {
-                        app.output_style = nyzhi_config::OutputStyle::Structured;
-                        app.items.push(DisplayItem::Message {
-                            role: "system".to_string(),
-                            content: "Output style: structured (JSON)".to_string(),
-                        });
-                    }
-                    "" => {
-                        app.items.push(DisplayItem::Message {
-                            role: "system".to_string(),
-                            content: format!("Current output style: {}", app.output_style),
-                        });
-                    }
+                    "normal" => app.output_style = nyzhi_config::OutputStyle::Normal,
+                    "verbose" => app.output_style = nyzhi_config::OutputStyle::Verbose,
+                    "minimal" => app.output_style = nyzhi_config::OutputStyle::Minimal,
+                    "structured" => app.output_style = nyzhi_config::OutputStyle::Structured,
                     _ => {
                         app.items.push(DisplayItem::Message {
                             role: "system".to_string(),
-                            content: "Usage: /style [normal|verbose|minimal|structured]".to_string(),
+                            content: "Unknown style. Use /style to pick.".to_string(),
                         });
+                        app.input.clear();
+                        app.cursor_pos = 0;
+                        return;
                     }
                 }
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!("Output style: {}", app.output_style),
+                });
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
@@ -1619,14 +1603,14 @@ pub async fn handle_key(
                         "  /clear          Clear the session",
                         "  /compact [hint] Compress conversation history (optional focus hint)",
                         "  /context        Show context window usage breakdown",
-                        "  /sessions [q]   List saved sessions (optionally filter)",
-                        "  /resume <id>    Restore a saved session",
+                        "  /style          Choose output style (normal/verbose/minimal/structured)",
+                        "  /sessions       Pick a session to resume",
+                        "  /resume         Pick a session to resume",
                         "  /session delete <id>  Delete a saved session",
                         "  /session rename <t>   Rename current session",
                         "  /theme          Choose theme (dark/light)",
                         "  /accent         Choose accent color",
-                        "  /trust          Show current trust mode",
-                        "  /trust <mode>   Set trust mode (off, limited, full)",
+                        "  /trust          Choose trust mode (off/limited/autoedit/full)",
                         "  /editor         Open $EDITOR for multi-line input",
                         "  /retry          Resend the last prompt",
                         "  /undo           Undo the last file change",
@@ -1675,10 +1659,14 @@ pub async fn handle_key(
                         "  ctrl+f          Kill all background tasks (double-press)",
                         "",
                         "Shortcuts:",
-                        "  ctrl+t          Open theme picker",
-                        "  ctrl+a          Open accent picker",
+                        "  ctrl+k          Command palette",
+                        "  tab             Cycle thinking level",
+                        "  ctrl+t          Theme picker",
                         "  ctrl+l          Clear session",
-                        "  ctrl+u          Clear input line",
+                        "  ctrl+u          Clear to start of line",
+                        "  ctrl+w          Delete word backward",
+                        "  ctrl+a/e        Jump to start/end of line",
+                        "  ctrl+r          Reverse search history",
                         "  ctrl+c          Exit",
                     ]
                     .join("\n"),
@@ -1873,17 +1861,13 @@ pub async fn handle_key(
                 });
             }
         }
-        KeyCode::Char(c) => {
-            if c == '/' && app.input.is_empty() {
-                app.open_command_selector();
-            } else {
+            KeyCode::Char(c) => {
                 app.input.insert(app.cursor_pos, c);
                 app.cursor_pos += 1;
                 app.history.reset_cursor();
                 app.completion = None;
                 try_open_completion(app, &tool_ctx.cwd);
             }
-        }
         KeyCode::Backspace => {
             if app.cursor_pos > 0 {
                 app.cursor_pos -= 1;
