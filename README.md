@@ -2,6 +2,26 @@
 
 A performance-optimized AI coding agent for the terminal, built in Rust.
 
+## Install
+
+```bash
+curl -fsSL https://get.nyzhi.com | sh
+```
+
+This installs the `nyzhi` binary to `~/.nyzhi/bin/` and adds it to your PATH.
+Your config (`~/.config/nyzhi/`), data (`~/.local/share/nyzhi/`), and OAuth tokens are never touched by installs or updates.
+
+**Self-update:**
+
+```bash
+nyzhi update            # check and apply updates
+nyzhi update --force    # force re-check ignoring throttle
+nyzhi update --list-backups   # list available rollback points
+nyzhi update --rollback latest  # rollback to previous version
+```
+
+Updates are checked automatically when the TUI starts (every 4 hours by default). A banner offers `[u] Update`, `[s] Skip`, or `[i] Ignore version`. Every update backs up the current binary and verifies the new one before completing. If the new binary fails, it auto-rolls back.
+
 ## Features
 
 - **Multi-provider** -- OpenAI, Anthropic, and Google Gemini with streaming
@@ -28,6 +48,7 @@ A performance-optimized AI coding agent for the terminal, built in Rust.
 - **Skill learning** -- `/learn` extracts reusable patterns from sessions
 - **Team orchestration** -- `/team N <task>` spawns coordinated sub-agents
 - **Autopilot** -- `/autopilot <idea>` for fully autonomous 5-phase execution
+- **Auto-update** -- background update checks with one-key apply, backup, rollback
 - **Multi-line input** -- Alt+Enter for newlines, `/editor` for `$EDITOR`, bracketed paste
 - **Input history** -- persistent across sessions, Ctrl+R reverse search
 - **Syntax highlighting** -- code blocks and inline markdown via syntect
@@ -69,6 +90,10 @@ nyzhi logout <provider>      Remove stored OAuth token
 nyzhi whoami                 Show auth status for all providers
 nyzhi config                 Show current configuration
 nyzhi init                   Create .nyzhi/ project directory
+nyzhi update                 Check for updates and self-update
+nyzhi update --force         Force update check
+nyzhi update --list-backups  List available backups
+nyzhi update --rollback <p>  Rollback to a backup ("latest" or path)
 nyzhi mcp add <name> -- cmd  Add stdio MCP server
 nyzhi mcp add <name> --url   Add HTTP MCP server
 nyzhi mcp list               List configured MCP servers
@@ -187,6 +212,11 @@ bell = true           # terminal bell on turn complete (default: true)
 desktop = false       # desktop notification on turn complete (default: false)
 min_duration_ms = 5000  # only notify if turn took longer than this (default: 5000)
 
+[update]
+enabled = true             # check for updates on TUI start (default: true)
+check_interval_hours = 4   # minimum hours between checks (default: 4)
+release_url = "https://get.nyzhi.com"  # override for self-hosted releases
+
 [agent]
 max_steps = 100
 custom_instructions = "Always write tests."
@@ -262,13 +292,37 @@ headers = { Authorization = "Bearer token" }
 
 Place an `AGENTS.md` or `.nyzhi/rules.md` in your project root to give the agent project-specific instructions.
 
-## Building
+## Data Locations
+
+| What | Path | Touched by updates? |
+|------|------|---------------------|
+| Binary | `~/.nyzhi/bin/nyzhi` | Yes (replaced, old version backed up) |
+| Config | `~/.config/nyzhi/config.toml` | **Never** |
+| Project config | `.nyzhi/config.toml` | **Never** |
+| Sessions & history | `~/.local/share/nyzhi/` | **Never** |
+| OAuth tokens | OS keyring | **Never** |
+| Backups | `~/.local/share/nyzhi/backups/` | Pruned to last 3 |
+
+## Building from Source
 
 ```bash
 cargo build --release
 ```
 
 The binary is at `target/release/nyzhi`.
+
+## Releasing
+
+Releases are automated via GitHub Actions. Push a version tag to trigger:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow cross-compiles for linux/darwin x x86_64/aarch64, uploads to R2, and creates a GitHub release.
+
+Required GitHub secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
 ## License
 
