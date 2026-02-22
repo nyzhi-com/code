@@ -1,0 +1,13 @@
+{
+  "name": "nyz-linux-arm64",
+  "version": "0.3.0",
+  "description": "nyz binary for Linux ARM64",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nyzhi-com/code"
+  },
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["bin/nyz"]
+}

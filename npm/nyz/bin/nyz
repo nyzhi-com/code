@@ -1,0 +1,48 @@
+#!/usr/bin/env node
+
+const { execFileSync } = require("child_process");
+const path = require("path");
+const fs = require("fs");
+
+const PLATFORMS = {
+  "darwin-arm64": "nyz-darwin-arm64",
+  "darwin-x64": "nyz-darwin-x64",
+  "linux-x64": "nyz-linux-x64",
+  "linux-arm64": "nyz-linux-arm64",
+};
+
+function getBinaryPath() {
+  const key = `${process.platform}-${process.arch}`;
+  const pkg = PLATFORMS[key];
+  if (!pkg) {
+    console.error(`nyz: unsupported platform ${key}`);
+    console.error(`Supported: ${Object.keys(PLATFORMS).join(", ")}`);
+    process.exit(1);
+  }
+
+  try {
+    const pkgDir = path.dirname(require.resolve(`${pkg}/package.json`));
+    const bin = path.join(pkgDir, "bin", "nyz");
+    if (fs.existsSync(bin)) return bin;
+  } catch {}
+
+  // Fallback: check if nyz is on PATH (installed via another method)
+  return "nyz";
+}
+
+const bin = getBinaryPath();
+const result = require("child_process").spawnSync(bin, process.argv.slice(2), {
+  stdio: "inherit",
+  env: process.env,
+});
+
+if (result.error) {
+  if (result.error.code === "ENOENT") {
+    console.error("nyz: binary not found. Try reinstalling: npm install -g nyz");
+  } else {
+    console.error(`nyz: ${result.error.message}`);
+  }
+  process.exit(1);
+}
+
+process.exit(result.status ?? 1);

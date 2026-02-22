@@ -1118,7 +1118,7 @@ pub async fn handle_key(
                     lines.push(format!("\nThinking: {level}"));
                 }
                 lines.push(String::new());
-                lines.push("Use /connect to add a provider, or `nyzhi login <provider>` for OAuth.".to_string());
+                lines.push("Use /connect to add a provider (OAuth or API key).".to_string());
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
                     content: lines.join("\n"),
@@ -1610,7 +1610,7 @@ pub async fn handle_key(
                         "  /thinking       Set thinking/reasoning level",
                         "  /thinking <lvl> Set level directly (off/low/medium/high)",
                         "  /image <path>   Attach an image for the next prompt",
-                        "  /connect        Connect a provider (add API key)",
+                        "  /connect        Connect a provider (OAuth or API key)",
                         "  /login          Show auth status for all providers",
                         "  /init           Initialize .nyzhi/ project config",
                         "  /mcp            List connected MCP servers",

@@ -33,6 +33,7 @@ pub enum SelectorKind {
     Accent,
     Model,
     Provider,
+    ConnectMethod,
     ApiKeyInput,
 }
 
@@ -165,7 +166,7 @@ impl SelectorState {
                 }
                 SelectorAction::None
             }
-            KeyCode::Char(c) if self.kind == SelectorKind::Provider || self.kind == SelectorKind::ApiKeyInput => {
+            KeyCode::Char(c) if matches!(self.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput) => {
                 self.search.push(c);
                 let filtered = self.filtered_indices();
                 if let Some(&first) = filtered.iter().find(|&&i| !self.items[i].is_header) {
@@ -183,7 +184,7 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
     let filtered = selector.filtered_indices();
 
     let item_count = filtered.len() as u16;
-    let search_rows = if selector.kind == SelectorKind::Provider || selector.kind == SelectorKind::ApiKeyInput { 2 } else { 0 };
+    let search_rows = if matches!(selector.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput) { 2 } else { 0 };
     let popup_h = (item_count + 4 + search_rows).min(area.height.saturating_sub(4));
     let popup_w = 50u16.min(area.width.saturating_sub(8));
 
@@ -210,7 +211,7 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
 
     let mut content_area = inner;
 
-    if selector.kind == SelectorKind::Provider || selector.kind == SelectorKind::ApiKeyInput {
+    if matches!(selector.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput) {
         let search_area = Rect::new(content_area.x, content_area.y, content_area.width, 1);
         let search_text = if selector.search.is_empty() {
             if selector.kind == SelectorKind::ApiKeyInput {

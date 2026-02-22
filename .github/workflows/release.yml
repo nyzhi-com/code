@@ -171,3 +171,98 @@ jobs:
         run: |
           wrangler r2 object put "nyzhi-releases/install.sh" \
             --file infra/releases-worker/install.sh --remote
+
+  publish-cargo:
+    needs: build
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@a54c7afa936fefeb4456b2dd8068152669aa8203
+        with:
+          toolchain: stable
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          # Publish in dependency order with delay for index propagation
+          for crate in nyzhi-config nyzhi-auth nyzhi-provider nyzhi-core nyzhi-tui nyzhi; do
+            echo "Publishing $crate..."
+            cargo publish -p "$crate" --no-verify || {
+              echo "WARN: $crate publish failed (may already exist)"
+            }
+            echo "Waiting for crates.io index..."
+            sleep 30
+          done
+
+  publish-npm:
+    needs: build
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642195f882787471b7b7d89
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          path: artifacts
+
+      - name: Populate platform packages
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # Map artifact names to npm package dirs
+          copy_bin() {
+            local artifact="$1" npm_pkg="$2"
+            local tarball="artifacts/${artifact}/${artifact}.tar.gz"
+            if [ -f "$tarball" ]; then
+              mkdir -p "npm/${npm_pkg}/bin"
+              tar xzf "$tarball" -C "npm/${npm_pkg}/bin"
+              chmod +x "npm/${npm_pkg}/bin/nyz"
+              echo "Populated npm/${npm_pkg}/bin/nyz"
+            else
+              echo "ERROR: $tarball not found"
+              exit 1
+            fi
+          }
+
+          copy_bin nyzhi-darwin-aarch64 nyz-darwin-arm64
+          copy_bin nyzhi-darwin-x86_64  nyz-darwin-x64
+          copy_bin nyzhi-linux-x86_64   nyz-linux-x64
+          copy_bin nyzhi-linux-aarch64   nyz-linux-arm64
+
+      - name: Update package versions
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for pkg in npm/nyz npm/nyz-darwin-arm64 npm/nyz-darwin-x64 npm/nyz-linux-x64 npm/nyz-linux-arm64; do
+            cd "$pkg"
+            npm version "$VERSION" --no-git-tag-version --allow-same-version
+            cd "$GITHUB_WORKSPACE"
+          done
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg in npm/nyz-darwin-arm64 npm/nyz-darwin-x64 npm/nyz-linux-x64 npm/nyz-linux-arm64; do
+            echo "Publishing $(basename $pkg)..."
+            cd "$pkg"
+            npm publish --access public || echo "WARN: $(basename $pkg) publish failed"
+            cd "$GITHUB_WORKSPACE"
+          done
+
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd npm/nyz
+          npm publish --access public

@@ -10,11 +10,14 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/nyzhi-com/code"
+homepage = "https://nyzhi.com"
 rust-version = "1.75"
+keywords = ["ai", "cli", "coding", "llm", "terminal"]
+categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
 # Async runtime
@@ -99,8 +102,8 @@ base64 = "0.22"
 rmcp = { version = "0.16", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 
 # Workspace crates
-nyzhi-core = { path = "crates/core" }
-nyzhi-provider = { path = "crates/provider" }
-nyzhi-auth = { path = "crates/auth" }
-nyzhi-tui = { path = "crates/tui" }
-nyzhi-config = { path = "crates/config" }
+nyzhi-core = { path = "crates/core", version = "=0.3.0" }
+nyzhi-provider = { path = "crates/provider", version = "=0.3.0" }
+nyzhi-auth = { path = "crates/auth", version = "=0.3.0" }
+nyzhi-tui = { path = "crates/tui", version = "=0.3.0" }
+nyzhi-config = { path = "crates/config", version = "=0.3.0" }

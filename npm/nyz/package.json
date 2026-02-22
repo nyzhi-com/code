@@ -1,0 +1,24 @@
+{
+  "name": "nyz",
+  "version": "0.3.0",
+  "description": "AI coding agent for the terminal",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nyzhi-com/code"
+  },
+  "homepage": "https://nyzhi.com",
+  "keywords": ["ai", "cli", "coding", "llm", "terminal", "agent"],
+  "bin": {
+    "nyz": "bin/nyz"
+  },
+  "files": ["bin/nyz", "README.md"],
+  "optionalDependencies": {
+    "nyz-darwin-arm64": "0.3.0",
+    "nyz-darwin-x64": "0.3.0",
+    "nyz-linux-x64": "0.3.0",
+    "nyz-linux-arm64": "0.3.0"
+  },
+  "os": ["darwin", "linux"],
+  "cpu": ["x64", "arm64"]
+}

@@ -25,18 +25,34 @@
 curl -fsSL https://get.nyzhi.com | sh
 ```
 
-That's it. One binary drops into `~/.nyzhi/bin/`. Your config, sessions, and tokens are never touched by installs or updates.
+Or via a package manager:
+
+```bash
+cargo install nyzhi           # Cargo
+npm install -g nyz             # npm
+```
 
 <details>
-<summary><strong>Self-update, rollback, build from source</strong></summary>
+<summary><strong>Self-update, rollback, uninstall</strong></summary>
 
 ```bash
 nyz update                   # check and apply
 nyz update --rollback latest # rollback to previous version
-cargo build --release        # build from source (Rust 1.75+)
+nyz uninstall                # remove everything (binary, config, data, tokens)
 ```
 
-Updates are checked automatically every 4 hours. Every update backs up the current binary, verifies the new one, and auto-rolls back on failure. See [building](https://code.nyzhi.com/docs/building) and [self-update](https://code.nyzhi.com/docs/self-update).
+Updates are checked automatically every 4 hours. Every update backs up the current binary, verifies the new one, and auto-rolls back on failure.
+
+</details>
+
+<details>
+<summary><strong>Build from source</strong></summary>
+
+```bash
+git clone https://github.com/nyzhi-com/code && cd code
+cargo build --release        # Rust 1.75+
+# Binary is at target/release/nyz
+```
 
 </details>
 

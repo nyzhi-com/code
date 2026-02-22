@@ -4,8 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "A performance-optimized AI coding CLI"
+readme = "../../README.md"
 default-run = "nyz"
 
 [[bin]]

@@ -150,6 +150,8 @@ pub struct App {
     update_info: Option<nyzhi_core::updater::UpdateInfo>,
     update_done_rx: Option<tokio::sync::mpsc::Receiver<anyhow::Result<nyzhi_core::updater::UpdateResult>>>,
     pub thinking_level: Option<String>,
+    pub pending_oauth_provider: Option<String>,
+    oauth_rx: Option<tokio::sync::oneshot::Receiver<(String, Result<nyzhi_auth::token_store::StoredToken>)>>,
 }
 
 impl App {
@@ -213,6 +215,8 @@ impl App {
             update_info: None,
             update_done_rx: None,
             thinking_level: None,
+            pending_oauth_provider: None,
+            oauth_rx: None,
         }
     }
 
@@ -641,6 +645,39 @@ impl App {
                     }
                 }
                 _ => {}
+                }
+            }
+
+            if let Some(provider_id) = self.pending_oauth_provider.take() {
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                self.oauth_rx = Some(rx);
+                tokio::spawn(async move {
+                    let result = nyzhi_auth::oauth::login(&provider_id).await;
+                    let _ = tx.send((provider_id, result));
+                });
+            }
+
+            if let Some(ref mut rx) = self.oauth_rx {
+                if let Ok(result) = rx.try_recv() {
+                    self.oauth_rx = None;
+                    let (pid, res) = result;
+                    let display = nyzhi_config::find_provider_def(&pid)
+                        .map(|d| d.name)
+                        .unwrap_or(&pid);
+                    match res {
+                        Ok(_token) => {
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Logged in to {display} via OAuth."),
+                            });
+                        }
+                        Err(e) => {
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("OAuth login failed for {display}: {e:#}"),
+                            });
+                        }
+                    }
                 }
             }
 
@@ -1224,7 +1261,36 @@ impl App {
                     }
                     SelectorKind::Provider => {
                         self.selector = None;
-                        self.open_api_key_input(&value);
+                        let def = nyzhi_config::find_provider_def(&value);
+                        let has_oauth = def.map(|d| d.supports_oauth).unwrap_or(false);
+                        if has_oauth {
+                            self.open_connect_method(&value);
+                        } else {
+                            self.open_api_key_input(&value);
+                        }
+                        return;
+                    }
+                    SelectorKind::ConnectMethod => {
+                        let provider_id = self.selector.as_ref()
+                            .and_then(|s| s.context_value.clone())
+                            .unwrap_or_default();
+                        self.selector = None;
+                        match value.as_str() {
+                            "oauth" => {
+                                let display = nyzhi_config::find_provider_def(&provider_id)
+                                    .map(|d| d.name)
+                                    .unwrap_or(&provider_id);
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Starting OAuth login for {display}... check your browser."),
+                                });
+                                self.pending_oauth_provider = Some(provider_id);
+                            }
+                            "apikey" => {
+                                self.open_api_key_input(&provider_id);
+                            }
+                            _ => {}
+                        }
                         return;
                     }
                     SelectorKind::ApiKeyInput => {
@@ -1492,6 +1558,36 @@ impl App {
         if let Some(sel) = &mut self.selector {
             sel.context_value = Some("thinking".to_string());
         }
+    }
+
+    pub fn open_connect_method(&mut self, provider_id: &str) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let def = nyzhi_config::find_provider_def(provider_id);
+        let display_name = def.map(|d| d.name).unwrap_or(provider_id);
+        let status = nyzhi_auth::auth_status(provider_id);
+
+        let mut items = vec![];
+        if status != "not connected" {
+            items.push(SelectorItem::header(&format!("Currently: {status}")));
+        }
+        items.push(SelectorItem::entry(
+            "Login with OAuth (opens browser)",
+            "oauth",
+        ));
+        items.push(SelectorItem::entry(
+            "Enter API key manually",
+            "apikey",
+        ));
+
+        let mut state = SelectorState::new(
+            SelectorKind::ConnectMethod,
+            &format!("Connect {}", display_name),
+            items,
+            "",
+        );
+        state.context_value = Some(provider_id.to_string());
+        self.selector = Some(state);
     }
 
     pub fn open_api_key_input(&mut self, provider_id: &str) {
