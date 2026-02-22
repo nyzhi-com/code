@@ -25,12 +25,14 @@ RELEASE_URL="${NYZHI_RELEASE_URL:-https://get.nyzhi.com}"
 NYZHI_HOME="${NYZHI_HOME:-$HOME/.nyzhi}"
 INSTALL_DIR="${NYZHI_HOME}/bin"
 BACKUP_PATH=""
+BAR_WIDTH=40
 
 main() {
   check_deps
   detect_platform
   fetch_version_info
   check_existing_install
+  show_header
   download_binary
   verify_checksum
   backup_existing
@@ -40,6 +42,32 @@ main() {
   print_success
 }
 
+# ---- progress bar --------------------------------------------------------
+
+draw_bar() {
+  local pct=$1
+  local filled=$((pct * BAR_WIDTH / 100))
+  local i=0
+
+  printf '\r  \033[33m'
+  while [ $i -lt $filled ]; do printf '█'; i=$((i + 1)); done
+  while [ $i -lt $BAR_WIDTH ]; do printf '░'; i=$((i + 1)); done
+  printf '\033[0m %d%%' "$pct"
+}
+
+animate_progress() {
+  local step=0
+  while [ $step -le 100 ]; do
+    draw_bar "$step"
+    step=$((step + 5))
+    sleep 0.02 2>/dev/null || sleep 1
+  done
+  draw_bar 100
+  printf '\n'
+}
+
+# ---- dependency check ----------------------------------------------------
+
 check_deps() {
   for cmd in curl tar uname; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -47,7 +75,6 @@ check_deps() {
     fi
   done
 
-  # Checksum verification is mandatory — refuse to install without it
   if command -v sha256sum >/dev/null 2>&1; then
     SHA_CMD="sha256sum"
   elif command -v shasum >/dev/null 2>&1; then
@@ -56,6 +83,8 @@ check_deps() {
     err "Neither sha256sum nor shasum found. Cannot verify download integrity."
   fi
 }
+
+# ---- platform detection --------------------------------------------------
 
 detect_platform() {
   OS="$(uname -s)"
@@ -71,12 +100,11 @@ detect_platform() {
     aarch64|arm64)   ARCH="aarch64" ;;
     *)               err "Unsupported architecture: $ARCH" ;;
   esac
-
-  info "Detected platform: ${OS}/${ARCH}"
 }
 
+# ---- version info --------------------------------------------------------
+
 fetch_version_info() {
-  info "Fetching latest version info..."
   VERSION_JSON="$(curl -fsSL "${RELEASE_URL}/version")" || err "Failed to fetch version info"
   VERSION="$(printf '%s' "$VERSION_JSON" | parse_json_field "version")"
   CHECKSUM="$(printf '%s' "$VERSION_JSON" | parse_json_field "${OS}-${ARCH}")"
@@ -84,7 +112,6 @@ fetch_version_info() {
   if [ -z "$VERSION" ]; then
     err "Could not determine latest version"
   fi
-  # Validate version looks like semver (digits and dots only)
   case "$VERSION" in
     *[!0-9.]*) err "Version contains unexpected characters: $VERSION" ;;
   esac
@@ -92,16 +119,15 @@ fetch_version_info() {
   if [ -z "$CHECKSUM" ]; then
     err "No checksum available for ${OS}-${ARCH}. Cannot verify download."
   fi
-  # Validate checksum is 64 hex characters
   case "$CHECKSUM" in
     *[!0-9a-f]*) err "Checksum contains non-hex characters" ;;
   esac
   if [ "${#CHECKSUM}" -ne 64 ]; then
     err "Checksum has wrong length (expected 64 hex chars, got ${#CHECKSUM})"
   fi
-
-  info "Latest version: v${VERSION}"
 }
+
+# ---- existing install check ----------------------------------------------
 
 check_existing_install() {
   EXISTING_BIN="${INSTALL_DIR}/nyzhi"
@@ -109,37 +135,44 @@ check_existing_install() {
 
   if [ -f "$EXISTING_BIN" ]; then
     EXISTING_VERSION="$("$EXISTING_BIN" --version 2>/dev/null | sed 's/[^0-9.]//g' || true)"
-    if [ -n "$EXISTING_VERSION" ]; then
-      info "Existing installation found: v${EXISTING_VERSION}"
-      if [ "$EXISTING_VERSION" = "$VERSION" ]; then
-        info "Already up to date (v${VERSION}). Nothing to do."
-        exit 0
-      fi
-    else
-      info "Existing installation found (unknown version)"
+    if [ -n "$EXISTING_VERSION" ] && [ "$EXISTING_VERSION" = "$VERSION" ]; then
+      printf '\n  \033[1;32m✓\033[0m Already up to date (v%s)\n\n' "$VERSION"
+      exit 0
     fi
   fi
 }
+
+# ---- visual header -------------------------------------------------------
+
+show_header() {
+  printf '\n'
+  printf '  \033[1mInstalling nyzhi\033[0m version: \033[1;36m%s\033[0m\n' "$VERSION"
+}
+
+# ---- download ------------------------------------------------------------
 
 download_binary() {
   TMPDIR="$(mktemp -d)"
   trap 'rm -rf "$TMPDIR"' EXIT
   TARBALL="${TMPDIR}/nyzhi.tar.gz"
 
-  info "Downloading nyzhi v${VERSION} for ${OS}/${ARCH}..."
   curl -fsSL "${RELEASE_URL}/download/${OS}/${ARCH}?version=${VERSION}" -o "$TARBALL" \
     || err "Download failed"
+
+  animate_progress
 }
 
+# ---- checksum verification -----------------------------------------------
+
 verify_checksum() {
-  info "Verifying SHA-256 checksum..."
   ACTUAL="$($SHA_CMD "$TARBALL" | cut -d' ' -f1)"
 
   if [ "$ACTUAL" != "$CHECKSUM" ]; then
     err "Checksum verification FAILED!\n  Expected: ${CHECKSUM}\n  Actual:   ${ACTUAL}\n  The download may be corrupt or tampered with."
   fi
-  info "Checksum verified"
 }
+
+# ---- backup --------------------------------------------------------------
 
 backup_existing() {
   EXISTING_BIN="${INSTALL_DIR}/nyzhi"
@@ -156,9 +189,7 @@ backup_existing() {
 
   cp "$EXISTING_BIN" "$BACKUP_PATH"
   chmod +x "$BACKUP_PATH"
-  info "Backed up existing binary to ${BACKUP_PATH}"
 
-  # Keep only the 3 newest backups
   BACKUP_COUNT="$(ls -1 "$BACKUP_DIR" 2>/dev/null | wc -l | tr -d ' ')"
   if [ "$BACKUP_COUNT" -gt 3 ]; then
     ls -1t "$BACKUP_DIR" | tail -n +"4" | while read -r OLD; do
@@ -166,6 +197,8 @@ backup_existing() {
     done
   fi
 }
+
+# ---- install -------------------------------------------------------------
 
 install_binary() {
   mkdir -p "$INSTALL_DIR"
@@ -181,8 +214,9 @@ install_binary() {
 
   chmod +x "$EXTRACTED"
   mv "$EXTRACTED" "${INSTALL_DIR}/nyzhi"
-  info "Installed to ${INSTALL_DIR}/nyzhi"
 }
+
+# ---- post-install verification -------------------------------------------
 
 verify_install() {
   NEW_BIN="${INSTALL_DIR}/nyzhi"
@@ -192,28 +226,15 @@ verify_install() {
 
   INSTALLED_VERSION="$("$NEW_BIN" --version 2>/dev/null || true)"
   if [ -z "$INSTALLED_VERSION" ]; then
-    warn "Could not verify new binary (--version failed)"
     if [ -n "${BACKUP_PATH}" ] && [ -f "${BACKUP_PATH}" ]; then
-      warn "Rolling back to previous version..."
       cp "$BACKUP_PATH" "$NEW_BIN"
       chmod +x "$NEW_BIN"
       err "New binary is broken. Rolled back to previous version."
     fi
-  else
-    info "Verified: ${INSTALLED_VERSION}"
-  fi
-
-  # Confirm user data was not touched
-  CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nyzhi"
-  DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/nyzhi"
-
-  if [ -d "$CONFIG_DIR" ]; then
-    info "Config preserved: ${CONFIG_DIR}"
-  fi
-  if [ -d "$DATA_DIR" ]; then
-    info "Data preserved: ${DATA_DIR}"
   fi
 }
+
+# ---- PATH setup ----------------------------------------------------------
 
 setup_path() {
   case ":${PATH}:" in
@@ -234,7 +255,6 @@ setup_path() {
       FISH_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fish"
       mkdir -p "$FISH_DIR/conf.d"
       printf 'set -gx PATH "%s" $PATH\n' "$INSTALL_DIR" > "$FISH_DIR/conf.d/nyzhi.fish"
-      info "Added nyzhi to fish PATH via conf.d/nyzhi.fish"
       return ;;
     *)    PROFILE="$HOME/.profile" ;;
   esac
@@ -244,47 +264,38 @@ setup_path() {
   fi
 
   printf '\n# nyzhi\n%s\n' "$EXPORT_LINE" >> "$PROFILE"
-  info "Added nyzhi to PATH in $PROFILE"
 }
+
+# ---- post-install screen -------------------------------------------------
 
 print_success() {
   printf '\n'
+
+  # brand
+  printf '  \033[1;36m◆ nyzhi code\033[0m\n'
+  printf '\n'
+
   if [ -n "${EXISTING_VERSION:-}" ]; then
-    printf '  \033[1;32m✓\033[0m nyzhi updated: v%s → v%s\n' "$EXISTING_VERSION" "$VERSION"
+    printf '  Updated: v%s → v%s\n' "$EXISTING_VERSION" "$VERSION"
   else
-    printf '  \033[1;32m✓\033[0m nyzhi v%s installed successfully!\n' "$VERSION"
+    printf '  To get started:\n'
+    printf '\n'
+    printf '  \033[1mcd <project>\033[0m    # Open directory\n'
+    printf '  \033[1mnyzhi\033[0m           # Run command\n'
   fi
   printf '\n'
-  printf '  \033[2mConfig:   %s\033[0m\n' "${XDG_CONFIG_HOME:-$HOME/.config}/nyzhi/"
-  printf '  \033[2mData:     %s\033[0m\n' "${XDG_DATA_HOME:-$HOME/.local/share}/nyzhi/"
-  printf '  \033[2mBinary:   %s\033[0m\n' "${INSTALL_DIR}/nyzhi"
+  printf '  For more information visit \033[4mhttps://nyzhi.com/docs\033[0m\n'
   printf '\n'
-  if [ -z "${EXISTING_VERSION:-}" ]; then
-    printf '  To get started, open a new terminal and run:\n'
-    printf '\n'
-    printf '    \033[1mnyzhi\033[0m\n'
-    printf '\n'
-    SHELL_NAME="$(basename "${SHELL:-/bin/sh}")"
-    printf '  Or restart your shell:\n'
-    printf '\n'
-    printf '    \033[2mexec %s\033[0m\n' "$SHELL_NAME"
-    printf '\n'
-  else
-    printf '  Restart nyzhi to use the new version.\n'
-    printf '\n'
-  fi
 }
 
+# ---- helpers -------------------------------------------------------------
+
 parse_json_field() {
-  # Minimal JSON field extractor — no jq dependency.
-  # FIELD is restricted to [a-zA-Z0-9_-] by the callers above.
   FIELD="$1"
   sed -n 's/.*"'"$FIELD"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
 }
 
-info() { printf '  \033[1;34m→\033[0m %s\n' "$*"; }
-warn() { printf '  \033[1;33m⚠\033[0m %s\n' "$*"; }
-err()  { printf '  \033[1;31m✗\033[0m %s\n' "$*" >&2; exit 1; }
+err()  { printf '\n  \033[1;31m✗\033[0m %s\n\n' "$*" >&2; exit 1; }
 
 # The call to main MUST be the very last line of the script.
 # If the download is truncated before this point, the shell will

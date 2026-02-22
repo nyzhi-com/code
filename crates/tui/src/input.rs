@@ -57,17 +57,18 @@ pub async fn handle_key(
     }
 
     match key.code {
-        KeyCode::Tab => {
+        KeyCode::Tab | KeyCode::Down if app.completion.is_some() => {
             if let Some(ref mut state) = app.completion {
                 state.cycle_forward();
-            } else {
-                try_open_completion(app, &tool_ctx.cwd);
             }
         }
-        KeyCode::BackTab => {
+        KeyCode::BackTab | KeyCode::Up if app.completion.is_some() => {
             if let Some(ref mut state) = app.completion {
                 state.cycle_backward();
             }
+        }
+        KeyCode::Tab if app.completion.is_none() => {
+            try_open_completion(app, &tool_ctx.cwd);
         }
         KeyCode::Esc => {
             if app.completion.is_some() {
@@ -1772,6 +1773,10 @@ pub async fn handle_key(
             app.cursor_pos += 1;
             app.history.reset_cursor();
             app.completion = None;
+
+            if c == '/' && app.cursor_pos == 1 && app.input == "/" {
+                try_open_completion(app, &tool_ctx.cwd);
+            }
         }
         KeyCode::Backspace => {
             if app.cursor_pos > 0 {
@@ -1966,12 +1971,13 @@ fn try_open_completion(app: &mut App, cwd: &std::path::Path) {
     let Some((ctx, prefix, start)) = detect_context(&app.input, app.cursor_pos) else {
         return;
     };
-    let candidates = generate_candidates(&ctx, &prefix, cwd, &app.custom_commands);
+    let (candidates, descriptions) = generate_candidates(&ctx, &prefix, cwd, &app.custom_commands);
     if candidates.is_empty() {
         return;
     }
     app.completion = Some(CompletionState {
         candidates,
+        descriptions,
         selected: 0,
         prefix,
         prefix_start: start,
@@ -1988,10 +1994,12 @@ fn accept_completion(app: &mut App, cwd: &std::path::Path) {
 
     if is_dir {
         if let Some((ctx, prefix, start)) = detect_context(&app.input, app.cursor_pos) {
-            let candidates = generate_candidates(&ctx, &prefix, cwd, &app.custom_commands);
+            let (candidates, descriptions) =
+                generate_candidates(&ctx, &prefix, cwd, &app.custom_commands);
             if !candidates.is_empty() {
                 app.completion = Some(CompletionState {
                     candidates,
+                    descriptions,
                     selected: 0,
                     prefix,
                     prefix_start: start,

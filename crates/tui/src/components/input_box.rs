@@ -128,22 +128,37 @@ fn render_completion_popup(
     state: &CompletionState,
     theme: &Theme,
 ) {
-    let max_visible: usize = 8;
+    let max_visible = state.max_visible();
     let count = state.candidates.len();
     let visible = count.min(max_visible);
-    let popup_height = visible as u16 + 2; // +2 for borders
+    let popup_height = visible as u16 + 2;
 
     if input_area.y < popup_height {
         return;
     }
 
-    let max_label_width = state
+    let has_descriptions = state.context == CompletionContext::SlashCommand
+        && state.descriptions.iter().any(|d| !d.is_empty());
+
+    let max_name_width = state
         .candidates
         .iter()
         .map(|c| c.len())
         .max()
-        .unwrap_or(10) as u16;
-    let popup_width = (max_label_width + 4).min(input_area.width).max(16);
+        .unwrap_or(10);
+
+    let popup_width = if has_descriptions {
+        let max_desc_width = state
+            .descriptions
+            .iter()
+            .map(|d| d.len())
+            .max()
+            .unwrap_or(0);
+        let total = max_name_width + 2 + max_desc_width + 4;
+        (total as u16).min(input_area.width).max(30)
+    } else {
+        (max_name_width as u16 + 4).min(input_area.width).max(16)
+    };
 
     let popup_area = Rect {
         x: input_area.x + 1,
@@ -171,6 +186,12 @@ fn render_completion_popup(
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
 
+    let name_col_width = if has_descriptions {
+        max_name_width + 2
+    } else {
+        inner.width as usize
+    };
+
     let visible_candidates: Vec<Line> = state
         .candidates
         .iter()
@@ -178,29 +199,75 @@ fn render_completion_popup(
         .skip(state.scroll_offset)
         .take(max_visible)
         .map(|(i, candidate)| {
-            let display = if candidate.len() as u16 > inner.width {
-                format!("{}...", &candidate[..(inner.width as usize).saturating_sub(3)])
-            } else {
-                candidate.clone()
-            };
+            let desc = state.descriptions.get(i).map(|d| d.as_str()).unwrap_or("");
 
-            if i == state.selected {
-                Line::from(Span::styled(
-                    format!("{display:<width$}", width = inner.width as usize),
-                    Style::default()
-                        .fg(theme.bg_page)
-                        .bg(theme.accent),
-                ))
+            if has_descriptions {
+                let name_display = if candidate.len() > name_col_width {
+                    format!(
+                        "{}...",
+                        &candidate[..name_col_width.saturating_sub(3)]
+                    )
+                } else {
+                    format!("{:<width$}", candidate, width = name_col_width)
+                };
+
+                let remaining = (inner.width as usize).saturating_sub(name_col_width);
+                let desc_display = if desc.len() > remaining {
+                    format!("{}...", &desc[..remaining.saturating_sub(3)])
+                } else {
+                    format!("{:<width$}", desc, width = remaining)
+                };
+
+                if i == state.selected {
+                    Line::from(vec![
+                        Span::styled(
+                            name_display,
+                            Style::default().fg(theme.bg_page).bg(theme.accent).bold(),
+                        ),
+                        Span::styled(
+                            desc_display,
+                            Style::default().fg(theme.bg_elevated).bg(theme.accent),
+                        ),
+                    ])
+                } else {
+                    Line::from(vec![
+                        Span::styled(
+                            name_display,
+                            Style::default().fg(theme.accent),
+                        ),
+                        Span::styled(
+                            desc_display,
+                            Style::default().fg(theme.text_tertiary),
+                        ),
+                    ])
+                }
             } else {
-                Line::from(Span::styled(
-                    display,
-                    Style::default().fg(theme.text_primary),
-                ))
+                let display = if candidate.len() as u16 > inner.width {
+                    format!(
+                        "{}...",
+                        &candidate[..(inner.width as usize).saturating_sub(3)]
+                    )
+                } else {
+                    candidate.clone()
+                };
+
+                if i == state.selected {
+                    Line::from(Span::styled(
+                        format!("{display:<width$}", width = inner.width as usize),
+                        Style::default().fg(theme.bg_page).bg(theme.accent),
+                    ))
+                } else {
+                    Line::from(Span::styled(
+                        display,
+                        Style::default().fg(theme.text_primary),
+                    ))
+                }
             }
         })
         .collect();
 
-    let paragraph = Paragraph::new(visible_candidates).style(Style::default().bg(theme.bg_elevated));
+    let paragraph =
+        Paragraph::new(visible_candidates).style(Style::default().bg(theme.bg_elevated));
     frame.render_widget(paragraph, inner);
 }
 

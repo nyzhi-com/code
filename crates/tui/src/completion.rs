@@ -1,51 +1,59 @@
 use std::path::Path;
 
 const MAX_CANDIDATES: usize = 50;
-const SLASH_COMMANDS: &[&str] = &[
-    "/accent",
-    "/agents",
-    "/autopilot",
-    "/changes",
-    "/clear",
-    "/commands",
-    "/bug",
-    "/compact",
-    "/context",
-    "/doctor",
-    "/editor",
-    "/enable_exa",
-    "/exit",
-    "/export",
-    "/help",
-    "/hooks",
-    "/image",
-    "/init",
-    "/login",
-    "/mcp",
-    "/model",
-    "/notify",
-    "/learn",
-    "/notepad",
-    "/persist",
-    "/plan",
-    "/qa",
-    "/quit",
-    "/resume",
-    "/todo",
-    "/verify",
-    "/retry",
-    "/search",
-    "/team",
-    "/session delete",
-    "/session rename",
-    "/sessions",
-    "/status",
-    "/style",
-    "/theme",
-    "/think",
-    "/trust",
-    "/undo",
-    "/undo all",
+const MAX_VISIBLE: usize = 12;
+
+pub struct SlashCommandDef {
+    pub name: &'static str,
+    pub description: &'static str,
+}
+
+const SLASH_COMMANDS: &[SlashCommandDef] = &[
+    SlashCommandDef { name: "/accent", description: "change accent color" },
+    SlashCommandDef { name: "/agents", description: "list available agent roles" },
+    SlashCommandDef { name: "/autopilot", description: "autonomous multi-step execution" },
+    SlashCommandDef { name: "/bg", description: "manage background tasks" },
+    SlashCommandDef { name: "/bug", description: "generate a bug report" },
+    SlashCommandDef { name: "/changes", description: "list file changes this session" },
+    SlashCommandDef { name: "/clear", description: "clear the session" },
+    SlashCommandDef { name: "/commands", description: "list custom commands" },
+    SlashCommandDef { name: "/compact", description: "compress conversation history" },
+    SlashCommandDef { name: "/context", description: "show context window usage" },
+    SlashCommandDef { name: "/doctor", description: "run diagnostics" },
+    SlashCommandDef { name: "/editor", description: "open $EDITOR for multi-line input" },
+    SlashCommandDef { name: "/enable_exa", description: "set up Exa web search" },
+    SlashCommandDef { name: "/exit", description: "exit nyzhi" },
+    SlashCommandDef { name: "/export", description: "export conversation as markdown" },
+    SlashCommandDef { name: "/help", description: "show all commands and shortcuts" },
+    SlashCommandDef { name: "/hooks", description: "list configured hooks" },
+    SlashCommandDef { name: "/image", description: "attach an image to next prompt" },
+    SlashCommandDef { name: "/init", description: "initialize .nyzhi/ project config" },
+    SlashCommandDef { name: "/learn", description: "create or list learned skills" },
+    SlashCommandDef { name: "/login", description: "show OAuth login status" },
+    SlashCommandDef { name: "/mcp", description: "list connected MCP servers" },
+    SlashCommandDef { name: "/model", description: "choose what model to use" },
+    SlashCommandDef { name: "/notepad", description: "view saved notepads" },
+    SlashCommandDef { name: "/notify", description: "configure notifications" },
+    SlashCommandDef { name: "/persist", description: "enable verify-and-fix mode" },
+    SlashCommandDef { name: "/plan", description: "view or create execution plans" },
+    SlashCommandDef { name: "/qa", description: "run autonomous QA cycling" },
+    SlashCommandDef { name: "/quit", description: "exit nyzhi" },
+    SlashCommandDef { name: "/resume", description: "restore a saved session" },
+    SlashCommandDef { name: "/retry", description: "resend the last prompt" },
+    SlashCommandDef { name: "/search", description: "search session messages" },
+    SlashCommandDef { name: "/session delete", description: "delete a saved session" },
+    SlashCommandDef { name: "/session rename", description: "rename current session" },
+    SlashCommandDef { name: "/sessions", description: "list saved sessions" },
+    SlashCommandDef { name: "/status", description: "show session status and usage" },
+    SlashCommandDef { name: "/style", description: "change output verbosity" },
+    SlashCommandDef { name: "/team", description: "spawn coordinated sub-agents" },
+    SlashCommandDef { name: "/theme", description: "choose theme (dark/light)" },
+    SlashCommandDef { name: "/think", description: "toggle extended thinking" },
+    SlashCommandDef { name: "/todo", description: "view todo list" },
+    SlashCommandDef { name: "/trust", description: "show or set trust mode" },
+    SlashCommandDef { name: "/undo", description: "undo the last file change" },
+    SlashCommandDef { name: "/undo all", description: "undo all changes this session" },
+    SlashCommandDef { name: "/verify", description: "detect and list project checks" },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +66,7 @@ pub enum CompletionContext {
 #[derive(Debug, Clone)]
 pub struct CompletionState {
     pub candidates: Vec<String>,
+    pub descriptions: Vec<String>,
     pub selected: usize,
     pub prefix: String,
     pub prefix_start: usize,
@@ -66,6 +75,10 @@ pub struct CompletionState {
 }
 
 impl CompletionState {
+    pub fn max_visible(&self) -> usize {
+        MAX_VISIBLE
+    }
+
     pub fn cycle_forward(&mut self) {
         if !self.candidates.is_empty() {
             self.selected = (self.selected + 1) % self.candidates.len();
@@ -85,7 +98,7 @@ impl CompletionState {
     }
 
     fn ensure_visible(&mut self) {
-        let max_visible = 8;
+        let max_visible = MAX_VISIBLE;
         if self.selected < self.scroll_offset {
             self.scroll_offset = self.selected;
         } else if self.selected >= self.scroll_offset + max_visible {
@@ -94,9 +107,6 @@ impl CompletionState {
     }
 }
 
-/// Scan backward from cursor to determine which completion context applies.
-///
-/// Returns `(context, prefix_text, prefix_start_byte_offset)`.
 pub fn detect_context(input: &str, cursor_pos: usize) -> Option<(CompletionContext, String, usize)> {
     let before = &input[..cursor_pos.min(input.len())];
 
@@ -121,8 +131,6 @@ pub fn detect_context(input: &str, cursor_pos: usize) -> Option<(CompletionConte
     None
 }
 
-/// Find the start of an `@mention` token ending at the cursor.
-/// Returns the byte offset of the `@` character, or None.
 fn find_at_mention_start(before_cursor: &str) -> Option<usize> {
     let at_pos = before_cursor.rfind('@')?;
 
@@ -149,7 +157,7 @@ pub fn generate_candidates(
     prefix: &str,
     cwd: &Path,
     custom_commands: &[nyzhi_core::commands::CustomCommand],
-) -> Vec<String> {
+) -> (Vec<String>, Vec<String>) {
     match ctx {
         CompletionContext::SlashCommand => generate_slash_candidates(prefix, custom_commands),
         CompletionContext::AtMention => {
@@ -158,25 +166,40 @@ pub fn generate_candidates(
             for c in &mut candidates {
                 c.insert(0, '@');
             }
-            candidates
+            let descs = vec![String::new(); candidates.len()];
+            (candidates, descs)
         }
-        CompletionContext::FilePath => generate_path_candidates(prefix, cwd),
+        CompletionContext::FilePath => {
+            let candidates = generate_path_candidates(prefix, cwd);
+            let descs = vec![String::new(); candidates.len()];
+            (candidates, descs)
+        }
     }
 }
 
-fn generate_slash_candidates(prefix: &str, custom_commands: &[nyzhi_core::commands::CustomCommand]) -> Vec<String> {
-    let mut all: Vec<String> = SLASH_COMMANDS.iter().map(|s| s.to_string()).collect();
+fn generate_slash_candidates(
+    prefix: &str,
+    custom_commands: &[nyzhi_core::commands::CustomCommand],
+) -> (Vec<String>, Vec<String>) {
+    let mut all: Vec<(String, String)> = SLASH_COMMANDS
+        .iter()
+        .map(|s| (s.name.to_string(), s.description.to_string()))
+        .collect();
     for cmd in custom_commands {
         let name = format!("/{}", cmd.name);
-        if !all.contains(&name) {
-            all.push(name);
+        if !all.iter().any(|(n, _)| n == &name) {
+            all.push((name, cmd.description.clone()));
         }
     }
-    all.sort();
-    all.into_iter()
-        .filter(|cmd| cmd.starts_with(prefix) && *cmd != prefix)
+    all.sort_by(|a, b| a.0.cmp(&b.0));
+    let filtered: Vec<(String, String)> = all
+        .into_iter()
+        .filter(|(cmd, _)| cmd.starts_with(prefix) && *cmd != prefix)
         .take(MAX_CANDIDATES)
-        .collect()
+        .collect();
+    let names = filtered.iter().map(|(n, _)| n.clone()).collect();
+    let descs = filtered.iter().map(|(_, d)| d.clone()).collect();
+    (names, descs)
 }
 
 fn generate_path_candidates(partial: &str, cwd: &Path) -> Vec<String> {
@@ -208,7 +231,6 @@ fn generate_path_candidates(partial: &str, cwd: &Path) -> Vec<String> {
     candidates
 }
 
-/// Split a partial path into (directory to read, filename prefix to filter).
 fn split_path_prefix(partial: &str, cwd: &Path) -> (std::path::PathBuf, String) {
     if partial.is_empty() {
         return (cwd.to_path_buf(), String::new());
@@ -246,7 +268,6 @@ fn split_path_prefix(partial: &str, cwd: &Path) -> (std::path::PathBuf, String) 
     (dir, file_prefix)
 }
 
-/// Reconstruct the display path by replacing just the filename portion.
 fn build_display_path(partial: &str, filename: &str, is_dir: bool) -> String {
     let suffix = if is_dir {
         format!("{filename}/")
@@ -261,8 +282,6 @@ fn build_display_path(partial: &str, filename: &str, is_dir: bool) -> String {
     }
 }
 
-/// Apply the selected completion into the input buffer.
-/// Returns true if the completed candidate ends with `/` (directory drilling).
 pub fn apply_completion(
     input: &mut String,
     cursor_pos: &mut usize,
@@ -335,21 +354,25 @@ mod tests {
 
     #[test]
     fn slash_candidates_filter() {
-        let results = generate_slash_candidates("/co", &[]);
-        assert!(results.contains(&"/compact".to_string()));
-        assert!(!results.contains(&"/clear".to_string()));
+        let (names, descs) = generate_slash_candidates("/co", &[]);
+        assert!(names.contains(&"/compact".to_string()));
+        assert!(!names.contains(&"/clear".to_string()));
+        assert_eq!(names.len(), descs.len());
+        let idx = names.iter().position(|n| n == "/compact").unwrap();
+        assert!(!descs[idx].is_empty());
     }
 
     #[test]
     fn slash_candidates_exact_no_duplicate() {
-        let results = generate_slash_candidates("/quit", &[]);
-        assert!(results.is_empty());
+        let (names, _) = generate_slash_candidates("/quit", &[]);
+        assert!(names.is_empty());
     }
 
     #[test]
     fn slash_candidates_all() {
-        let results = generate_slash_candidates("/", &[]);
-        assert!(results.len() > 10);
+        let (names, descs) = generate_slash_candidates("/", &[]);
+        assert!(names.len() > 10);
+        assert_eq!(names.len(), descs.len());
     }
 
     #[test]
@@ -359,8 +382,10 @@ mod tests {
             prompt_template: "Review $ARGUMENTS".to_string(),
             description: "Code review".to_string(),
         }];
-        let results = generate_slash_candidates("/rev", &custom);
-        assert!(results.contains(&"/review".to_string()));
+        let (names, descs) = generate_slash_candidates("/rev", &custom);
+        assert!(names.contains(&"/review".to_string()));
+        let idx = names.iter().position(|n| n == "/review").unwrap();
+        assert_eq!(descs[idx], "Code review");
     }
 
     #[test]
@@ -369,6 +394,7 @@ mod tests {
         let mut cursor = 3;
         let state = CompletionState {
             candidates: vec!["/compact".to_string()],
+            descriptions: vec!["compress history".to_string()],
             selected: 0,
             prefix: "/co".to_string(),
             prefix_start: 0,
@@ -387,6 +413,7 @@ mod tests {
         let mut cursor = 15;
         let state = CompletionState {
             candidates: vec!["@src/main.rs".to_string()],
+            descriptions: vec![String::new()],
             selected: 0,
             prefix: "@src/ma".to_string(),
             prefix_start: 8,
@@ -405,6 +432,7 @@ mod tests {
         let mut cursor = 3;
         let state = CompletionState {
             candidates: vec!["@src/".to_string()],
+            descriptions: vec![String::new()],
             selected: 0,
             prefix: "@sr".to_string(),
             prefix_start: 0,
@@ -421,6 +449,7 @@ mod tests {
     fn cycle_forward_wraps() {
         let mut state = CompletionState {
             candidates: vec!["a".into(), "b".into(), "c".into()],
+            descriptions: vec![String::new(); 3],
             selected: 2,
             prefix: String::new(),
             prefix_start: 0,
@@ -435,6 +464,7 @@ mod tests {
     fn cycle_backward_wraps() {
         let mut state = CompletionState {
             candidates: vec!["a".into(), "b".into(), "c".into()],
+            descriptions: vec![String::new(); 3],
             selected: 0,
             prefix: String::new(),
             prefix_start: 0,
