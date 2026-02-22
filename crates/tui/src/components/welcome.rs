@@ -25,10 +25,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let logo_width = logo_lines.iter().map(|l| l.len()).max().unwrap_or(0);
     let inner_w = inner.width as usize;
 
-    let vert_pad = inner
-        .height
-        .saturating_sub(logo_lines.len() as u16 + 15)
-        / 2;
+    let content_height = logo_lines.len() + 12;
+    let vert_pad = inner.height.saturating_sub(content_height as u16) / 2;
 
     for _ in 0..vert_pad {
         lines.push(Line::from(""));
@@ -44,14 +42,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     lines.push(Line::from(""));
 
-    let title = "nyzhi code";
-    let title_pad = inner_w.saturating_sub(title.len()) / 2;
-    lines.push(Line::from(Span::styled(
-        format!("{:>title_pad$}{title}", ""),
-        Style::default().fg(theme.accent).bold(),
-    )));
-
-    let version = "v0.1.0";
+    let version = format!("v{}", env!("CARGO_PKG_VERSION"));
     let ver_pad = inner_w.saturating_sub(version.len()) / 2;
     lines.push(Line::from(Span::styled(
         format!("{:>ver_pad$}{version}", ""),
@@ -59,15 +50,13 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     )));
 
     lines.push(Line::from(""));
-    lines.push(Line::from(""));
 
     let commands: &[(&str, &str, &str)] = &[
         ("/help", "show help", "ctrl+h"),
         ("@file", "attach context", ""),
-        ("/clear", "clear session", "ctrl+l"),
-        ("/theme", "choose theme", "ctrl+t"),
-        ("/accent", "choose accent", "ctrl+a"),
         ("/model", "choose model", ""),
+        ("/login", "connect provider", ""),
+        ("/theme", "choose theme", "ctrl+t"),
         ("/quit", "exit", "ctrl+c"),
     ];
 
@@ -87,7 +76,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         ]));
     }
 
-    let footer = format!("{} {}", app.provider_name, app.model_name);
+    let footer = format!("{} · {}", app.provider_name, app.model_name);
     let f_pad = inner_w.saturating_sub(footer.len()) / 2;
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(

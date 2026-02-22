@@ -150,8 +150,9 @@ pub struct App {
     update_info: Option<nyzhi_core::updater::UpdateInfo>,
     update_done_rx: Option<tokio::sync::mpsc::Receiver<anyhow::Result<nyzhi_core::updater::UpdateResult>>>,
     pub thinking_level: Option<String>,
-    pub pending_oauth_provider: Option<String>,
+    pub pending_oauth: Option<(String, String)>,
     oauth_rx: Option<tokio::sync::oneshot::Receiver<(String, Result<nyzhi_auth::token_store::StoredToken>)>>,
+    oauth_msg_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
 }
 
 impl App {
@@ -215,8 +216,9 @@ impl App {
             update_info: None,
             update_done_rx: None,
             thinking_level: None,
-            pending_oauth_provider: None,
+            pending_oauth: None,
             oauth_rx: None,
+            oauth_msg_rx: None,
         }
     }
 
@@ -648,18 +650,33 @@ impl App {
                 }
             }
 
-            if let Some(provider_id) = self.pending_oauth_provider.take() {
+            if let Some((provider_id, method)) = self.pending_oauth.take() {
                 let (tx, rx) = tokio::sync::oneshot::channel();
+                let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
                 self.oauth_rx = Some(rx);
+                self.oauth_msg_rx = Some(msg_rx);
                 tokio::spawn(async move {
-                    let result = nyzhi_auth::oauth::login(&provider_id).await;
+                    let result = nyzhi_auth::oauth::login_interactive(
+                        &provider_id, &method, msg_tx,
+                    ).await;
                     let _ = tx.send((provider_id, result));
                 });
+            }
+
+            if let Some(ref mut rx) = self.oauth_msg_rx {
+                while let Ok(msg) = rx.try_recv() {
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: msg,
+                    });
+                    self.scroll_offset = 0;
+                }
             }
 
             if let Some(ref mut rx) = self.oauth_rx {
                 if let Ok(result) = rx.try_recv() {
                     self.oauth_rx = None;
+                    self.oauth_msg_rx = None;
                     let (pid, res) = result;
                     let display = nyzhi_config::find_provider_def(&pid)
                         .map(|d| d.name)
@@ -1275,21 +1292,10 @@ impl App {
                             .and_then(|s| s.context_value.clone())
                             .unwrap_or_default();
                         self.selector = None;
-                        match value.as_str() {
-                            "oauth" => {
-                                let display = nyzhi_config::find_provider_def(&provider_id)
-                                    .map(|d| d.name)
-                                    .unwrap_or(&provider_id);
-                                self.items.push(DisplayItem::Message {
-                                    role: "system".to_string(),
-                                    content: format!("Starting OAuth login for {display}... check your browser."),
-                                });
-                                self.pending_oauth_provider = Some(provider_id);
-                            }
-                            "apikey" => {
-                                self.open_api_key_input(&provider_id);
-                            }
-                            _ => {}
+                        if value == "apikey" {
+                            self.open_api_key_input(&provider_id);
+                        } else {
+                            self.pending_oauth = Some((provider_id, value));
                         }
                         return;
                     }
@@ -1571,14 +1577,53 @@ impl App {
         if status != "not connected" {
             items.push(SelectorItem::header(&format!("Currently: {status}")));
         }
-        items.push(SelectorItem::entry(
-            "Login with OAuth (opens browser)",
-            "oauth",
-        ));
-        items.push(SelectorItem::entry(
-            "Enter API key manually",
-            "apikey",
-        ));
+
+        match provider_id {
+            "openai" => {
+                items.push(SelectorItem::entry(
+                    "Codex subscription (device code login)",
+                    "codex",
+                ));
+                items.push(SelectorItem::entry(
+                    "Enter API key manually",
+                    "apikey",
+                ));
+            }
+            "gemini" => {
+                items.push(SelectorItem::entry(
+                    "Gemini CLI OAuth (free tier / paid plan)",
+                    "gemini-cli",
+                ));
+                items.push(SelectorItem::entry(
+                    "Antigravity OAuth (Cloud Code quota)",
+                    "antigravity",
+                ));
+                items.push(SelectorItem::entry(
+                    "Enter API key manually",
+                    "apikey",
+                ));
+            }
+            "anthropic" => {
+                items.push(SelectorItem::entry(
+                    "Claude Pro/Max subscription (OAuth)",
+                    "oauth",
+                ));
+                items.push(SelectorItem::entry(
+                    "Enter API key manually",
+                    "apikey",
+                ));
+            }
+            _ => {
+                items.push(SelectorItem::entry(
+                    "Login with OAuth (opens browser)",
+                    "oauth",
+                ));
+                items.push(SelectorItem::entry(
+                    "Enter API key manually",
+                    "apikey",
+                ));
+            }
+        }
 
         let mut state = SelectorState::new(
             SelectorKind::ConnectMethod,

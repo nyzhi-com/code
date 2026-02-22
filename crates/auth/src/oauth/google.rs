@@ -3,13 +3,14 @@ use oauth2::{CsrfToken, PkceCodeChallenge};
 use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::mpsc;
 
 use crate::token_store::{self, StoredToken};
 
 const CLIENT_ID: &str = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const SCOPE: &str = "https://www.googleapis.com/auth/generative-language.retriever";
+const SCOPES: &str = "openid+email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform";
 
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
@@ -18,7 +19,25 @@ struct TokenResponse {
     expires_in: Option<u64>,
 }
 
+/// CLI login (prints to stderr).
 pub async fn login() -> Result<StoredToken> {
+    login_inner(None).await
+}
+
+/// TUI-safe login (sends messages through channel instead of stderr).
+pub async fn login_interactive(msg_tx: mpsc::UnboundedSender<String>) -> Result<StoredToken> {
+    login_inner(Some(msg_tx)).await
+}
+
+async fn login_inner(msg_tx: Option<mpsc::UnboundedSender<String>>) -> Result<StoredToken> {
+    let send = |s: String| {
+        if let Some(ref tx) = msg_tx {
+            let _ = tx.send(s);
+        } else {
+            eprintln!("{s}");
+        }
+    };
+
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
     let redirect_uri = format!("http://127.0.0.1:{port}/oauth2callback");
@@ -30,7 +49,7 @@ pub async fn login() -> Result<StoredToken> {
         "{AUTH_URL}?client_id={CLIENT_ID}\
          &redirect_uri={redirect}\
          &response_type=code\
-         &scope={SCOPE}\
+         &scope={SCOPES}\
          &code_challenge={challenge}\
          &code_challenge_method=S256\
          &state={state}\
@@ -41,11 +60,14 @@ pub async fn login() -> Result<StoredToken> {
         state = csrf_state.secret(),
     );
 
-    eprintln!("Opening browser for Google login...");
-    eprintln!("If the browser doesn't open, visit:\n  {auth_url}\n");
+    send("Opening browser for Gemini CLI login...".to_string());
 
     if let Err(e) = open::that(&auth_url) {
         tracing::warn!(error = %e, "Failed to open browser");
+        send("Couldn't open browser automatically.".to_string());
+        if msg_tx.is_none() {
+            eprintln!("Visit:\n  {auth_url}\n");
+        }
     }
 
     let (code, state) = accept_callback(&listener).await?;
@@ -54,7 +76,7 @@ pub async fn login() -> Result<StoredToken> {
         anyhow::bail!("CSRF state mismatch -- possible attack or stale request");
     }
 
-    eprintln!("Authorization code received. Exchanging for tokens...");
+    send("Authorization received. Exchanging for tokens...".to_string());
 
     let client = reqwest::Client::new();
     let resp = client
@@ -94,10 +116,9 @@ pub async fn login() -> Result<StoredToken> {
         Some(format!("account-{}", accounts.len() + 1))
     };
     token_store::store_account("gemini", &stored, label.as_deref())?;
-    eprintln!("Google/Gemini login successful. Token stored.");
-    if accounts.len() >= 1 {
-        eprintln!("You now have {} Gemini accounts configured.", accounts.len() + 1);
-    }
+
+    let count = token_store::list_accounts("gemini")?.len();
+    send(format!("Gemini CLI login successful. {count} account(s) configured."));
 
     Ok(stored)
 }

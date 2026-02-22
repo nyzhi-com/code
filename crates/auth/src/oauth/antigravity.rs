@@ -29,12 +29,10 @@ pub async fn login(msg_tx: Option<mpsc::UnboundedSender<String>>) -> Result<Stor
         }
     };
 
-    let listener = TcpListener::bind(format!("127.0.0.1:{CALLBACK_PORT}"))
-        .await
-        .or_else(|_| {
-            // Fallback to random port if preferred port is taken
-            futures::executor::block_on(TcpListener::bind("127.0.0.1:0"))
-        })?;
+    let listener = match TcpListener::bind(format!("127.0.0.1:{CALLBACK_PORT}")).await {
+        Ok(l) => l,
+        Err(_) => TcpListener::bind("127.0.0.1:0").await?,
+    };
     let port = listener.local_addr()?.port();
     let redirect_uri = format!("http://127.0.0.1:{port}/oauth-callback");
 

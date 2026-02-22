@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::Deserialize;
+use tokio::sync::mpsc;
 
 use crate::token_store::{self, StoredToken};
 
@@ -42,7 +43,25 @@ struct TokenResponse {
     id_token: Option<String>,
 }
 
+/// CLI login (prints to stderr).
 pub async fn login() -> Result<StoredToken> {
+    login_inner(None).await
+}
+
+/// TUI-safe login (sends messages through channel instead of stderr).
+pub async fn login_interactive(msg_tx: mpsc::UnboundedSender<String>) -> Result<StoredToken> {
+    login_inner(Some(msg_tx)).await
+}
+
+async fn login_inner(msg_tx: Option<mpsc::UnboundedSender<String>>) -> Result<StoredToken> {
+    let send = |s: String| {
+        if let Some(ref tx) = msg_tx {
+            let _ = tx.send(s);
+        } else {
+            eprintln!("{s}");
+        }
+    };
+
     let client = reqwest::Client::new();
 
     let resp = client
@@ -58,12 +77,11 @@ pub async fn login() -> Result<StoredToken> {
 
     let device: DeviceCodeResponse = resp.json().await?;
 
-    eprintln!("To log in to OpenAI, visit:");
-    eprintln!("  {VERIFICATION_URL}");
-    eprintln!();
-    eprintln!("Enter code: {}", device.user_code);
-    eprintln!();
-    eprintln!("Waiting for authorization...");
+    send(format!(
+        "Visit {VERIFICATION_URL}\nEnter code: {}",
+        device.user_code
+    ));
+    send("Waiting for authorization...".to_string());
 
     if let Err(e) = open::that(VERIFICATION_URL) {
         tracing::warn!(error = %e, "Failed to open browser");
@@ -109,7 +127,7 @@ pub async fn login() -> Result<StoredToken> {
     };
 
     token_store::store_token("openai", &stored)?;
-    eprintln!("OpenAI login successful. Token stored.");
+    send("OpenAI login successful.".to_string());
 
     Ok(stored)
 }
