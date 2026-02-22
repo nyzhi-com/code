@@ -12,7 +12,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let mut lines: Vec<Line> = Vec::new();
 
-    let logo_lines: Vec<&str> = LOGO_SPLASH.lines().collect();
+    let logo_lines: Vec<&str> = LOGO_SPLASH.lines().filter(|l| !l.is_empty()).collect();
     let logo_width = logo_lines.iter().map(|l| l.len()).max().unwrap_or(0);
     let inner_w = inner.width as usize;
 
