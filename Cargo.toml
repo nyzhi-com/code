@@ -88,6 +88,10 @@ rand = "0.9"
 # Desktop notifications
 notify-rust = "4"
 
+# Self-update
+self-replace = "1"
+semver = "1"
+
 # Base64 encoding
 base64 = "0.22"
 

@@ -1,0 +1,11 @@
+name = "nyzhi-releases"
+main = "src/index.ts"
+compatibility_date = "2025-02-14"
+
+routes = [
+  { pattern = "get.nyzhi.com", custom_domain = true },
+]
+
+[[r2_buckets]]
+binding = "RELEASES"
+bucket_name = "nyzhi-releases"

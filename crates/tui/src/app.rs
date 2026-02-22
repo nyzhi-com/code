@@ -50,6 +50,20 @@ pub enum ToolStatus {
     Denied,
 }
 
+#[derive(Debug, Clone)]
+pub enum UpdateStatus {
+    Checking,
+    Available {
+        new_version: String,
+        current_version: String,
+        changelog: Option<String>,
+    },
+    Downloading {
+        progress: Option<u8>,
+    },
+    None,
+}
+
 pub struct PendingImage {
     pub filename: String,
     pub media_type: String,
@@ -132,6 +146,9 @@ pub struct App {
     pub ctrl_f_pending: bool,
     pub context_used_tokens: usize,
     pub context_window: u32,
+    pub update_status: UpdateStatus,
+    update_info: Option<nyzhi_core::updater::UpdateInfo>,
+    update_done_rx: Option<tokio::sync::mpsc::Receiver<anyhow::Result<nyzhi_core::updater::UpdateResult>>>,
 }
 
 impl App {
@@ -191,6 +208,9 @@ impl App {
             ctrl_f_pending: false,
             context_used_tokens: 0,
             context_window: 0,
+            update_status: UpdateStatus::None,
+            update_info: None,
+            update_done_rx: None,
         }
     }
 
@@ -252,6 +272,15 @@ impl App {
         mut registry: ToolRegistry,
         config: &nyzhi_config::Config,
     ) -> Result<()> {
+        // Post-update health check — detect if a recent update broke anything
+        let health_warnings = nyzhi_core::updater::startup_health_check();
+        for w in &health_warnings {
+            self.items.push(DisplayItem::Message {
+                role: "system".to_string(),
+                content: format!("Post-update warning: {w}"),
+            });
+        }
+
         self.history.load();
         self.custom_commands = nyzhi_core::commands::load_all_commands(
             &self.workspace.project_root,
@@ -411,8 +440,68 @@ impl App {
 
         let registry = Arc::new(registry);
 
+        // Background update check
+        let update_config = config.update.clone();
+        let (update_tx, mut update_rx) = tokio::sync::mpsc::channel::<nyzhi_core::updater::UpdateInfo>(1);
+        if update_config.enabled {
+            self.update_status = UpdateStatus::Checking;
+            tokio::spawn(async move {
+                if let Ok(Some(info)) = nyzhi_core::updater::check_for_update(&update_config).await {
+                    let _ = update_tx.send(info).await;
+                }
+            });
+        }
+
         loop {
             self.spinner.tick();
+
+            if let Ok(info) = update_rx.try_recv() {
+                self.update_status = UpdateStatus::Available {
+                    new_version: info.new_version.clone(),
+                    current_version: info.current_version.clone(),
+                    changelog: info.changelog.clone(),
+                };
+                self.update_info = Some(info);
+            }
+
+            if let Some(ref mut rx) = self.update_done_rx {
+                if let Ok(result) = rx.try_recv() {
+                    self.update_done_rx = None;
+                    self.update_status = UpdateStatus::None;
+                    match result {
+                        Ok(ur) => {
+                            let mut msg = format!(
+                                "Updated to v{}! Restart nyzhi to use the new version.",
+                                ur.new_version
+                            );
+                            if let Some(ref bp) = ur.backup_path {
+                                msg.push_str(&format!(
+                                    "\n  Backup saved to: {}",
+                                    bp.display()
+                                ));
+                            }
+                            if ur.verified {
+                                msg.push_str("\n  Post-flight verification: passed");
+                            }
+                            // Run startup health check for integrity warnings
+                            let warnings = nyzhi_core::updater::startup_health_check();
+                            for w in &warnings {
+                                msg.push_str(&format!("\n  Warning: {w}"));
+                            }
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: msg,
+                            });
+                        }
+                        Err(e) => {
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Update failed: {e:#}"),
+                            });
+                        }
+                    }
+                }
+            }
 
             terminal.draw(|frame| draw(frame, self, &self.theme, &self.spinner))?;
 
@@ -425,7 +514,10 @@ impl App {
                     }
                 }
                 Event::Key(key) => {
-                    if self.text_prompt.is_some() {
+                    let update_key_handled = self.handle_update_key(key);
+                    if update_key_handled {
+                        // handled by update banner
+                    } else if self.text_prompt.is_some() {
                         self.handle_text_prompt_key(key, config).await;
                     } else if self.selector.is_some() {
                         self.handle_selector_key(key, &mut model_info_idx);
@@ -1007,6 +1099,51 @@ impl App {
         terminal::disable_raw_mode()?;
         io::stdout().execute(LeaveAlternateScreen)?;
         Ok(())
+    }
+
+    fn handle_update_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        if !matches!(self.update_status, UpdateStatus::Available { .. }) {
+            return false;
+        }
+        if !matches!(self.mode, AppMode::Input) || !self.input.is_empty() {
+            return false;
+        }
+        if !key.modifiers.is_empty() {
+            return false;
+        }
+        match key.code {
+            KeyCode::Char('u') | KeyCode::Char('U') => {
+                if let Some(info) = self.update_info.take() {
+                    self.update_status = UpdateStatus::Downloading { progress: None };
+                    let (done_tx, done_rx) =
+                        tokio::sync::mpsc::channel::<anyhow::Result<nyzhi_core::updater::UpdateResult>>(1);
+                    self.update_done_rx = Some(done_rx);
+                    tokio::spawn(async move {
+                        let result = nyzhi_core::updater::download_and_apply(&info).await;
+                        let _ = done_tx.send(result).await;
+                    });
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Backing up and downloading update...".to_string(),
+                    });
+                }
+                true
+            }
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                self.update_status = UpdateStatus::None;
+                self.update_info = None;
+                true
+            }
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                if let UpdateStatus::Available { ref new_version, .. } = self.update_status {
+                    nyzhi_core::updater::skip_version(new_version);
+                }
+                self.update_status = UpdateStatus::None;
+                self.update_info = None;
+                true
+            }
+            _ => false,
+        }
     }
 
     fn handle_selector_key(&mut self, key: crossterm::event::KeyEvent, model_info_idx: &mut Option<usize>) {

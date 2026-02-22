@@ -27,6 +27,7 @@ pub mod skills;
 pub mod team;
 pub mod teams;
 pub mod tools;
+pub mod updater;
 pub mod worktree;
 pub mod streaming;
 pub mod prompt;

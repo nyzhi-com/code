@@ -114,6 +114,18 @@ enum Commands {
         #[arg(long)]
         filter: Option<String>,
     },
+    /// Check for updates and self-update
+    Update {
+        /// Force update even if already on latest
+        #[arg(long)]
+        force: bool,
+        /// Rollback to a backup (path or "latest")
+        #[arg(long)]
+        rollback: Option<String>,
+        /// List available backups
+        #[arg(long)]
+        list_backups: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -543,6 +555,102 @@ async fn main() -> Result<()> {
                     &events,
                     filter.as_deref(),
                 ));
+            }
+            return Ok(());
+        }
+        Some(Commands::Update { force, rollback: rollback_target, list_backups: show_backups }) => {
+            if show_backups {
+                let backups = nyzhi_core::updater::list_backups();
+                if backups.is_empty() {
+                    println!("No backups available.");
+                } else {
+                    println!("Available backups (newest first):");
+                    for b in &backups {
+                        println!("  {}", b.display());
+                    }
+                }
+                return Ok(());
+            }
+            if let Some(target) = rollback_target {
+                let path = if target == "latest" {
+                    let backups = nyzhi_core::updater::list_backups();
+                    if backups.is_empty() {
+                        eprintln!("No backups available to rollback to.");
+                        std::process::exit(1);
+                    }
+                    backups[0].clone()
+                } else {
+                    std::path::PathBuf::from(&target)
+                };
+                println!("Rolling back to {}...", path.display());
+                match nyzhi_core::updater::rollback(&path) {
+                    Ok(()) => println!("Rollback successful. Restart nyzhi."),
+                    Err(e) => {
+                        eprintln!("Rollback failed: {e}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
+            println!("Checking for updates...");
+            let update_config = config.update.clone();
+            let result = if force {
+                nyzhi_core::updater::check_for_update_force(&update_config).await
+            } else {
+                let mut cfg = update_config;
+                cfg.check_interval_hours = 0;
+                nyzhi_core::updater::check_for_update(&cfg).await
+            };
+            match result {
+                Ok(Some(info)) => {
+                    println!(
+                        "Update available: v{} -> v{}",
+                        info.current_version, info.new_version
+                    );
+                    if let Some(ref cl) = info.changelog {
+                        println!("  {cl}");
+                    }
+                    println!("Backing up current binary and downloading update...");
+                    match nyzhi_core::updater::download_and_apply(&info).await {
+                        Ok(ur) => {
+                            println!(
+                                "Updated to v{}! Restart nyzhi to use the new version.",
+                                ur.new_version
+                            );
+                            if let Some(ref bp) = ur.backup_path {
+                                println!("  Backup: {}", bp.display());
+                            }
+                            if ur.verified {
+                                println!("  Post-flight verification: passed");
+                            }
+                            let warnings = nyzhi_core::updater::startup_health_check();
+                            for w in &warnings {
+                                eprintln!("  Warning: {w}");
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Update failed: {e:#}");
+                            let backups = nyzhi_core::updater::list_backups();
+                            if !backups.is_empty() {
+                                eprintln!(
+                                    "  Rollback available: nyzhi update --rollback {}",
+                                    backups[0].display()
+                                );
+                            }
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Ok(None) => {
+                    println!(
+                        "Already on the latest version (v{}).",
+                        nyzhi_core::updater::current_version()
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Update check failed: {e}");
+                    std::process::exit(1);
+                }
             }
             return Ok(());
         }

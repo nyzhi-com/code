@@ -24,6 +24,8 @@ pub struct Config {
     pub browser: BrowserConfig,
     #[serde(default)]
     pub memory: MemoryConfig,
+    #[serde(default)]
+    pub update: UpdateConfig,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -50,6 +52,34 @@ pub struct BrowserConfig {
 pub struct MemoryConfig {
     #[serde(default)]
     pub auto_memory: bool,
+}
+
+fn default_check_interval_hours() -> u32 {
+    4
+}
+
+fn default_release_url() -> String {
+    "https://get.nyzhi.com".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_check_interval_hours")]
+    pub check_interval_hours: u32,
+    #[serde(default = "default_release_url")]
+    pub release_url: String,
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_hours: default_check_interval_hours(),
+            release_url: default_release_url(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -766,6 +796,19 @@ impl Config {
             },
             memory: MemoryConfig {
                 auto_memory: project.memory.auto_memory || global.memory.auto_memory,
+            },
+            update: UpdateConfig {
+                enabled: global.update.enabled && project.update.enabled,
+                check_interval_hours: if project.update.check_interval_hours != default_check_interval_hours() {
+                    project.update.check_interval_hours
+                } else {
+                    global.update.check_interval_hours
+                },
+                release_url: if project.update.release_url != default_release_url() {
+                    project.update.release_url.clone()
+                } else {
+                    global.update.release_url.clone()
+                },
             },
         }
     }
