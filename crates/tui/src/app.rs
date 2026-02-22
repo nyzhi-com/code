@@ -14,6 +14,7 @@ use nyzhi_provider::{MessageContent, Provider};
 use ratatui::prelude::*;
 use tokio::sync::broadcast;
 
+use crate::components::selector::SelectorKind;
 use crate::input::handle_key;
 use crate::spinner::SpinnerState;
 use crate::theme::Theme;
@@ -527,7 +528,11 @@ impl App {
             if event::poll(std::time::Duration::from_millis(16))? {
                 match event::read()? {
                 Event::Paste(text) => {
-                    if matches!(self.mode, AppMode::Input) {
+                    if let Some(ref mut sel) = self.selector {
+                        if matches!(sel.kind, SelectorKind::ApiKeyInput) {
+                            sel.search.push_str(&text);
+                        }
+                    } else if matches!(self.mode, AppMode::Input) {
                         self.input.insert_str(self.cursor_pos, &text);
                         self.cursor_pos += text.len();
                     }
