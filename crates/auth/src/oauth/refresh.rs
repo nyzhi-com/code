@@ -6,6 +6,7 @@ use crate::token_store::{self, StoredToken};
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_CLIENT_ID: &str =
     "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
+const GOOGLE_CLIENT_SECRET: &str = "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";
 
 const OPENAI_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const OPENAI_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -78,6 +79,7 @@ async fn refresh_google(refresh_token: &str) -> Result<RefreshResponse> {
         .form(&[
             ("grant_type", "refresh_token"),
             ("client_id", GOOGLE_CLIENT_ID),
+            ("client_secret", GOOGLE_CLIENT_SECRET),
             ("refresh_token", refresh_token),
         ])
         .send()

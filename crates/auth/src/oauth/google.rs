@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 use crate::token_store::{self, StoredToken};
 
 const CLIENT_ID: &str = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
+const CLIENT_SECRET: &str = "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";
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const SCOPES: &str = "openid+email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform";
@@ -84,6 +85,7 @@ async fn login_inner(msg_tx: Option<mpsc::UnboundedSender<String>>) -> Result<St
         .form(&[
             ("grant_type", "authorization_code"),
             ("client_id", CLIENT_ID),
+            ("client_secret", CLIENT_SECRET),
             ("code", &code),
             ("code_verifier", pkce_verifier.secret()),
             ("redirect_uri", &redirect_uri),
