@@ -37,8 +37,12 @@ pub fn resolve_credential(provider: &str, config_key: Option<&str>) -> Result<Cr
     }
 
     if let Ok(Some(token)) = token_store::load_token(provider) {
-        if !oauth::refresh::is_expired(&token) {
-            return Ok(Credential::Bearer(token.access_token));
+        if token.refresh_token.is_some() {
+            if !oauth::refresh::is_expired(&token) {
+                return Ok(Credential::Bearer(token.access_token));
+            }
+        } else {
+            return Ok(Credential::ApiKey(token.access_token));
         }
     }
 
@@ -71,6 +75,10 @@ pub async fn resolve_credential_async(
 
     if let Ok(Some(token)) = oauth::refresh::refresh_if_needed(provider).await {
         return Ok(Credential::Bearer(token.access_token));
+    }
+
+    if let Ok(Some(token)) = token_store::load_token(provider) {
+        return Ok(Credential::ApiKey(token.access_token));
     }
 
     let env_var = api_key::env_var_name(provider);

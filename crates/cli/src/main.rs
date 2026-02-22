@@ -48,10 +48,10 @@ enum Commands {
         #[arg(short = 'i', long = "image")]
         images: Vec<String>,
     },
-    /// Log in to a provider via OAuth
+    /// Log in to a provider (OAuth or API key)
     Login {
-        /// Provider to log in to (gemini, openai)
-        provider: String,
+        /// Provider to log in to (e.g. openai, anthropic, gemini, openrouter)
+        provider: Option<String>,
     },
     /// Log out from a provider (delete stored OAuth token)
     Logout {
@@ -272,9 +272,40 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Some(Commands::Login { provider: prov }) => {
-            match nyzhi_auth::oauth::login(&prov).await {
-                Ok(_) => println!("Logged in to {prov}."),
-                Err(e) => eprintln!("Login failed: {e}"),
+            let prov = match prov {
+                Some(p) => p,
+                None => {
+                    println!("Select a provider:");
+                    for (i, def) in nyzhi_config::BUILT_IN_PROVIDERS.iter().enumerate() {
+                        println!("  {}: {}", i + 1, def.name);
+                    }
+                    print!("Enter number: ");
+                    use std::io::Write;
+                    std::io::stdout().flush()?;
+                    let mut input = String::new();
+                    std::io::stdin().read_line(&mut input)?;
+                    let idx: usize = input.trim().parse().unwrap_or(0);
+                    if idx == 0 || idx > nyzhi_config::BUILT_IN_PROVIDERS.len() {
+                        eprintln!("Invalid selection.");
+                        return Ok(());
+                    }
+                    nyzhi_config::BUILT_IN_PROVIDERS[idx - 1].id.to_string()
+                }
+            };
+            let def = nyzhi_config::find_provider_def(&prov);
+            let supports_oauth = def.map(|d| d.supports_oauth).unwrap_or(false);
+
+            if supports_oauth {
+                match nyzhi_auth::oauth::login(&prov).await {
+                    Ok(_) => println!("Logged in to {prov} via OAuth."),
+                    Err(e) => {
+                        eprintln!("OAuth login failed: {e}");
+                        eprintln!("You can add an API key instead.");
+                        prompt_api_key(&prov)?;
+                    }
+                }
+            } else {
+                prompt_api_key(&prov)?;
             }
             return Ok(());
         }
@@ -284,16 +315,17 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Some(Commands::Whoami) => {
-            let providers = ["openai", "anthropic", "gemini"];
             println!("Auth status:");
-            for prov in &providers {
-                let conf_entry = config.provider.entry(prov);
+            let mut seen = std::collections::HashSet::new();
+            for def in nyzhi_config::BUILT_IN_PROVIDERS {
+                seen.insert(def.id.to_string());
+                let conf_entry = config.provider.entry(def.id);
                 let has_api_key = conf_entry
                     .and_then(|e| e.api_key.as_deref())
                     .is_some();
-                let env_var = nyzhi_auth::api_key::env_var_name(prov);
-                let has_env = std::env::var(env_var).is_ok();
-                let has_token = nyzhi_auth::token_store::load_token(prov)
+                let env_var = &nyzhi_auth::api_key::env_var_name(def.id);
+                let has_env = std::env::var(env_var).map(|v| !v.is_empty()).unwrap_or(false);
+                let has_token = nyzhi_auth::token_store::load_token(def.id)
                     .ok()
                     .flatten()
                     .is_some();
@@ -303,16 +335,20 @@ async fn main() -> Result<()> {
                 } else if has_env {
                     format!("env ({env_var})")
                 } else if has_token {
-                    "OAuth token".to_string()
+                    "auth.json".to_string()
                 } else {
                     "none".to_string()
                 };
-                let marker = if has_api_key || has_env || has_token {
-                    "✓"
-                } else {
-                    "✗"
-                };
-                println!("  {marker} {prov}: {method}");
+                let marker = if has_api_key || has_env || has_token { "✓" } else { "✗" };
+                println!("  {marker} {}: {method}", def.name);
+            }
+            for (name, _entry) in &config.provider.providers {
+                if seen.contains(name) { continue; }
+                let has_token = nyzhi_auth::token_store::load_token(name)
+                    .ok().flatten().is_some();
+                let marker = if has_token { "✓" } else { "✗" };
+                let status = if has_token { "auth.json" } else { "none" };
+                println!("  {marker} {name} (custom): {status}");
             }
             return Ok(());
         }
@@ -1205,5 +1241,24 @@ async fn handle_mcp_command(
         }
     }
 
+    Ok(())
+}
+
+fn prompt_api_key(provider: &str) -> anyhow::Result<()> {
+    let display = nyzhi_config::find_provider_def(provider)
+        .map(|d| d.name)
+        .unwrap_or(provider);
+    print!("Enter API key for {display}: ");
+    use std::io::Write;
+    std::io::stdout().flush()?;
+    let mut key = String::new();
+    std::io::stdin().read_line(&mut key)?;
+    let key = key.trim();
+    if key.is_empty() {
+        eprintln!("No key entered.");
+        return Ok(());
+    }
+    nyzhi_auth::token_store::store_api_key(provider, key)?;
+    println!("API key saved for {display}.");
     Ok(())
 }

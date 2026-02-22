@@ -90,11 +90,12 @@ impl OpenAIProvider {
     }
 
     pub fn from_config(config: &nyzhi_config::Config) -> Result<Self> {
-        let cred = nyzhi_auth::resolve_credential("openai", config.provider.openai.api_key.as_deref())?;
+        let entry = config.provider.entry("openai");
+        let cred = nyzhi_auth::resolve_credential("openai", entry.and_then(|e| e.api_key.as_deref()))?;
         Ok(Self::new(
             cred.header_value(),
-            config.provider.openai.base_url.clone(),
-            config.provider.openai.model.clone(),
+            entry.and_then(|e| e.base_url.clone()),
+            entry.and_then(|e| e.model.clone()),
         ))
     }
 

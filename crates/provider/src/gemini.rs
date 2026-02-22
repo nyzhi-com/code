@@ -87,12 +87,13 @@ impl GeminiProvider {
     }
 
     pub fn from_config(config: &nyzhi_config::Config) -> Result<Self> {
+        let entry = config.provider.entry("gemini");
         let cred =
-            nyzhi_auth::resolve_credential("gemini", config.provider.gemini.api_key.as_deref())?;
+            nyzhi_auth::resolve_credential("gemini", entry.and_then(|e| e.api_key.as_deref()))?;
         Ok(Self::with_credential(
             cred,
-            config.provider.gemini.base_url.clone(),
-            config.provider.gemini.model.clone(),
+            entry.and_then(|e| e.base_url.clone()),
+            entry.and_then(|e| e.model.clone()),
         ))
     }
 

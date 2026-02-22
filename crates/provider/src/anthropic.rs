@@ -77,14 +77,15 @@ impl AnthropicProvider {
     }
 
     pub fn from_config(config: &nyzhi_config::Config) -> Result<Self> {
+        let entry = config.provider.entry("anthropic");
         let cred = nyzhi_auth::resolve_credential(
             "anthropic",
-            config.provider.anthropic.api_key.as_deref(),
+            entry.and_then(|e| e.api_key.as_deref()),
         )?;
         Ok(Self::new(
             cred.header_value(),
-            config.provider.anthropic.base_url.clone(),
-            config.provider.anthropic.model.clone(),
+            entry.and_then(|e| e.base_url.clone()),
+            entry.and_then(|e| e.model.clone()),
         ))
     }
 

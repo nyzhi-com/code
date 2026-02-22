@@ -1181,6 +1181,35 @@ impl App {
                         *model_info_idx = Some(idx);
                         self.model_name = value;
                     }
+                    SelectorKind::Provider => {
+                        self.selector = None;
+                        self.open_api_key_input(&value);
+                        return;
+                    }
+                    SelectorKind::ApiKeyInput => {
+                        let provider_id = self.selector.as_ref()
+                            .and_then(|s| s.context_value.clone())
+                            .unwrap_or_default();
+                        let api_key = self.selector.as_ref()
+                            .map(|s| s.search.clone())
+                            .unwrap_or_default();
+                        if !api_key.is_empty() {
+                            match nyzhi_auth::token_store::store_api_key(&provider_id, &api_key) {
+                                Ok(()) => {
+                                    self.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: format!("API key saved for {provider_id}. Use --provider {provider_id} or set it as default in config."),
+                                    });
+                                }
+                                Err(e) => {
+                                    self.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: format!("Failed to save API key: {e}"),
+                                    });
+                                }
+                            }
+                        }
+                    }
                 }
                 self.selector = None;
             }
@@ -1295,11 +1324,7 @@ impl App {
 
         let items: Vec<SelectorItem> = ThemePreset::ALL
             .iter()
-            .map(|p| SelectorItem {
-                label: p.display_name().to_string(),
-                value: p.name().to_string(),
-                preview_color: Some(p.bg_page_color()),
-            })
+            .map(|p| SelectorItem::entry(p.display_name(), p.name()).with_color(p.bg_page_color()))
             .collect();
         self.selector = Some(SelectorState::new(
             SelectorKind::Theme,
@@ -1315,11 +1340,7 @@ impl App {
 
         let items: Vec<SelectorItem> = Accent::ALL
             .iter()
-            .map(|a| SelectorItem {
-                label: capitalize(a.name()),
-                value: a.name().to_string(),
-                preview_color: Some(a.color_preview(self.theme.mode)),
-            })
+            .map(|a| SelectorItem::entry(&capitalize(a.name()), a.name()).with_color(a.color_preview(self.theme.mode)))
             .collect();
         self.selector = Some(SelectorState::new(
             SelectorKind::Accent,
@@ -1334,11 +1355,7 @@ impl App {
 
         let items: Vec<SelectorItem> = models
             .iter()
-            .map(|m| SelectorItem {
-                label: m.id.to_string(),
-                value: m.id.to_string(),
-                preview_color: None,
-            })
+            .map(|m| SelectorItem::entry(m.id, m.id))
             .collect();
         self.selector = Some(SelectorState::new(
             SelectorKind::Model,
@@ -1346,6 +1363,51 @@ impl App {
             items,
             &self.model_name,
         ));
+    }
+
+    pub fn open_provider_selector(&mut self) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let mut items = Vec::new();
+        items.push(SelectorItem::header("Popular"));
+        for def in nyzhi_config::BUILT_IN_PROVIDERS.iter().filter(|d| d.category == "popular") {
+            let label = if def.supports_oauth {
+                format!("{} (OAuth or API key)", def.name)
+            } else {
+                def.name.to_string()
+            };
+            items.push(SelectorItem::entry(&label, def.id));
+        }
+        items.push(SelectorItem::header("Other"));
+        for def in nyzhi_config::BUILT_IN_PROVIDERS.iter().filter(|d| d.category == "other") {
+            items.push(SelectorItem::entry(def.name, def.id));
+        }
+        self.selector = Some(SelectorState::new(
+            SelectorKind::Provider,
+            "Connect a provider",
+            items,
+            &self.provider_name,
+        ));
+    }
+
+    pub fn open_api_key_input(&mut self, provider_id: &str) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let display_name = nyzhi_config::find_provider_def(provider_id)
+            .map(|d| d.name)
+            .unwrap_or(provider_id);
+
+        let items = vec![
+            SelectorItem::entry(&format!("Paste your {} API key and press Enter", display_name), "submit"),
+        ];
+        let mut state = SelectorState::new(
+            SelectorKind::ApiKeyInput,
+            &format!("{} API Key", display_name),
+            items,
+            "",
+        );
+        state.context_value = Some(provider_id.to_string());
+        self.selector = Some(state);
     }
 
     async fn respond_approval(&mut self, approved: bool) {

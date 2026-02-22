@@ -1545,6 +1545,7 @@ dependencies = [
  "chrono",
  "dirs",
  "keyring",
+ "nyzhi-config",
  "oauth2",
  "open",
  "reqwest 0.12.28",

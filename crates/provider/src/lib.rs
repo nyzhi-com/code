@@ -35,15 +35,51 @@ pub trait Provider: Send + Sync {
     ) -> Result<BoxStream<'static, Result<StreamEvent>>>;
 }
 
+fn resolve_api_style(name: &str, config: &nyzhi_config::Config) -> String {
+    if let Some(entry) = config.provider.entry(name) {
+        if let Some(style) = &entry.api_style {
+            return style.clone();
+        }
+    }
+    if let Some(def) = nyzhi_config::find_provider_def(name) {
+        return def.api_style.to_string();
+    }
+    "openai".to_string()
+}
+
 pub fn create_provider(
     name: &str,
     config: &nyzhi_config::Config,
 ) -> Result<Box<dyn Provider>> {
-    match name {
-        "openai" => openai::OpenAIProvider::from_config(config).map(|p| Box::new(p) as _),
-        "anthropic" => anthropic::AnthropicProvider::from_config(config).map(|p| Box::new(p) as _),
-        "gemini" => gemini::GeminiProvider::from_config(config).map(|p| Box::new(p) as _),
-        other => anyhow::bail!("Unknown provider: {other}"),
+    let style = resolve_api_style(name, config);
+    let entry = config.provider.entry(name);
+
+    match style.as_str() {
+        "openai" => {
+            let cred = nyzhi_auth::resolve_credential(name, entry.and_then(|e| e.api_key.as_deref()))?;
+            let base_url = entry.and_then(|e| e.base_url.clone())
+                .or_else(|| nyzhi_config::find_provider_def(name).map(|d| d.default_base_url.to_string()));
+            Ok(Box::new(openai::OpenAIProvider::new(
+                cred.header_value(), base_url, entry.and_then(|e| e.model.clone()),
+            )))
+        }
+        "anthropic" => {
+            let cred = nyzhi_auth::resolve_credential(name, entry.and_then(|e| e.api_key.as_deref()))?;
+            let base_url = entry.and_then(|e| e.base_url.clone())
+                .or_else(|| nyzhi_config::find_provider_def(name).map(|d| d.default_base_url.to_string()));
+            Ok(Box::new(anthropic::AnthropicProvider::new(
+                cred.header_value(), base_url, entry.and_then(|e| e.model.clone()),
+            )))
+        }
+        "gemini" => {
+            let cred = nyzhi_auth::resolve_credential(name, entry.and_then(|e| e.api_key.as_deref()))?;
+            let base_url = entry.and_then(|e| e.base_url.clone())
+                .or_else(|| nyzhi_config::find_provider_def(name).map(|d| d.default_base_url.to_string()));
+            Ok(Box::new(gemini::GeminiProvider::with_credential(
+                cred, base_url, entry.and_then(|e| e.model.clone()),
+            )))
+        }
+        other => anyhow::bail!("Unsupported api_style '{other}' for provider '{name}'"),
     }
 }
 
@@ -51,29 +87,28 @@ pub async fn create_provider_async(
     name: &str,
     config: &nyzhi_config::Config,
 ) -> Result<Box<dyn Provider>> {
-    let provider_conf = config.provider.entry(name);
+    let style = resolve_api_style(name, config);
+    let entry = config.provider.entry(name);
+
     let cred = nyzhi_auth::resolve_credential_async(
         name,
-        provider_conf.as_ref().and_then(|p| p.api_key.as_deref()),
+        entry.and_then(|p| p.api_key.as_deref()),
     )
     .await?;
 
-    match name {
+    let base_url = entry.and_then(|e| e.base_url.clone())
+        .or_else(|| nyzhi_config::find_provider_def(name).map(|d| d.default_base_url.to_string()));
+
+    match style.as_str() {
         "openai" => Ok(Box::new(openai::OpenAIProvider::new(
-            cred.header_value(),
-            provider_conf.as_ref().and_then(|p| p.base_url.clone()),
-            provider_conf.as_ref().and_then(|p| p.model.clone()),
+            cred.header_value(), base_url, entry.and_then(|e| e.model.clone()),
         ))),
         "anthropic" => Ok(Box::new(anthropic::AnthropicProvider::new(
-            cred.header_value(),
-            provider_conf.as_ref().and_then(|p| p.base_url.clone()),
-            provider_conf.as_ref().and_then(|p| p.model.clone()),
+            cred.header_value(), base_url, entry.and_then(|e| e.model.clone()),
         ))),
         "gemini" => Ok(Box::new(gemini::GeminiProvider::with_credential(
-            cred,
-            provider_conf.as_ref().and_then(|p| p.base_url.clone()),
-            provider_conf.as_ref().and_then(|p| p.model.clone()),
+            cred, base_url, entry.and_then(|e| e.model.clone()),
         ))),
-        other => anyhow::bail!("Unknown provider: {other}"),
+        other => anyhow::bail!("Unsupported api_style '{other}' for provider '{name}'"),
     }
 }

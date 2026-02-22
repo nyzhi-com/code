@@ -413,16 +413,54 @@ impl std::str::FromStr for TrustMode {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ProviderDef {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub env_var: &'static str,
+    pub default_base_url: &'static str,
+    pub api_style: &'static str,
+    pub category: &'static str,
+    pub supports_oauth: bool,
+}
+
+pub const BUILT_IN_PROVIDERS: &[ProviderDef] = &[
+    ProviderDef { id: "openai", name: "OpenAI", env_var: "OPENAI_API_KEY",
+                  default_base_url: "https://api.openai.com/v1",
+                  api_style: "openai", category: "popular", supports_oauth: true },
+    ProviderDef { id: "anthropic", name: "Anthropic", env_var: "ANTHROPIC_API_KEY",
+                  default_base_url: "https://api.anthropic.com/v1",
+                  api_style: "anthropic", category: "popular", supports_oauth: false },
+    ProviderDef { id: "gemini", name: "Google Gemini", env_var: "GEMINI_API_KEY",
+                  default_base_url: "https://generativelanguage.googleapis.com/v1beta",
+                  api_style: "gemini", category: "popular", supports_oauth: true },
+    ProviderDef { id: "openrouter", name: "OpenRouter", env_var: "OPENROUTER_API_KEY",
+                  default_base_url: "https://openrouter.ai/api/v1",
+                  api_style: "openai", category: "popular", supports_oauth: false },
+    ProviderDef { id: "groq", name: "Groq", env_var: "GROQ_API_KEY",
+                  default_base_url: "https://api.groq.com/openai/v1",
+                  api_style: "openai", category: "other", supports_oauth: false },
+    ProviderDef { id: "together", name: "Together AI", env_var: "TOGETHER_API_KEY",
+                  default_base_url: "https://api.together.xyz/v1",
+                  api_style: "openai", category: "other", supports_oauth: false },
+    ProviderDef { id: "deepseek", name: "DeepSeek", env_var: "DEEPSEEK_API_KEY",
+                  default_base_url: "https://api.deepseek.com/v1",
+                  api_style: "openai", category: "other", supports_oauth: false },
+    ProviderDef { id: "ollama", name: "Ollama (local)", env_var: "OLLAMA_API_KEY",
+                  default_base_url: "http://localhost:11434/v1",
+                  api_style: "openai", category: "other", supports_oauth: false },
+];
+
+pub fn find_provider_def(id: &str) -> Option<&'static ProviderDef> {
+    BUILT_IN_PROVIDERS.iter().find(|p| p.id == id)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
     #[serde(default = "default_provider")]
     pub default: String,
-    #[serde(default)]
-    pub openai: ProviderEntry,
-    #[serde(default)]
-    pub anthropic: ProviderEntry,
-    #[serde(default)]
-    pub gemini: ProviderEntry,
+    #[serde(default, flatten)]
+    pub providers: HashMap<String, ProviderEntry>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -430,6 +468,7 @@ pub struct ProviderEntry {
     pub api_key: Option<String>,
     pub base_url: Option<String>,
     pub model: Option<String>,
+    pub api_style: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -545,12 +584,7 @@ fn default_accent() -> String {
 
 impl ProviderConfig {
     pub fn entry(&self, name: &str) -> Option<&ProviderEntry> {
-        match name {
-            "openai" => Some(&self.openai),
-            "anthropic" => Some(&self.anthropic),
-            "gemini" => Some(&self.gemini),
-            _ => None,
-        }
+        self.providers.get(name)
     }
 }
 
@@ -558,9 +592,7 @@ impl Default for ProviderConfig {
     fn default() -> Self {
         Self {
             default: default_provider(),
-            openai: ProviderEntry::default(),
-            anthropic: ProviderEntry::default(),
-            gemini: ProviderEntry::default(),
+            providers: HashMap::new(),
         }
     }
 }
@@ -664,18 +696,20 @@ impl Config {
     }
 
     pub fn merge(global: &Config, project: &Config) -> Config {
-        let provider = ProviderConfig {
-            default: if project.provider.default != default_provider() {
-                project.provider.default.clone()
-            } else {
-                global.provider.default.clone()
-            },
-            openai: merge_provider_entry(&global.provider.openai, &project.provider.openai),
-            anthropic: merge_provider_entry(
-                &global.provider.anthropic,
-                &project.provider.anthropic,
-            ),
-            gemini: merge_provider_entry(&global.provider.gemini, &project.provider.gemini),
+        let provider = {
+            let mut merged = global.provider.providers.clone();
+            for (k, proj_entry) in &project.provider.providers {
+                let base = merged.remove(k).unwrap_or_default();
+                merged.insert(k.clone(), merge_provider_entry(&base, proj_entry));
+            }
+            ProviderConfig {
+                default: if project.provider.default != default_provider() {
+                    project.provider.default.clone()
+                } else {
+                    global.provider.default.clone()
+                },
+                providers: merged,
+            }
         };
 
         let mut mcp_servers = global.mcp.servers.clone();
@@ -847,5 +881,6 @@ fn merge_provider_entry(global: &ProviderEntry, project: &ProviderEntry) -> Prov
         api_key: project.api_key.clone().or_else(|| global.api_key.clone()),
         base_url: project.base_url.clone().or_else(|| global.base_url.clone()),
         model: project.model.clone().or_else(|| global.model.clone()),
+        api_style: project.api_style.clone().or_else(|| global.api_style.clone()),
     }
 }

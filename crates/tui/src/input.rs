@@ -1034,24 +1034,33 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/connect" {
+                app.open_provider_selector();
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/login" {
-                let providers = ["openai", "gemini"];
                 let mut lines = vec!["Auth status:".to_string()];
-                for prov in &providers {
-                    let has_token = nyzhi_auth::token_store::load_token(prov)
+                for def in nyzhi_config::BUILT_IN_PROVIDERS {
+                    let has_token = nyzhi_auth::token_store::load_token(def.id)
                         .ok()
                         .flatten()
                         .is_some();
-                    let status = if has_token { "logged in" } else { "not logged in" };
-                    let marker = if has_token { "✓" } else { "✗" };
-                    lines.push(format!("  {marker} {prov}: {status}"));
+                    let has_env = std::env::var(def.env_var).map(|v| !v.is_empty()).unwrap_or(false);
+                    let status = if has_env {
+                        format!("env ({})", def.env_var)
+                    } else if has_token {
+                        "connected".to_string()
+                    } else {
+                        "not configured".to_string()
+                    };
+                    let marker = if has_env || has_token { "✓" } else { "✗" };
+                    lines.push(format!("  {marker} {}: {status}", def.name));
                 }
                 lines.push(String::new());
-                lines.push(
-                    "Use `nyzhi login <provider>` in your terminal to log in via OAuth."
-                        .to_string(),
-                );
-                lines.push("Use `nyzhi logout <provider>` to remove stored tokens.".to_string());
+                lines.push("Use /connect to add a provider, or `nyzhi login <provider>` for OAuth.".to_string());
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
                     content: lines.join("\n"),
@@ -1541,7 +1550,8 @@ pub async fn handle_key(
                         "  /model          List available models",
                         "  /model <id>     Switch to a different model",
                         "  /image <path>   Attach an image for the next prompt",
-                        "  /login          Show OAuth login status",
+                        "  /connect        Connect a provider (add API key)",
+                        "  /login          Show auth status for all providers",
                         "  /init           Initialize .nyzhi/ project config",
                         "  /mcp            List connected MCP servers",
                         "  /commands       List custom commands",
