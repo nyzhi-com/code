@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/nyzhi-com/code"
@@ -102,8 +102,8 @@ base64 = "0.22"
 rmcp = { version = "0.16", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 
 # Workspace crates
-nyzhi-core = { path = "crates/core", version = "=0.3.0" }
-nyzhi-provider = { path = "crates/provider", version = "=0.3.0" }
-nyzhi-auth = { path = "crates/auth", version = "=0.3.0" }
-nyzhi-tui = { path = "crates/tui", version = "=0.3.0" }
-nyzhi-config = { path = "crates/config", version = "=0.3.0" }
+nyzhi-core = { path = "crates/core", version = "=0.3.1" }
+nyzhi-provider = { path = "crates/provider", version = "=0.3.1" }
+nyzhi-auth = { path = "crates/auth", version = "=0.3.1" }
+nyzhi-tui = { path = "crates/tui", version = "=0.3.1" }
+nyzhi-config = { path = "crates/config", version = "=0.3.1" }
