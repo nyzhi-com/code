@@ -1603,6 +1603,12 @@ impl App {
                     "apikey",
                 ));
             }
+            "antigravity" => {
+                items.push(SelectorItem::entry(
+                    "Antigravity OAuth (opens browser)",
+                    "antigravity",
+                ));
+            }
             "anthropic" => {
                 items.push(SelectorItem::entry(
                     "Claude Pro/Max subscription (OAuth)",

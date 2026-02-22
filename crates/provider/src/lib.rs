@@ -154,6 +154,7 @@ impl ModelRegistry {
         let glm = glm_models();
         models.insert("glm".into(), glm.clone());
         models.insert("glm-coding".into(), glm);
+        models.insert("antigravity".into(), antigravity_models());
         Self { models }
     }
 
@@ -287,6 +288,60 @@ fn minimax_models() -> Vec<ModelInfo> {
             supports_tools: true, supports_streaming: true, supports_vision: false,
             input_price_per_m: 0.27, output_price_per_m: 0.95,
             cache_read_price_per_m: 0.03, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
+        },
+    ]
+}
+
+fn antigravity_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "gemini-3.1-pro".into(), name: "Gemini 3.1 Pro (Antigravity)".into(),
+            provider: "antigravity".into(),
+            context_window: 1_048_576, max_output_tokens: 65_535,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 0.0, output_price_per_m: 0.0,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High,
+            thinking: Some(ThinkingSupport::gemini_levels(&["low", "high"])),
+        },
+        ModelInfo {
+            id: "gemini-3-flash".into(), name: "Gemini 3 Flash (Antigravity)".into(),
+            provider: "antigravity".into(),
+            context_window: 1_048_576, max_output_tokens: 65_536,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 0.0, output_price_per_m: 0.0,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium,
+            thinking: Some(ThinkingSupport::gemini_levels(&["minimal", "low", "medium", "high"])),
+        },
+        ModelInfo {
+            id: "claude-sonnet-4-6".into(), name: "Claude Sonnet 4.6 (Antigravity)".into(),
+            provider: "antigravity".into(),
+            context_window: 200_000, max_output_tokens: 64_000,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 0.0, output_price_per_m: 0.0,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High,
+            thinking: Some(ThinkingSupport::BudgetTokens { max: 32_768, default: 16_000 }),
+        },
+        ModelInfo {
+            id: "claude-opus-4-6-thinking".into(), name: "Claude Opus 4.6 (Antigravity)".into(),
+            provider: "antigravity".into(),
+            context_window: 200_000, max_output_tokens: 64_000,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 0.0, output_price_per_m: 0.0,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High,
+            thinking: Some(ThinkingSupport::BudgetTokens { max: 32_768, default: 16_000 }),
+        },
+        ModelInfo {
+            id: "gpt-oss-120b".into(), name: "GPT-OSS 120B (Antigravity)".into(),
+            provider: "antigravity".into(),
+            context_window: 128_000, max_output_tokens: 16_384,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.0, output_price_per_m: 0.0,
+            cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
             tier: ModelTier::Medium, thinking: None,
         },
     ]

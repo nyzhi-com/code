@@ -52,6 +52,7 @@ pub async fn refresh_if_needed(provider: &str) -> Result<Option<StoredToken>> {
 
     let refreshed = match provider {
         "gemini" | "google" => refresh_google(&refresh_token).await?,
+        "antigravity" => refresh_antigravity(&refresh_token).await?,
         "openai" | "chatgpt" => refresh_openai(&refresh_token).await?,
         "anthropic" => refresh_anthropic(&refresh_token).await?,
         _ => return Ok(None),
@@ -85,6 +86,31 @@ async fn refresh_google(refresh_token: &str) -> Result<RefreshResponse> {
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
         anyhow::bail!("Google token refresh failed: {body}");
+    }
+
+    Ok(resp.json().await?)
+}
+
+const ANTIGRAVITY_CLIENT_ID: &str =
+    "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const ANTIGRAVITY_CLIENT_SECRET: &str = "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";
+
+async fn refresh_antigravity(refresh_token: &str) -> Result<RefreshResponse> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(GOOGLE_TOKEN_URL)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("client_id", ANTIGRAVITY_CLIENT_ID),
+            ("client_secret", ANTIGRAVITY_CLIENT_SECRET),
+            ("refresh_token", refresh_token),
+        ])
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Antigravity token refresh failed: {body}");
     }
 
     Ok(resp.json().await?)

@@ -7,10 +7,11 @@ use tokio::sync::mpsc;
 
 use crate::token_store::{self, StoredToken};
 
-const CLIENT_ID: &str = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
+const CLIENT_ID: &str = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const CLIENT_SECRET: &str = "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";
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const SCOPES: &str = "openid+email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform";
+const SCOPES: &str = "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile";
 const CALLBACK_PORT: u16 = 36742;
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +77,7 @@ pub async fn login(msg_tx: Option<mpsc::UnboundedSender<String>>) -> Result<Stor
         .form(&[
             ("grant_type", "authorization_code"),
             ("client_id", CLIENT_ID),
+            ("client_secret", CLIENT_SECRET),
             ("code", &code),
             ("code_verifier", pkce_verifier.secret()),
             ("redirect_uri", &redirect_uri),
@@ -98,19 +100,19 @@ pub async fn login(msg_tx: Option<mpsc::UnboundedSender<String>>) -> Result<Stor
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         expires_at,
-        provider: "gemini".to_string(),
+        provider: "antigravity".to_string(),
     };
 
-    let accounts = token_store::list_accounts("gemini")?;
+    let accounts = token_store::list_accounts("antigravity")?;
     let label = if accounts.is_empty() {
-        Some("antigravity-1".to_string())
+        None
     } else {
-        Some(format!("antigravity-{}", accounts.len() + 1))
+        Some(format!("account-{}", accounts.len() + 1))
     };
-    token_store::store_account("gemini", &stored, label.as_deref())?;
+    token_store::store_account("antigravity", &stored, label.as_deref())?;
 
-    let count = token_store::list_accounts("gemini")?.len();
-    send(format!("Antigravity login successful. {count} Gemini account(s) configured."));
+    let count = token_store::list_accounts("antigravity")?.len();
+    send(format!("Antigravity login successful. {count} account(s) configured."));
 
     Ok(stored)
 }

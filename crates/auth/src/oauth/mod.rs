@@ -16,6 +16,7 @@ pub async fn login(provider: &str) -> Result<StoredToken> {
         "openai" => openai::login().await,
         "anthropic" => anthropic::login().await,
         "chatgpt" => chatgpt::login().await,
+        "antigravity" => antigravity::login(None).await,
         other => {
             if let Some(def) = nyzhi_config::find_provider_def(other) {
                 if !def.supports_oauth {
@@ -49,6 +50,9 @@ pub async fn login_interactive(
             google::login_interactive(msg_tx).await
         }
         ("gemini", "antigravity") => {
+            antigravity::login(Some(msg_tx)).await
+        }
+        ("antigravity", _) => {
             antigravity::login(Some(msg_tx)).await
         }
         ("anthropic", _) => {

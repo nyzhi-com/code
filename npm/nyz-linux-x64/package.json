@@ -1,13 +1,19 @@
 {
   "name": "nyz-linux-x64",
-  "version": "0.3.2",
+  "version": "1.0.0",
   "description": "nyz binary for Linux x64",
   "license": "GPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "https://github.com/nyzhi-com/code"
   },
-  "os": ["linux"],
-  "cpu": ["x64"],
-  "files": ["bin/nyz"]
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/nyz"
+  ]
 }
