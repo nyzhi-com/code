@@ -1878,10 +1878,7 @@ pub async fn handle_key(
             app.cursor_pos += 1;
             app.history.reset_cursor();
             app.completion = None;
-
-            if c == '/' && app.cursor_pos == 1 && app.input == "/" {
-                try_open_completion(app, &tool_ctx.cwd);
-            }
+            try_open_completion(app, &tool_ctx.cwd);
         }
         KeyCode::Backspace => {
             if app.cursor_pos > 0 {
@@ -1889,6 +1886,9 @@ pub async fn handle_key(
                 app.input.remove(app.cursor_pos);
             }
             app.completion = None;
+            if !app.input.is_empty() {
+                try_open_completion(app, &tool_ctx.cwd);
+            }
         }
         KeyCode::Left => {
             if app.cursor_pos > 0 {
