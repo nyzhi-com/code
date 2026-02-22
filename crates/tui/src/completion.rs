@@ -18,6 +18,7 @@ const SLASH_COMMANDS: &[SlashCommandDef] = &[
     SlashCommandDef { name: "/clear", description: "clear the session" },
     SlashCommandDef { name: "/commands", description: "list custom commands" },
     SlashCommandDef { name: "/compact", description: "compress conversation history" },
+    SlashCommandDef { name: "/connect", description: "connect a provider" },
     SlashCommandDef { name: "/context", description: "show context window usage" },
     SlashCommandDef { name: "/doctor", description: "run diagnostics" },
     SlashCommandDef { name: "/editor", description: "open $EDITOR for multi-line input" },

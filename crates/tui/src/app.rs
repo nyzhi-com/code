@@ -153,6 +153,7 @@ pub struct App {
     pub pending_oauth: Option<(String, String)>,
     oauth_rx: Option<tokio::sync::oneshot::Receiver<(String, Result<nyzhi_auth::token_store::StoredToken>)>>,
     oauth_msg_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
+    pub pending_provider_reload: Option<String>,
 }
 
 impl App {
@@ -219,6 +220,7 @@ impl App {
             pending_oauth: None,
             oauth_rx: None,
             oauth_msg_rx: None,
+            pending_provider_reload: None,
         }
     }
 
@@ -276,7 +278,7 @@ impl App {
 
     pub async fn run(
         &mut self,
-        provider: Option<std::sync::Arc<dyn Provider>>,
+        mut provider: Option<std::sync::Arc<dyn Provider>>,
         mut registry: ToolRegistry,
         config: &nyzhi_config::Config,
     ) -> Result<()> {
@@ -587,6 +589,28 @@ impl App {
                                 content: format!("Task moved to background (#{id}: {label})"),
                             });
                         }
+                    } else if key.code == KeyCode::Esc
+                        && matches!(self.mode, AppMode::Streaming)
+                    {
+                        if let Some(fg) = self.foreground_task.take() {
+                            fg.join_handle.abort();
+                            thread = Some(fg.thread_snapshot);
+                            if !self.current_stream.is_empty() {
+                                self.items.push(DisplayItem::Message {
+                                    role: "assistant".to_string(),
+                                    content: std::mem::take(&mut self.current_stream),
+                                });
+                            }
+                            self.thinking_stream.clear();
+                            self.stream_start = None;
+                            self.stream_token_count = 0;
+                            self.turn_start = None;
+                            self.mode = AppMode::Input;
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: "Cancelled.".to_string(),
+                            });
+                        }
                     } else if key.code == KeyCode::Char('f')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                         && matches!(self.mode, AppMode::Input)
@@ -687,6 +711,7 @@ impl App {
                                 role: "system".to_string(),
                                 content: format!("Logged in to {display} via OAuth."),
                             });
+                            self.pending_provider_reload = Some(pid.clone());
                         }
                         Err(e) => {
                             self.items.push(DisplayItem::Message {
@@ -694,6 +719,38 @@ impl App {
                                 content: format!("OAuth login failed for {display}: {e:#}"),
                             });
                         }
+                    }
+                }
+            }
+
+            if let Some(reload_provider_id) = self.pending_provider_reload.take() {
+                match nyzhi_provider::create_provider_async(&reload_provider_id, config).await {
+                    Ok(new_prov) => {
+                        let new_prov: std::sync::Arc<dyn Provider> = new_prov.into();
+                        let default_model = new_prov.supported_models()
+                            .first()
+                            .map(|m| m.id.clone())
+                            .unwrap_or_default();
+                        model_info_idx = new_prov.supported_models()
+                            .iter()
+                            .position(|m| m.id == default_model)
+                            .or(Some(0));
+                        self.provider_name = reload_provider_id.clone();
+                        self.model_name = default_model;
+                        provider = Some(new_prov);
+                        let display = nyzhi_config::find_provider_def(&reload_provider_id)
+                            .map(|d| d.name)
+                            .unwrap_or(&reload_provider_id);
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Switched to {display} ({}).", self.model_name),
+                        });
+                    }
+                    Err(e) => {
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Provider reload failed: {e:#}"),
+                        });
                     }
                 }
             }
@@ -1309,9 +1366,10 @@ impl App {
                         if !api_key.is_empty() {
                             match nyzhi_auth::token_store::store_api_key(&provider_id, &api_key) {
                                 Ok(()) => {
+                                    self.pending_provider_reload = Some(provider_id.clone());
                                     self.items.push(DisplayItem::Message {
                                         role: "system".to_string(),
-                                        content: format!("API key saved for {provider_id}. Use --provider {provider_id} or set it as default in config."),
+                                        content: format!("API key saved for {provider_id}."),
                                     });
                                 }
                                 Err(e) => {

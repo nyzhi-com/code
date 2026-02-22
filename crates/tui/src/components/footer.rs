@@ -55,7 +55,12 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         }
     }
 
-    right_parts.push(format!("{} {}", app.provider_name, app.model_name));
+    let auth = nyzhi_auth::auth_status(&app.provider_name);
+    if auth == "not connected" {
+        right_parts.push("not connected".to_string());
+    } else {
+        right_parts.push(format!("{} {}", app.provider_name, app.model_name));
+    }
 
     let right = right_parts.join("  ");
 

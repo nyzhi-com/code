@@ -42,7 +42,12 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     lines.push(Line::from(""));
 
-    let footer = format!("{} · {}", app.provider_name, app.model_name);
+    let auth = nyzhi_auth::auth_status(&app.provider_name);
+    let footer = if auth == "not connected" {
+        "type /connect to get started".to_string()
+    } else {
+        format!("{} · {}", app.provider_name, app.model_name)
+    };
     let f_pad = inner_w.saturating_sub(footer.len()) / 2;
     lines.push(Line::from(Span::styled(
         format!("{:>f_pad$}{footer}", ""),
