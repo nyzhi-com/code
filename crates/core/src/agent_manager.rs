@@ -15,16 +15,18 @@ use crate::tools::{ToolContext, ToolRegistry};
 pub type AgentId = String;
 
 const AGENT_NAMES: &[&str] = &[
-    "Ash", "Elm", "Yew", "Fir", "Oak", "Pine", "Spruce", "Cedar", "Birch", "Maple", "Beech",
-    "Alder", "Willow", "Poplar", "Aspen", "Larch", "Juniper", "Cypress", "Hemlock", "Sequoia",
-    "Baobab", "Acacia", "Banyan", "Teak", "Olive", "Cherry", "Apple", "Pear", "Plum", "Peach",
-    "Mango", "Guava", "Fig", "Date", "Palm", "Holly", "Ivy", "Fern", "Moss", "Reed", "Cane",
-    "Rush", "Sage", "Mint", "Thyme", "Basil", "Dill", "Fennel", "Parsley", "Laurel", "Myrtle",
-    "Lotus", "Tulip", "Rose", "Daisy", "Lily", "Iris", "Poppy", "Aster", "Peony", "Camellia",
-    "Azalea", "Begonia", "Petunia", "Verbena", "Marigold", "Daffodil", "Orchid", "Violet",
-    "Clover", "Bamboo", "Eucalypt", "Oleander", "Yucca", "Agave", "Aloe", "Cactus", "Sedum",
-    "Boxwood", "Hawthorn", "Redwood", "Ironwood", "Sandal", "Kapok", "Mahonia", "Spirea",
-    "Wisteria",
+    "Pikachu", "Charizard", "Bulbasaur", "Squirtle", "Eevee", "Gengar", "Mewtwo", "Snorlax",
+    "Dragonite", "Alakazam", "Gyarados", "Arcanine", "Lucario", "Gardevoir", "Blaziken",
+    "Greninja", "Umbreon", "Espeon", "Jolteon", "Vaporeon", "Flareon", "Leafeon", "Glaceon",
+    "Sylveon", "Typhlosion", "Feraligatr", "Meganium", "Scizor", "Tyranitar", "Heracross",
+    "Ampharos", "Togekiss", "Salamence", "Metagross", "Absol", "Flygon", "Milotic", "Aggron",
+    "Swampert", "Sceptile", "Luxray", "Staraptor", "Garchomp", "Gallade", "Weavile", "Electivire",
+    "Magmortar", "Infernape", "Empoleon", "Torterra", "Zoroark", "Hydreigon", "Volcarona",
+    "Haxorus", "Krookodile", "Chandelure", "Excadrill", "Bisharp", "Braviary", "Golurk",
+    "Serperior", "Samurott", "Emboar", "Noivern", "Talonflame", "Hawlucha", "Goodra",
+    "Aegislash", "Dragalge", "Pangoro", "Decidueye", "Incineroar", "Primarina", "Mimikyu",
+    "Toxapex", "Golisopod", "Kommo", "Lycanroc", "Corviknight", "Dragapult", "Grimmsnarl",
+    "Cinderace", "Rillaboom", "Toxtricity", "Urshifu", "Ceruledge", "Kingambit", "Baxcalibur",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,6 +241,9 @@ impl AgentManager {
             event_tx: None,
             change_tracker: parent_ctx.change_tracker.clone(),
             allowed_tool_names: tool_filter,
+            team_name: agent_config.team_name.clone(),
+            agent_name: agent_config.agent_name.clone(),
+            is_team_lead: false,
         };
 
         let join_handle = tokio::spawn(async move {

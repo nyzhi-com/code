@@ -198,6 +198,8 @@ pub struct AgentConfig {
     pub auto_compact_threshold: Option<f64>,
     pub thinking_enabled: bool,
     pub thinking_budget: Option<u32>,
+    pub team_name: Option<String>,
+    pub agent_name: Option<String>,
 }
 
 impl Default for AgentConfig {
@@ -213,6 +215,8 @@ impl Default for AgentConfig {
             auto_compact_threshold: None,
             thinking_enabled: false,
             thinking_budget: None,
+            team_name: None,
+            agent_name: None,
         }
     }
 }
@@ -274,8 +278,23 @@ pub async fn run_turn_with_content(
     session_usage.turn_cost_usd = 0.0;
 
     let microcompact_dir = std::env::temp_dir().join("nyzhi_microcompact").join(&ctx.session_id);
+    let context_dir = ctx.project_root.join(".nyzhi").join("context");
+    let mut compact_count: u32 = 0;
 
     for step in 0..config.max_steps {
+        // Inbox polling: inject unread teammate messages before the LLM call
+        if let (Some(team), Some(agent)) = (&ctx.team_name, &ctx.agent_name) {
+            if let Ok(unread) = crate::teams::mailbox::read_unread(team, agent) {
+                if !unread.is_empty() {
+                    let injected = crate::teams::mailbox::format_messages_for_injection(&unread);
+                    thread.push_message(Message {
+                        role: Role::User,
+                        content: MessageContent::Text(injected),
+                    });
+                }
+            }
+        }
+
         if let Some(mi) = model_info {
             let est = thread.estimated_tokens(&config.system_prompt);
             let _ = event_tx.send(AgentEvent::ContextUpdate {
@@ -283,7 +302,6 @@ pub async fn run_turn_with_content(
                 context_window: mi.context_window,
             });
 
-            // Microcompaction: offload large old tool results to disk
             crate::context::microcompact(thread.messages_mut(), &microcompact_dir);
 
             let threshold = config.auto_compact_threshold.unwrap_or(0.85);
@@ -294,6 +312,15 @@ pub async fn run_turn_with_content(
                     estimated_tokens: est,
                     context_window: mi.context_window,
                 });
+
+                let history_ref = crate::context::save_history_file(
+                    thread.messages(),
+                    &ctx.session_id,
+                    compact_count,
+                    &context_dir,
+                );
+                compact_count += 1;
+
                 let recent_files = crate::context::extract_recent_file_paths(thread.messages(), 3);
                 let summary_prompt = crate::context::build_compaction_prompt(thread.messages(), None);
                 let summary_request = ChatRequest {
@@ -310,7 +337,13 @@ pub async fn run_turn_with_content(
                     thinking: None,
                 };
                 if let Ok(resp) = provider.chat(&summary_request).await {
-                    let summary_text = resp.message.content.as_text().to_string();
+                    let mut summary_text = resp.message.content.as_text().to_string();
+                    if let Some(ref hist_path) = history_ref {
+                        summary_text.push_str(&format!(
+                            "\n\n[Full conversation history saved to {}. Use grep or read_file to search for details.]",
+                            hist_path.display()
+                        ));
+                    }
                     thread.compact_with_restore(&summary_text, 4, &recent_files);
                 }
             }
@@ -557,11 +590,29 @@ pub async fn run_turn_with_content(
             }
 
             indexed_results.sort_by_key(|(i, _)| *i);
+
+            // Offload large tool results to files (Cursor files-for-everything pattern)
             let tool_result_parts: Vec<ContentPart> = indexed_results
                 .into_iter()
-                .map(|(i, output)| ContentPart::ToolResult {
-                    tool_use_id: acc.tool_calls[i].id.clone(),
-                    content: output,
+                .map(|(i, output)| {
+                    let tc = &acc.tool_calls[i];
+                    // Auto-expand deferred tools on first use
+                    if registry.is_deferred(&tc.name) {
+                        // Safety: we can't mutate registry here since it's &, but the
+                        // expansion is tracked via the agent loop re-building tool_defs.
+                        // The tool executed successfully, so it exists.
+                    }
+                    let final_output = crate::context::offload_tool_result_to_file(
+                        &tc.name,
+                        &tc.id,
+                        &output,
+                        &context_dir,
+                    )
+                    .unwrap_or(output);
+                    ContentPart::ToolResult {
+                        tool_use_id: tc.id.clone(),
+                        content: final_output,
+                    }
                 })
                 .collect();
 
@@ -588,6 +639,26 @@ pub async fn run_turn_with_content(
                 "Reached maximum tool-calling steps".to_string(),
             ));
             break;
+        }
+    }
+
+    // Auto-send idle notification if this agent is a teammate (not lead)
+    if let (Some(team), Some(agent)) = (&ctx.team_name, &ctx.agent_name) {
+        if !ctx.is_team_lead {
+            if let Ok(config) = crate::teams::config::TeamConfig::load(team) {
+                let lead_name = config.lead_name();
+                let payload = crate::teams::mailbox::MessagePayload {
+                    msg_type: crate::teams::mailbox::MessageType::IdleNotification,
+                    data: serde_json::json!({
+                        "teammate_name": agent,
+                        "team_name": team,
+                    }),
+                };
+                let msg = crate::teams::mailbox::TeamMessage::with_payload(
+                    agent, &payload, None,
+                );
+                let _ = crate::teams::mailbox::send_message(team, &lead_name, msg);
+            }
         }
     }
 

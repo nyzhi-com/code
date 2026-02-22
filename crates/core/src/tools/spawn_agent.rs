@@ -109,6 +109,8 @@ impl Tool for SpawnAgentTool {
             auto_compact_threshold: None,
             thinking_enabled: false,
             thinking_budget: None,
+            team_name: None,
+            agent_name: None,
         };
 
         apply_role(&mut agent_config, &role);

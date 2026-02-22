@@ -6,6 +6,7 @@ pub struct Skill {
     pub name: String,
     pub content: String,
     pub path: PathBuf,
+    pub description: Option<String>,
 }
 
 fn skills_dir(project_root: &Path) -> PathBuf {
@@ -43,7 +44,8 @@ fn scan_skills_dir(dir: &Path) -> Vec<Skill> {
                 .unwrap_or("unknown")
                 .to_string();
             if let Ok(content) = std::fs::read_to_string(&path) {
-                skills.push(Skill { name, content, path });
+                let description = extract_description(&content);
+                skills.push(Skill { name, content, path, description });
             }
         }
     }
@@ -66,11 +68,55 @@ pub fn load_skills(project_root: &Path) -> Result<Vec<Skill>> {
     Ok(skills)
 }
 
+/// Extract a one-line description from a skill's content.
+/// Checks for `description:` frontmatter, then falls back to the first non-heading line.
+fn extract_description(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(desc) = trimmed.strip_prefix("description:") {
+            let desc = desc.trim().trim_matches('"').trim();
+            if !desc.is_empty() {
+                return Some(desc.to_string());
+            }
+        }
+    }
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("---") {
+            continue;
+        }
+        let desc = trimmed.chars().take(120).collect::<String>();
+        return Some(desc);
+    }
+    None
+}
+
+/// Format skills as an index-only listing for the system prompt (lazy loading).
+/// Full content is NOT included; the agent uses load_skill or read_file to get details.
 pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
     if skills.is_empty() {
         return String::new();
     }
-    let mut out = String::from("\n\n# Skills\n\nThe following skills are loaded from `.nyzhi/skills/`:\n\n");
+    let mut out = String::from(
+        "\n\n# Available Skills\n\
+         The following skills are available. Use `load_skill` or `read_file` to read their full content when needed.\n\n"
+    );
+    for skill in skills {
+        let desc = skill
+            .description
+            .as_deref()
+            .unwrap_or("(no description)");
+        out.push_str(&format!("- **{}**: {}\n", skill.name, desc));
+    }
+    out
+}
+
+/// Format skills with full content (legacy behavior, used for export/debug).
+pub fn format_skills_full(skills: &[Skill]) -> String {
+    if skills.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("\n\n# Skills\n\n");
     for skill in skills {
         out.push_str(&format!("## {}\n\n{}\n\n", skill.name, skill.content.trim()));
     }

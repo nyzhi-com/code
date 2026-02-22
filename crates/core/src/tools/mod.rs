@@ -1,5 +1,6 @@
 pub mod permission;
 pub mod bash;
+pub mod batch;
 pub mod change_tracker;
 pub mod close_agent;
 pub mod diff;
@@ -12,11 +13,16 @@ pub mod git;
 pub mod task;
 pub mod todo;
 pub mod filesystem;
+pub mod load_skill;
 pub mod lsp;
+pub mod memory;
 pub mod notepad;
 pub mod resume_agent;
 pub mod send_input;
 pub mod spawn_agent;
+pub mod tail_file;
+pub mod team;
+pub mod tool_search;
 pub mod verify;
 pub mod wait_tool;
 pub mod web;
@@ -53,6 +59,12 @@ pub struct ToolContext {
     pub change_tracker: Arc<tokio::sync::Mutex<change_tracker::ChangeTracker>>,
     /// If set, only these tools are visible to the agent (role-based filtering).
     pub allowed_tool_names: Option<Vec<String>>,
+    /// Team name if this agent is part of an agent team.
+    pub team_name: Option<String>,
+    /// Agent's own name within the team (used for inbox addressing).
+    pub agent_name: Option<String>,
+    /// Whether this agent is the team lead (coordinator).
+    pub is_team_lead: bool,
 }
 
 pub struct ToolResult {
@@ -63,12 +75,19 @@ pub struct ToolResult {
 
 pub struct ToolRegistry {
     tools: HashMap<String, Box<dyn Tool>>,
+    /// Tools that are indexed but not sent as full definitions in ChatRequest.
+    /// The agent can discover them via tool_search and they expand on first use.
+    deferred: std::collections::HashSet<String>,
+    /// Session-level cache of deferred tools that have been expanded (used at least once).
+    expanded: std::collections::HashSet<String>,
 }
 
 impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
+            deferred: std::collections::HashSet::new(),
+            expanded: std::collections::HashSet::new(),
         }
     }
 
@@ -76,14 +95,35 @@ impl ToolRegistry {
         self.tools.insert(tool.name().to_string(), tool);
     }
 
+    /// Register a tool as deferred (index-only, not sent in ChatRequest until used).
+    pub fn register_deferred(&mut self, tool: Box<dyn Tool>) {
+        let name = tool.name().to_string();
+        self.tools.insert(name.clone(), tool);
+        self.deferred.insert(name);
+    }
+
+    /// Mark a deferred tool as expanded (it will now be included in definitions).
+    pub fn expand_deferred(&mut self, name: &str) {
+        if self.deferred.contains(name) {
+            self.expanded.insert(name.to_string());
+        }
+    }
+
+    /// Check if a tool is deferred and not yet expanded.
+    pub fn is_deferred(&self, name: &str) -> bool {
+        self.deferred.contains(name) && !self.expanded.contains(name)
+    }
+
     pub fn get(&self, name: &str) -> Option<&dyn Tool> {
         self.tools.get(name).map(|t| t.as_ref())
     }
 
+    /// Return definitions for all non-deferred tools plus any expanded deferred tools.
     pub fn definitions(&self) -> Vec<nyzhi_provider::ToolDefinition> {
         let mut defs: Vec<_> = self
             .tools
             .values()
+            .filter(|t| !self.deferred.contains(t.name()) || self.expanded.contains(t.name()))
             .map(|t| nyzhi_provider::ToolDefinition {
                 name: t.name().to_string(),
                 description: t.description().to_string(),
@@ -92,6 +132,24 @@ impl ToolRegistry {
             .collect();
         defs.sort_by(|a, b| a.name.cmp(&b.name));
         defs
+    }
+
+    pub fn deferred_count(&self) -> usize {
+        self.deferred.len().saturating_sub(self.expanded.len())
+    }
+
+    /// Build the deferred tool index for tool_search.
+    pub fn deferred_index(&self) -> Vec<tool_search::DeferredToolEntry> {
+        self.deferred
+            .iter()
+            .filter(|name| !self.expanded.contains(name.as_str()))
+            .filter_map(|name| {
+                self.tools.get(name).map(|t| tool_search::DeferredToolEntry {
+                    name: t.name().to_string(),
+                    description: t.description().to_string(),
+                })
+            })
+            .collect()
     }
 
     pub async fn execute(&self, name: &str, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
@@ -168,10 +226,12 @@ pub type TodoStoreHandle = Arc<tokio::sync::Mutex<std::collections::HashMap<Stri
 pub struct RegistryBundle {
     pub registry: ToolRegistry,
     pub todo_store: TodoStoreHandle,
+    pub deferred_index: tool_search::DeferredToolIndex,
 }
 
 pub fn default_registry() -> RegistryBundle {
     let todo_store = todo::shared_store();
+    let deferred_index = tool_search::shared_deferred_index();
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(bash::BashTool));
     registry.register(Box::new(read::ReadTool));
@@ -200,7 +260,26 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(notepad::NotepadReadTool));
     registry.register(Box::new(lsp::LspDiagnosticsTool));
     registry.register(Box::new(lsp::AstSearchTool));
+    registry.register(Box::new(lsp::LspGotoDefinitionTool));
+    registry.register(Box::new(lsp::LspFindReferencesTool));
+    registry.register(Box::new(lsp::LspHoverTool));
     registry.register(Box::new(web::WebFetchTool));
     registry.register(Box::new(web::WebSearchTool));
-    RegistryBundle { registry, todo_store }
+    registry.register(Box::new(tail_file::TailFileTool));
+    registry.register(Box::new(load_skill::LoadSkillTool));
+    registry.register(Box::new(tool_search::ToolSearchTool::new(deferred_index.clone())));
+    registry.register(Box::new(memory::MemoryReadTool));
+    registry.register(Box::new(memory::MemoryWriteTool));
+    registry.register(Box::new(team::TeamCreateTool));
+    registry.register(Box::new(team::TeamDeleteTool));
+    registry.register(Box::new(team::SendMessageTool));
+    registry.register(Box::new(team::TaskCreateTool));
+    registry.register(Box::new(team::TaskUpdateTool));
+    registry.register(Box::new(team::TaskListTool));
+    registry.register(Box::new(team::TeamListTool));
+    registry.register(Box::new(team::ReadInboxTool));
+    registry.register(Box::new(batch::BatchApplyTool));
+    // NOTE: SpawnTeammateTool requires Arc<AgentManager> and is registered
+    // separately in the TUI/CLI after the manager is created.
+    RegistryBundle { registry, todo_store, deferred_index }
 }

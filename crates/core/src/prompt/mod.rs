@@ -113,6 +113,9 @@ fn build_full_system_prompt(
 - `copy_file`: Copy a file. Requires approval. Undoable.
 - `create_dir`: Create a directory including parents. Requires approval.
 - `todowrite` / `todoread`: Manage a task list for complex multi-step work.
+- `tail_file`: Read the last N lines of a file. Useful for large outputs, logs, or context files.
+- `load_skill`: Load the full content of a skill by name when you need domain-specific guidance.
+- `tool_search`: Search for available tools by capability. Use when you need MCP or deferred tools.
 
 # Sub-Agents (Multi-Agent)
 You can spawn, communicate with, and coordinate multiple independent sub-agents:
@@ -195,17 +198,25 @@ Each role has specialized instructions and tool access:
     }
 
     if !mcp_tools.is_empty() {
-        prompt.push_str("\n\n# MCP Tools\nThe following external tools are available via MCP servers:");
-        let mut current_server = "";
-        for tool in mcp_tools {
-            if tool.server_name != current_server {
-                prompt.push_str(&format!("\n\n## Server: {}", tool.server_name));
-                current_server = &tool.server_name;
-            }
+        if mcp_tools.len() > 15 {
             prompt.push_str(&format!(
-                "\n- `mcp__{}__{}`: {}",
-                tool.server_name, tool.tool_name, tool.description
+                "\n\n# MCP Tools\n{} external tools available via MCP servers. \
+                 Use `tool_search` to find tools by capability, or check `.nyzhi/context/tools/mcp-index.md`.",
+                mcp_tools.len()
             ));
+        } else {
+            prompt.push_str("\n\n# MCP Tools\nThe following external tools are available via MCP servers:");
+            let mut current_server = "";
+            for tool in mcp_tools {
+                if tool.server_name != current_server {
+                    prompt.push_str(&format!("\n\n## Server: {}", tool.server_name));
+                    current_server = &tool.server_name;
+                }
+                prompt.push_str(&format!(
+                    "\n- `mcp__{}__{}`: {}",
+                    tool.server_name, tool.tool_name, tool.description
+                ));
+            }
         }
     }
 

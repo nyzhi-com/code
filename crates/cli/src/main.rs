@@ -28,6 +28,14 @@ struct Cli {
     /// Resume a specific session by ID prefix or title search
     #[arg(short, long)]
     session: Option<String>,
+
+    /// Join an agent team as lead (sets team context for all tools)
+    #[arg(long)]
+    team_name: Option<String>,
+
+    /// Display mode for agent teams: in-process or tmux
+    #[arg(long, default_value = "in-process")]
+    teammate_mode: String,
 }
 
 #[derive(Subcommand)]
@@ -89,6 +97,11 @@ enum Commands {
     },
     /// Deep-initialize project with AGENTS.md and structure analysis
     Deepinit,
+    /// Manage agent teams
+    Teams {
+        #[command(subcommand)]
+        action: TeamsAction,
+    },
     /// List learned skills
     Skills,
     /// Check rate limit status or wait for rate limits to clear
@@ -100,6 +113,22 @@ enum Commands {
         /// Filter by event type (e.g. tool, error)
         #[arg(long)]
         filter: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum TeamsAction {
+    /// List all agent teams
+    List,
+    /// Show team details
+    Show {
+        /// Team name
+        name: String,
+    },
+    /// Delete a team and its artifacts
+    Delete {
+        /// Team name
+        name: String,
     },
 }
 
@@ -420,6 +449,55 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         }
+        Some(Commands::Teams { action }) => {
+            match action {
+                TeamsAction::List => {
+                    let teams = nyzhi_core::teams::list_teams();
+                    if teams.is_empty() {
+                        println!("No agent teams found.");
+                    } else {
+                        println!("Agent teams:\n");
+                        for name in &teams {
+                            if let Ok(config) = nyzhi_core::teams::config::TeamConfig::load(name) {
+                                let member_names: Vec<&str> = config.members.iter().map(|m| m.name.as_str()).collect();
+                                println!("  {} ({} members: {})", name, config.members.len(), member_names.join(", "));
+                            } else {
+                                println!("  {} (config error)", name);
+                            }
+                        }
+                    }
+                }
+                TeamsAction::Show { name } => {
+                    match nyzhi_core::teams::config::TeamConfig::load(&name) {
+                        Ok(config) => {
+                            println!("Team: {}\n", config.name);
+                            println!("Members:");
+                            for m in &config.members {
+                                let role = m.role.as_deref().unwrap_or("-");
+                                let id = m.agent_id.as_deref().unwrap_or("n/a");
+                                println!("  {} [{}] role={} id={}", m.name, m.agent_type, role, id);
+                            }
+                            let tasks = nyzhi_core::teams::tasks::list_tasks(&name, None).unwrap_or_default();
+                            if !tasks.is_empty() {
+                                println!("\nTasks ({}):", tasks.len());
+                                for t in &tasks {
+                                    let owner = t.owner.as_deref().unwrap_or("unassigned");
+                                    println!("  #{} [{}] {} ({})", t.id, t.status, t.subject, owner);
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("Error: {e}"),
+                    }
+                }
+                TeamsAction::Delete { name } => {
+                    match nyzhi_core::teams::config::TeamConfig::delete(&name) {
+                        Ok(()) => println!("Team '{name}' deleted."),
+                        Err(e) => eprintln!("Error: {e}"),
+                    }
+                }
+            }
+            return Ok(());
+        }
         Some(Commands::Deepinit) => {
             let path = nyzhi_core::deepinit::write_agents_md(&workspace.project_root)?;
             println!("Generated {}", path.display());
@@ -498,6 +576,7 @@ async fn main() -> Result<()> {
     let bundle = nyzhi_core::tools::default_registry();
     let mut registry = bundle.registry;
     let _todo_store = bundle.todo_store;
+    let deferred_index = bundle.deferred_index;
 
     let mut all_mcp_servers = config.mcp.servers.clone();
     let mcp_json_servers = nyzhi_core::mcp::load_mcp_json(&workspace.project_root);
@@ -506,7 +585,9 @@ async fn main() -> Result<()> {
     let mcp_manager = if !all_mcp_servers.is_empty() {
         match nyzhi_core::mcp::McpManager::start_all(&all_mcp_servers).await {
             Ok(mgr) => {
-                for (server_name, tool_def) in mgr.all_tools().await {
+                let all_tools = mgr.all_tools().await;
+                let defer_mcp = all_tools.len() > 15;
+                for (server_name, tool_def) in &all_tools {
                     let desc = tool_def
                         .description
                         .as_deref()
@@ -514,16 +595,39 @@ async fn main() -> Result<()> {
                         .to_string();
                     let schema: serde_json::Value =
                         serde_json::to_value(&*tool_def.input_schema).unwrap_or_default();
-                    registry.register(Box::new(
+                    let tool = Box::new(
                         nyzhi_core::mcp::tool_adapter::McpTool::new(
-                            &server_name,
+                            server_name,
                             &tool_def.name,
                             &desc,
                             schema,
                             mgr.clone(),
                         ),
-                    ));
+                    );
+                    if defer_mcp {
+                        registry.register_deferred(tool);
+                    } else {
+                        registry.register(tool);
+                    }
                 }
+
+                if defer_mcp {
+                    if let Ok(mut idx) = deferred_index.write() {
+                        *idx = registry.deferred_index();
+                    }
+                    let index_dir = workspace.project_root.join(".nyzhi").join("context").join("tools");
+                    std::fs::create_dir_all(&index_dir).ok();
+                    let mut index_content = String::from("# MCP Tool Index\n\n");
+                    for (server_name, tool_def) in &all_tools {
+                        let desc = tool_def.description.as_deref().unwrap_or("MCP tool");
+                        index_content.push_str(&format!(
+                            "- `mcp__{}__{}`  {}\n",
+                            server_name, tool_def.name, desc
+                        ));
+                    }
+                    std::fs::write(index_dir.join("mcp-index.md"), &index_content).ok();
+                }
+
                 Some(mgr)
             }
             Err(e) => {
@@ -578,6 +682,7 @@ async fn main() -> Result<()> {
                 &workspace,
                 &config,
                 &mcp_summaries,
+                cli.team_name.as_deref(),
             )
             .await?;
         }
@@ -646,6 +751,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_once(
     provider: &dyn nyzhi_provider::Provider,
     prompt: &str,
@@ -654,6 +760,7 @@ async fn run_once(
     workspace: &nyzhi_core::workspace::WorkspaceContext,
     config: &nyzhi_config::Config,
     mcp_tools: &[nyzhi_core::prompt::McpToolSummary],
+    team_name: Option<&str>,
 ) -> Result<()> {
     use nyzhi_core::agent::{AgentConfig, AgentEvent};
     use nyzhi_core::conversation::Thread;
@@ -673,6 +780,8 @@ async fn run_once(
         retry: config.agent.retry.clone(),
         routing: config.agent.routing.clone(),
         auto_compact_threshold: config.agent.auto_compact_threshold,
+        team_name: team_name.map(String::from),
+        agent_name: team_name.map(|_| "team-lead".to_string()),
         ..AgentConfig::default()
     };
     let (event_tx, mut event_rx) = tokio::sync::broadcast::channel::<AgentEvent>(256);
@@ -688,6 +797,9 @@ async fn run_once(
             nyzhi_core::tools::change_tracker::ChangeTracker::new(),
         )),
         allowed_tool_names: None,
+        team_name: team_name.map(String::from),
+        agent_name: team_name.map(|_| "team-lead".to_string()),
+        is_team_lead: team_name.is_some(),
     };
 
     let tx = event_tx.clone();

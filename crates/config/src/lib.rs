@@ -18,6 +18,38 @@ pub struct Config {
     pub mcp: McpConfig,
     #[serde(default)]
     pub external_notify: ExternalNotifyConfig,
+    #[serde(default)]
+    pub shell: ShellConfig,
+    #[serde(default)]
+    pub browser: BrowserConfig,
+    #[serde(default)]
+    pub memory: MemoryConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ShellConfig {
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub startup_commands: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BrowserConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub executable_path: Option<String>,
+    #[serde(default = "default_true")]
+    pub headless: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MemoryConfig {
+    #[serde(default)]
+    pub auto_memory: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -172,7 +204,18 @@ fn default_hook_timeout() -> u64 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookConfig {
     pub event: HookEvent,
+    #[serde(default)]
     pub command: String,
+    #[serde(default)]
+    pub hook_type: HookType,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub tools: Option<Vec<String>>,
+    #[serde(default)]
+    pub model: Option<String>,
     #[serde(default)]
     pub pattern: Option<String>,
     #[serde(default)]
@@ -181,6 +224,15 @@ pub struct HookConfig {
     pub block: bool,
     #[serde(default = "default_hook_timeout")]
     pub timeout: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookType {
+    #[default]
+    Command,
+    Prompt,
+    Agent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -195,6 +247,14 @@ pub enum HookEvent {
     Notification,
     AfterEdit,
     AfterTurn,
+    SubagentStart,
+    SubagentEnd,
+    CompactContext,
+    WorktreeCreate,
+    WorktreeRemove,
+    ConfigChange,
+    TeammateIdle,
+    TaskCompleted,
 }
 
 impl std::fmt::Display for HookEvent {
@@ -209,6 +269,14 @@ impl std::fmt::Display for HookEvent {
             HookEvent::Notification => write!(f, "notification"),
             HookEvent::AfterEdit => write!(f, "after_edit"),
             HookEvent::AfterTurn => write!(f, "after_turn"),
+            HookEvent::SubagentStart => write!(f, "subagent_start"),
+            HookEvent::SubagentEnd => write!(f, "subagent_end"),
+            HookEvent::CompactContext => write!(f, "compact_context"),
+            HookEvent::WorktreeCreate => write!(f, "worktree_create"),
+            HookEvent::WorktreeRemove => write!(f, "worktree_remove"),
+            HookEvent::ConfigChange => write!(f, "config_change"),
+            HookEvent::TeammateIdle => write!(f, "teammate_idle"),
+            HookEvent::TaskCompleted => write!(f, "task_completed"),
         }
     }
 }
@@ -676,6 +744,28 @@ impl Config {
                     .or_else(|| global.external_notify.discord_webhook_url.clone()),
                 slack_webhook_url: project.external_notify.slack_webhook_url.clone()
                     .or_else(|| global.external_notify.slack_webhook_url.clone()),
+            },
+            shell: ShellConfig {
+                path: project.shell.path.clone().or_else(|| global.shell.path.clone()),
+                env: {
+                    let mut env = global.shell.env.clone();
+                    env.extend(project.shell.env.clone());
+                    env
+                },
+                startup_commands: if !project.shell.startup_commands.is_empty() {
+                    project.shell.startup_commands.clone()
+                } else {
+                    global.shell.startup_commands.clone()
+                },
+            },
+            browser: BrowserConfig {
+                enabled: project.browser.enabled || global.browser.enabled,
+                executable_path: project.browser.executable_path.clone()
+                    .or_else(|| global.browser.executable_path.clone()),
+                headless: project.browser.headless && global.browser.headless,
+            },
+            memory: MemoryConfig {
+                auto_memory: project.memory.auto_memory || global.memory.auto_memory,
             },
         }
     }

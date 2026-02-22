@@ -366,6 +366,9 @@ impl App {
             event_tx: Some(event_tx.clone()),
             change_tracker: change_tracker.clone(),
             allowed_tool_names: None,
+            team_name: None,
+            agent_name: None,
+            is_team_lead: false,
         };
 
         let agent_registry = std::sync::Arc::new(nyzhi_core::tools::default_registry().registry);
@@ -401,6 +404,9 @@ impl App {
         ));
         registry.register(Box::new(
             nyzhi_core::tools::resume_agent::ResumeAgentTool::new(agent_manager.clone()),
+        ));
+        registry.register(Box::new(
+            nyzhi_core::tools::team::SpawnTeammateTool::new(agent_manager.clone()),
         ));
 
         let registry = Arc::new(registry);

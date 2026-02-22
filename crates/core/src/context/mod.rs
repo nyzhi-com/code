@@ -6,6 +6,61 @@ const CHARS_PER_TOKEN: usize = 4;
 const MICROCOMPACT_THRESHOLD: usize = 4000;
 const HOT_TAIL_COUNT: usize = 3;
 
+/// Threshold for offloading tool results to files at call time (Cursor pattern).
+pub const TOOL_RESULT_FILE_THRESHOLD: usize = 4000;
+
+/// Write a large tool result to a context file and return a reference string.
+/// Returns `None` if the result is small enough to keep inline.
+pub fn offload_tool_result_to_file(
+    tool_name: &str,
+    _tool_use_id: &str,
+    content: &str,
+    context_dir: &Path,
+) -> Option<String> {
+    if content.len() < TOOL_RESULT_FILE_THRESHOLD {
+        return None;
+    }
+    let dir = context_dir.join("tool-results");
+    std::fs::create_dir_all(&dir).ok()?;
+    let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f");
+    let safe_name: String = tool_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    let filename = format!("{ts}-{safe_name}.txt");
+    let file_path = dir.join(&filename);
+    std::fs::write(&file_path, content).ok()?;
+    let line_count = content.lines().count();
+    Some(format!(
+        "[Output written to {} ({} lines, {} chars). Use read_file or tail_file to inspect.]",
+        file_path.display(),
+        line_count,
+        content.len(),
+    ))
+}
+
+/// Save the full conversation history to a JSONL file for post-compaction retrieval.
+/// Returns the path to the saved history file.
+pub fn save_history_file(
+    messages: &[Message],
+    session_id: &str,
+    compact_count: u32,
+    context_dir: &Path,
+) -> Option<PathBuf> {
+    let dir = context_dir.join("history");
+    std::fs::create_dir_all(&dir).ok()?;
+    let filename = format!("{session_id}-{compact_count}.jsonl");
+    let file_path = dir.join(&filename);
+    let mut lines = Vec::new();
+    for msg in messages {
+        if let Ok(json) = serde_json::to_string(msg) {
+            lines.push(json);
+        }
+    }
+    std::fs::write(&file_path, lines.join("\n")).ok()?;
+    Some(file_path)
+}
+
 pub fn estimate_tokens(text: &str) -> usize {
     text.len() / CHARS_PER_TOKEN + 1
 }

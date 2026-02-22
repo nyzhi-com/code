@@ -96,6 +96,8 @@ impl Tool for TaskTool {
             auto_compact_threshold: None,
             thinking_enabled: false,
             thinking_budget: None,
+            team_name: ctx.team_name.clone(),
+            agent_name: ctx.agent_name.clone(),
         };
 
         let mut child_thread = Thread::new();
@@ -146,6 +148,9 @@ impl Tool for TaskTool {
             event_tx: Some(child_tx.clone()),
             change_tracker: ctx.change_tracker.clone(),
             allowed_tool_names: None,
+            team_name: ctx.team_name.clone(),
+            agent_name: ctx.agent_name.clone(),
+            is_team_lead: ctx.is_team_lead,
         };
 
         let mut session_usage = SessionUsage::default();

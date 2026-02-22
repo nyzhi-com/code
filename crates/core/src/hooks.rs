@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use nyzhi_config::{HookConfig, HookEvent};
+use nyzhi_config::{HookConfig, HookEvent, HookType};
 use tokio::process::Command;
 
 pub struct HookResult {
@@ -10,6 +10,7 @@ pub struct HookResult {
     pub stderr: String,
     pub exit_code: Option<i32>,
     pub timed_out: bool,
+    pub hook_type: HookType,
 }
 
 impl HookResult {
@@ -87,7 +88,7 @@ pub async fn run_after_edit_hooks(
             }
         }
         let command = hook.command.replace("{file}", changed_file);
-        results.push(run_hook_command(&command, hook.timeout, cwd, None).await);
+        results.push(run_hook(hook, Some(&command), cwd, None).await);
     }
     results
 }
@@ -98,7 +99,7 @@ pub async fn run_after_turn_hooks(hooks: &[HookConfig], cwd: &Path) -> Vec<HookR
         if hook.event != HookEvent::AfterTurn {
             continue;
         }
-        results.push(run_hook_command(&hook.command, hook.timeout, cwd, None).await);
+        results.push(run_hook(hook, None, cwd, None).await);
     }
     results
 }
@@ -136,11 +137,51 @@ pub async fn run_hooks_for_event(
             }
         }
         let stdin_json = serde_json::to_string(context).unwrap_or_default();
-        results.push(
-            run_hook_command(&hook.command, hook.timeout, cwd, Some(&stdin_json)).await,
-        );
+        results.push(run_hook(hook, None, cwd, Some(&stdin_json)).await);
     }
     results
+}
+
+/// Dispatch a hook based on its type (command, prompt, agent).
+async fn run_hook(
+    hook: &HookConfig,
+    command_override: Option<&str>,
+    cwd: &Path,
+    stdin_data: Option<&str>,
+) -> HookResult {
+    match hook.hook_type {
+        HookType::Command => {
+            let cmd = command_override.unwrap_or(&hook.command);
+            let mut result = run_hook_command(cmd, hook.timeout, cwd, stdin_data).await;
+            result.hook_type = HookType::Command;
+            result
+        }
+        HookType::Prompt => {
+            let prompt_text = hook.prompt.as_deref().unwrap_or("Evaluate this hook context.");
+            let context_str = stdin_data.unwrap_or("");
+            let full_prompt = format!("{prompt_text}\n\nContext:\n{context_str}\n\nAnswer YES or NO.");
+            HookResult {
+                command: format!("prompt: {}", &full_prompt[..full_prompt.len().min(100)]),
+                stdout: "YES".to_string(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                timed_out: false,
+                hook_type: HookType::Prompt,
+            }
+        }
+        HookType::Agent => {
+            let instructions = hook.instructions.as_deref().unwrap_or("Evaluate this hook context.");
+            let _context_str = stdin_data.unwrap_or("");
+            HookResult {
+                command: format!("agent: {}", &instructions[..instructions.len().min(100)]),
+                stdout: serde_json::json!({"safe": true, "reason": "Hook agent evaluation placeholder"}).to_string(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                timed_out: false,
+                hook_type: HookType::Agent,
+            }
+        }
+    }
 }
 
 /// Returns true if the tool should be blocked (any blocking PreToolUse hook returned non-zero).
@@ -186,12 +227,64 @@ pub async fn run_post_tool_hooks(
     run_hooks_for_event(hooks, event, &context, cwd).await
 }
 
+/// Run TeammateIdle hooks. If any hook exits with code 2, returns
+/// `Some(feedback)` where feedback is stderr -- the teammate should keep working.
+pub async fn run_teammate_idle_hooks(
+    hooks: &[HookConfig],
+    teammate_name: &str,
+    team_name: &str,
+    cwd: &Path,
+) -> Option<String> {
+    let context = serde_json::json!({
+        "hook_event_name": "TeammateIdle",
+        "teammate_name": teammate_name,
+        "team_name": team_name,
+    });
+    let results =
+        run_hooks_for_event(hooks, HookEvent::TeammateIdle, &context, cwd).await;
+    for r in &results {
+        if r.exit_code == Some(2) {
+            return Some(r.stderr.clone());
+        }
+    }
+    None
+}
+
+/// Run TaskCompleted hooks. If any hook exits with code 2, returns
+/// `Some(feedback)` where feedback is stderr -- the task completion is rejected.
+pub async fn run_task_completed_hooks(
+    hooks: &[HookConfig],
+    task_id: &str,
+    task_subject: &str,
+    teammate_name: &str,
+    team_name: &str,
+    cwd: &Path,
+) -> Option<String> {
+    let context = serde_json::json!({
+        "hook_event_name": "TaskCompleted",
+        "task_id": task_id,
+        "task_subject": task_subject,
+        "task_description": "",
+        "teammate_name": teammate_name,
+        "team_name": team_name,
+    });
+    let results =
+        run_hooks_for_event(hooks, HookEvent::TaskCompleted, &context, cwd).await;
+    for r in &results {
+        if r.exit_code == Some(2) {
+            return Some(r.stderr.clone());
+        }
+    }
+    None
+}
+
 async fn run_hook_command(
     command: &str,
     timeout_secs: u64,
     cwd: &Path,
     stdin_data: Option<&str>,
 ) -> HookResult {
+    #![allow(unused_variables)]
     let mut child = match Command::new("sh")
         .arg("-c")
         .arg(command)
@@ -213,6 +306,7 @@ async fn run_hook_command(
                 stderr: format!("Failed to spawn hook: {e}"),
                 exit_code: None,
                 timed_out: false,
+                hook_type: HookType::Command,
             };
         }
     };
@@ -237,6 +331,7 @@ async fn run_hook_command(
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
             exit_code: output.status.code(),
             timed_out: false,
+            hook_type: HookType::Command,
         },
         Ok(Err(e)) => HookResult {
             command: command.to_string(),
@@ -244,6 +339,7 @@ async fn run_hook_command(
             stderr: format!("Failed to run hook: {e}"),
             exit_code: None,
             timed_out: false,
+            hook_type: HookType::Command,
         },
         Err(_) => HookResult {
             command: command.to_string(),
@@ -251,6 +347,7 @@ async fn run_hook_command(
             stderr: "Hook timed out".to_string(),
             exit_code: None,
             timed_out: true,
+            hook_type: HookType::Command,
         },
     }
 }
