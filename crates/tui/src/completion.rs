@@ -8,7 +8,7 @@ pub struct SlashCommandDef {
     pub description: &'static str,
 }
 
-const SLASH_COMMANDS: &[SlashCommandDef] = &[
+pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
     SlashCommandDef { name: "/accent", description: "change accent color" },
     SlashCommandDef { name: "/agents", description: "list available agent roles" },
     SlashCommandDef { name: "/autopilot", description: "autonomous multi-step execution" },

@@ -62,7 +62,7 @@ first to discuss the approach.
 - **Automatic issue triage**: new and reopened issues are labeled
   `needs-triage`.
 - **Automatic PR labeling**: pull requests are labeled by changed paths
-  (for example: `core`, `provider`, `docs`, `ci`).
+  (for example: `core`, `provider`, `documentation`, `ci`).
 - **Automatic stale management**: inactive issues and PRs are marked stale first
   and only closed after an additional inactivity period.
 - **Automatic reviewers**: CODEOWNERS routes review requests to maintainers.

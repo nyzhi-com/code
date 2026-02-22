@@ -681,6 +681,24 @@ impl App {
                 }
             }
 
+            if self.pending_command_dispatch {
+                self.pending_command_dispatch = false;
+                if let Some(t) = thread.as_mut() {
+                    let mi = provider.as_ref().and_then(|p| {
+                        model_info_idx.map(|i| &p.supported_models()[i])
+                    });
+                    let enter = crossterm::event::KeyEvent::new(
+                        KeyCode::Enter,
+                        crossterm::event::KeyModifiers::NONE,
+                    );
+                    handle_key(
+                        self, enter, provider.as_deref(), t,
+                        &mut agent_config, &event_tx, &registry,
+                        &tool_ctx, mi, &mut model_info_idx,
+                    ).await;
+                }
+            }
+
             if let Some((provider_id, method)) = self.pending_oauth.take() {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
