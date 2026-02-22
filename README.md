@@ -7,16 +7,20 @@
 </p>
 
 <p align="center">
-  <a href="https://code.nyzhi.com/docs"><strong>Documentation</strong></a> &ensp;&middot;&ensp;
-  <a href="#install"><strong>Install</strong></a> &ensp;&middot;&ensp;
-  <a href="#quick-start"><strong>Quick Start</strong></a> &ensp;&middot;&ensp;
-  <a href="https://github.com/nyzhi-com/code/releases"><strong>Releases</strong></a> &ensp;&middot;&ensp;
-  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+  <a href="https://code.nyzhi.com/docs">Docs</a> &ensp;&middot;&ensp;
+  <a href="#install">Install</a> &ensp;&middot;&ensp;
+  <a href="#quick-start">Quick Start</a> &ensp;&middot;&ensp;
+  <a href="https://github.com/nyzhi-com/code/releases">Releases</a> &ensp;&middot;&ensp;
+  <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 <br>
 
-> **Single binary. No runtime deps. Ships 50+ tools.** Give it a task -- it reads your code, writes changes, runs your tests, and verifies the result. All inside a rich terminal UI or a single non-interactive command. Built in Rust, wired to every major LLM.
+<p align="center">
+Give it a task — it reads your code, writes changes, runs your tests, and verifies the result.<br>
+All inside a rich terminal UI or a single non-interactive command.<br>
+Built in Rust. Wired to every major LLM.
+</p>
 
 <br>
 
@@ -26,106 +30,107 @@
 curl -fsSL https://get.nyzhi.com | sh
 ```
 
-Or via a package manager:
-
-```bash
-cargo install nyzhi           # Cargo
-npm install -g nyzhi            # npm
-```
-
-<details>
-<summary><strong>Self-update, rollback, uninstall</strong></summary>
-
-```bash
-nyz update                   # check and apply
-nyz update --rollback latest # rollback to previous version
-nyz uninstall                # remove everything (binary, config, data, tokens)
-```
-
-Updates are checked automatically every 4 hours. Every update backs up the current binary, verifies the new one, and auto-rolls back on failure.
-
-</details>
-
-<details>
-<summary><strong>Build from source</strong></summary>
-
-```bash
-git clone https://github.com/nyzhi-com/code && cd code
-cargo build --release        # Rust 1.75+
-# Binary is at target/release/nyz
-```
-
-</details>
-
----
-
-## Quick Start
-
-```bash
-nyz                                # launch the TUI
-```
-
-First run walks you through connecting a provider. Or connect one directly:
-
-```bash
-nyz login openai                   # OAuth — opens your browser
-nyz login anthropic                # Anthropic PKCE
-nyz login gemini                   # Google PKCE
-```
-
-Then just work:
-
-```bash
-nyz                                # interactive TUI
-nyz run "explain this codebase"    # one-shot, no TUI
-nyz --continue                     # pick up where you left off
-```
-
----
-
-## Why nyzhi
-
 <table>
 <tr>
-<td width="50%" valign="top">
+<td>
 
-### Every model, one interface
-
-OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq -- and any OpenAI-compatible endpoint. Switch mid-session. Route prompts to the right tier automatically. Track costs with built-in analytics.
-
-### 50+ built-in tools
-
-File ops, git, grep, glob, bash, sub-agents, LSP, AST search, browser automation, PR workflows, semantic search, debug instrumentation. All with a permission model you control.
-
-### MCP native
-
-Connect external tool servers via stdio or HTTP. Drop a `.mcp.json` in your project root -- same format as Claude Code and Codex.
+**Cargo**
+```bash
+cargo install nyzhi
+```
 
 </td>
-<td width="50%" valign="top">
+<td>
 
-### Agent-first architecture
+**npm**
+```bash
+npm install -g nyzhi
+```
 
-**Autopilot** -- five-phase autonomous execution. **Teams** -- spawn coordinated sub-agents with mailbox messaging and task boards. **Planning** -- planner/critic loops with persistent plans. **Skills** -- the agent learns your patterns.
+</td>
+<td>
 
-### A TUI worth living in
-
-8 themes. 14 accent colors. Syntax highlighting. Tab completion. Persistent history with reverse search. Multi-line input. In-session search. Conversation export. Desktop notifications.
-
-### Your code stays yours
-
-Every file change is tracked. `/undo` reverts anything. Trust modes gate what runs without approval. Updates are SHA256-verified with automatic rollback.
+**Source**
+```bash
+git clone https://github.com/nyzhi-com/code
+cd code && cargo build --release
+```
 
 </td>
 </tr>
 </table>
 
----
+<details>
+<summary>Self-update &amp; rollback</summary>
+
+<br>
+
+```bash
+nyz update                   # check and apply
+nyz update --rollback latest # revert to previous
+nyz uninstall                # remove everything
+```
+
+Updates run automatically every 4h. Every update backs up the current binary, verifies the new one with SHA256, and auto-rolls back on failure.
+
+</details>
+
+<br>
+
+## Quick Start
+
+```bash
+nyz                                # launch the TUI
+nyz login openai                   # connect a provider (OAuth)
+nyz run "explain this codebase"    # one-shot, no TUI
+nyz --continue                     # pick up where you left off
+```
+
+<br>
+
+## What makes nyzhi different
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+#### Every model, one binary
+
+OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq — and any OpenAI-compatible endpoint. Switch mid-session. Route prompts to the right cost tier automatically.
+
+#### Autonomous execution
+
+**Autopilot** — five-phase autonomous pipeline: expand, plan, execute, QA, validate. **Teams** — spawn coordinated sub-agents with mailbox messaging and task boards. **Planning** — planner/critic loops with persistent, replayable plans.
+
+#### MCP native
+
+Drop a `.mcp.json` in your project root. Same format as Claude Code and Codex. stdio and HTTP transports.
+
+</td>
+<td width="50%" valign="top">
+
+#### 50+ tools, zero runtime deps
+
+File ops, git, grep, glob, bash, sub-agents, LSP, AST search, browser automation, PR workflows, semantic search, debug instrumentation — all with a permission model you control.
+
+#### A TUI worth living in
+
+8 themes. 14 accent colors. Syntax highlighting. Tab completion. Persistent history with reverse search. Multi-line editing. Session export. Desktop notifications.
+
+#### Your code stays yours
+
+Every file change is tracked. `/undo` reverts anything. Trust modes gate what runs without approval. The agent learns your patterns via `/learn`.
+
+</td>
+</tr>
+</table>
+
+<br>
 
 ## Providers
 
-| Provider | Auth | Default Models |
-|:---------|:-----|:---------------|
+| Provider | Auth | Models |
+|:---|:---|:---|
 | **OpenAI** | API key / OAuth | GPT-5.3 Codex, GPT-5.2, o3, o4-mini |
 | **Anthropic** | API key / OAuth | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 |
 | **Gemini** | API key / OAuth | Gemini 3.1 Pro, 3 Flash, 2.5 Flash |
@@ -134,98 +139,63 @@ Every file change is tracked. `/undo` reverts anything. Trust modes gate what ru
 | **Groq** | API key | Groq-hosted models |
 | **Custom** | API key | Any OpenAI-compatible endpoint |
 
-```bash
-nyz login openai       # OAuth device code
-nyz login gemini       # Google PKCE
-nyz login anthropic    # Anthropic PKCE
-nyz whoami             # check all providers
-```
+Multi-account per provider. Automatic token refresh. Rate-limit rotation across accounts.
 
-Multi-account per provider. Automatic token refresh. Rate-limit rotation across accounts. [Full provider docs &rarr;](https://code.nyzhi.com/docs/providers)
+<br>
 
----
+## Agent Capabilities
 
-## Features
-
-<details open>
-<summary><strong>Agent capabilities</strong></summary>
-
-| Feature | How |
-|:--------|:----|
-| **Autopilot** | `/autopilot <idea>` -- 5 phases: expand, plan, execute, QA, validate |
-| **Teams** | `/team 3 <task>` -- coordinated sub-agents with mailbox + task board |
-| **Planning** | `plan: <task>` prefix -- planner/critic loop, persistent plans |
-| **Routing** | Auto-select model tier (low/medium/high) by prompt complexity |
+| | |
+|:---|:---|
+| **Autopilot** | `/autopilot <idea>` — expand → plan → execute → QA → validate |
+| **Teams** | `/team 3 <task>` — coordinated sub-agents with mailbox + task board |
+| **Planning** | `plan:` prefix — planner/critic loop, persistent plans |
+| **Routing** | Auto-select model tier by prompt complexity |
 | **Verification** | Auto-detect build/test/lint for Rust, Node, Go, Python |
-| **Skills** | `/learn` -- extract reusable patterns from sessions |
+| **Skills** | `/learn` — extract reusable patterns from sessions |
 | **Memory** | Persistent notepad across sessions with topic-based recall |
-| **Magic keywords** | `plan:`, `persist:`, `eco:`, `tdd:`, `review:`, `parallel:` |
+| **Hooks** | Run formatters/linters/tests after edits or agent turns |
 
-</details>
+<br>
 
-<details>
-<summary><strong>TUI</strong></summary>
+## Tools
 
-| Feature | Details |
-|:--------|:--------|
-| **Themes** | Nyzhi Dark/Light, Tokyo Night, Catppuccin Mocha, Dracula, Solarized, Gruvbox |
-| **Accents** | copper, blue, orange, emerald, violet, rose, amber, cyan, red, pink, teal, indigo, lime, monochrome |
-| **Input** | Multi-line (Alt+Enter), `/editor` for $EDITOR, bracketed paste |
-| **History** | Persistent across sessions, Ctrl+R reverse search |
-| **Completion** | Tab for commands, `@file` mentions, file paths |
-| **Search** | `/search` with Ctrl+N/P navigation |
-| **Shortcuts** | Ctrl+T theme, Ctrl+A accent, Ctrl+L clear, PageUp/Down scroll |
+<table>
+<tr>
+<td valign="top">
 
-</details>
+**Files**<br>
+<code>read</code> <code>write</code> <code>edit</code> <code>multi_edit</code> <code>apply_patch</code> <code>glob</code> <code>grep</code> <code>list_dir</code> <code>directory_tree</code> <code>file_info</code> <code>delete_file</code> <code>move_file</code> <code>copy_file</code> <code>create_dir</code>
 
-<details>
-<summary><strong>Workflow</strong></summary>
+**Shell**<br>
+<code>bash</code> — live streaming output
 
-| Feature | Details |
-|:--------|:--------|
-| **Sessions** | Auto-save, resume (`--continue`), search, rename, delete, export |
-| **Hooks** | Run formatters/linters/tests after edits or turns |
-| **Commands** | Custom slash commands from `.nyzhi/commands/` or config |
-| **Export** | `/export` to markdown |
-| **Replay** | Event-level session replay |
-| **Analytics** | Cost tracking per provider/model, daily/weekly/monthly reports |
-| **Notifications** | Terminal bell, desktop, webhook, Telegram, Discord, Slack |
-| **Deep init** | `nyz deepinit` generates AGENTS.md from project analysis |
+**Git**<br>
+<code>git_status</code> <code>git_diff</code> <code>git_log</code> <code>git_show</code> <code>git_branch</code> <code>git_commit</code> <code>git_checkout</code>
 
-</details>
+**Agent**<br>
+<code>task</code> <code>todo_write</code> <code>todo_read</code> <code>notepad_write</code> <code>notepad_read</code> <code>update_plan</code> <code>think</code> <code>load_skill</code> <code>tool_search</code>
 
-<details>
-<summary><strong>Tools (50+)</strong></summary>
+</td>
+<td valign="top">
 
-**Files** &ensp; `read` `write` `edit` `multi_edit` `apply_patch` `glob` `grep` `list_dir` `directory_tree` `file_info` `delete_file` `move_file` `copy_file` `create_dir`
+**Analysis**<br>
+<code>verify</code> <code>lsp_diagnostics</code> <code>ast_search</code> <code>lsp_goto_definition</code> <code>lsp_find_references</code> <code>lsp_hover</code>
 
-**Shell** &ensp; `bash` -- live streaming output
+**Web &amp; Browser**<br>
+<code>web_fetch</code> <code>web_search</code> <code>browser_open</code> <code>browser_screenshot</code> <code>browser_evaluate</code>
 
-**Git** &ensp; `git_status` `git_diff` `git_log` `git_show` `git_branch` `git_commit` `git_checkout`
+**Teams**<br>
+<code>team_create</code> <code>team_delete</code> <code>send_message</code> <code>task_create</code> <code>task_update</code> <code>task_list</code> <code>team_list</code> <code>read_inbox</code>
 
-**Agent** &ensp; `task` `todo_write` `todo_read` `notepad_write` `notepad_read` `update_plan` `think` `load_skill` `tool_search`
+**PR &amp; Search &amp; Debug**<br>
+<code>create_pr</code> <code>review_pr</code> <code>semantic_search</code> <code>fuzzy_find</code> <code>instrument</code> <code>remove_instrumentation</code> <code>tail_file</code> <code>batch_apply</code>
 
-**Analysis** &ensp; `verify` `lsp_diagnostics` `ast_search` `lsp_goto_definition` `lsp_find_references` `lsp_hover`
+</td>
+</tr>
+</table>
 
-**Web** &ensp; `web_fetch` `web_search`
-
-**Browser** &ensp; `browser_open` `browser_screenshot` `browser_evaluate`
-
-**Teams** &ensp; `team_create` `team_delete` `send_message` `task_create` `task_update` `task_list` `team_list` `read_inbox`
-
-**PR** &ensp; `create_pr` `review_pr`
-
-**Search** &ensp; `semantic_search` `fuzzy_find`
-
-**Debug** &ensp; `instrument` `remove_instrumentation` `tail_file` `batch_apply`
-
-**Memory** &ensp; `memory_read` `memory_write`
-
-[Full tool reference &rarr;](https://code.nyzhi.com/docs/tools)
-
-</details>
-
----
+<br>
 
 ## CLI
 
@@ -239,37 +209,37 @@ nyz -p openai -m gpt-5.2        provider and model flags
 ```
 
 <details>
-<summary><strong>All commands</strong></summary>
+<summary>All commands</summary>
 
-```
-nyz login <provider>             OAuth login
-nyz logout <provider>            remove stored token
-nyz whoami                       auth status
-nyz config                       show config
-nyz init                         create .nyzhi/
-nyz mcp add|list|remove          MCP servers
-nyz sessions [query]             list sessions
-nyz export <id> [-o path]        export to markdown
-nyz session delete|rename        manage sessions
-nyz stats                        session statistics
-nyz cost [daily|weekly|monthly]  cost report
-nyz replay <id>                  replay session
-nyz deepinit                     generate AGENTS.md
-nyz skills                       list skills
-nyz wait                         rate limit status
-nyz teams list|show|delete       team management
-nyz ci-fix                       auto-fix CI failures
-nyz update [--rollback]          self-update
-nyz uninstall                    uninstall
-```
+<br>
+
+| Command | |
+|:---|:---|
+| `nyz login <provider>` | OAuth login |
+| `nyz logout <provider>` | Remove stored token |
+| `nyz whoami` | Auth status for all providers |
+| `nyz config` | Show merged config |
+| `nyz init` | Create `.nyzhi/` in current project |
+| `nyz mcp add\|list\|remove` | Manage MCP servers |
+| `nyz sessions [query]` | List / search sessions |
+| `nyz export <id> [-o path]` | Export session to markdown |
+| `nyz stats` | Session statistics |
+| `nyz cost [daily\|weekly\|monthly]` | Cost report |
+| `nyz replay <id>` | Replay session events |
+| `nyz deepinit` | Generate AGENTS.md from project analysis |
+| `nyz skills` | List learned skills |
+| `nyz teams list\|show\|delete` | Team management |
+| `nyz ci-fix` | Auto-fix CI failures |
+| `nyz update [--rollback]` | Self-update or rollback |
+| `nyz uninstall` | Uninstall nyzhi |
 
 </details>
 
----
+<br>
 
 ## Configuration
 
-Three layers, merged in order: **global** `~/.config/nyzhi/config.toml` &rarr; **project** `.nyzhi/config.toml` &rarr; **local** `.nyzhi/config.local.toml`
+Three layers, merged in order: **global** `~/.config/nyzhi/config.toml` → **project** `.nyzhi/config.toml` → **local** `.nyzhi/config.local.toml`
 
 ```toml
 [provider]
@@ -297,11 +267,13 @@ command = "cargo fmt -- {file}"
 pattern = "*.rs"
 ```
 
-Project rules go in `AGENTS.md` or `.nyzhi/rules.md`. Custom commands go in `.nyzhi/commands/`. MCP servers go in `.mcp.json`.
+| File | Purpose |
+|:---|:---|
+| `AGENTS.md` or `.nyzhi/rules.md` | Project rules the agent follows |
+| `.nyzhi/commands/` | Custom slash commands |
+| `.mcp.json` | MCP server definitions |
 
-[Full configuration reference &rarr;](https://code.nyzhi.com/docs/configuration)
-
----
+<br>
 
 ## Architecture
 
@@ -315,23 +287,21 @@ Six crates, zero cycles, one binary.
                 nyzhi-auth      nyzhi-config
 ```
 
-| Crate | What it does |
-|:------|:-------------|
-| **nyzhi** | Binary. CLI parsing, command dispatch, tool/MCP assembly. |
+| Crate | |
+|:---|:---|
+| **nyzhi** | Binary entry point. CLI parsing, command dispatch, tool and MCP assembly. |
 | **nyzhi-core** | Agent loop, 50+ tools, sessions, workspace, MCP, planning, teams, hooks, skills, verification, analytics. |
 | **nyzhi-provider** | LLM abstraction. OpenAI, Anthropic, Gemini with streaming and thinking support. |
-| **nyzhi-tui** | Terminal UI. ratatui, themes, highlighting, completion, history, export. |
+| **nyzhi-tui** | Terminal UI. ratatui, themes, syntax highlighting, completion, history, export. |
 | **nyzhi-auth** | OAuth2 PKCE + device code, API keys, token store, multi-account rotation. |
-| **nyzhi-config** | Config loading and merging. Provider definitions. |
+| **nyzhi-config** | Config loading and merging across global, project, and local layers. |
 
-[Architecture deep-dive &rarr;](https://code.nyzhi.com/docs/architecture)
+<br>
 
----
-
-## Data locations
+## Data
 
 | What | Where | Touched by updates? |
-|:-----|:------|:--------------------|
+|:---|:---|:---|
 | Binary | `~/.nyzhi/bin/nyz` | Yes (backed up first) |
 | Config | `~/.config/nyzhi/` | Never |
 | Sessions | `~/.local/share/nyzhi/sessions/` | Never |
@@ -340,38 +310,28 @@ Six crates, zero cycles, one binary.
 | Memory | `~/.local/share/nyzhi/MEMORY.md` | Never |
 | Backups | `~/.nyzhi/backups/` | Pruned to 3 |
 
----
+<br>
 
-## Documentation
+## Docs
 
-Full docs at **[code.nyzhi.com/docs](https://code.nyzhi.com/docs)** or in the [`docs/`](docs/) directory:
+Full documentation at **[code.nyzhi.com/docs](https://code.nyzhi.com/docs)** — or browse the [`docs/`](docs/) directory:
 
-<table>
-<tr><td>
+**Core** &ensp; [Architecture](docs/architecture.md) · [Configuration](docs/configuration.md) · [Authentication](docs/authentication.md)
 
-**Core** &ensp; [Architecture](docs/architecture.md) &middot; [Configuration](docs/configuration.md) &middot; [Authentication](docs/authentication.md)
+**Features** &ensp; [Providers](docs/providers.md) · [Tools](docs/tools.md) · [TUI](docs/tui.md) · [MCP](docs/mcp.md) · [Sessions](docs/sessions.md) · [Teams](docs/teams.md) · [Autopilot](docs/autopilot.md)
 
-**Features** &ensp; [Providers](docs/providers.md) &middot; [Tools](docs/tools.md) &middot; [TUI](docs/tui.md) &middot; [MCP](docs/mcp.md) &middot; [Sessions](docs/sessions.md) &middot; [Teams](docs/teams.md) &middot; [Autopilot](docs/autopilot.md)
+**Workflow** &ensp; [Hooks](docs/hooks.md) · [Commands](docs/commands.md) · [Skills](docs/skills.md) · [Verification](docs/verification.md) · [Routing](docs/routing.md) · [Notifications](docs/notifications.md) · [Memory](docs/memory.md)
 
-**Workflow** &ensp; [Hooks](docs/hooks.md) &middot; [Commands](docs/commands.md) &middot; [Skills](docs/skills.md) &middot; [Verification](docs/verification.md) &middot; [Routing](docs/routing.md) &middot; [Notifications](docs/notifications.md) &middot; [Memory](docs/memory.md)
+**System** &ensp; [Self-Update](docs/self-update.md) · [Building](docs/building.md) · [Releasing](docs/releasing.md)
 
-**System** &ensp; [Self-Update](docs/self-update.md) &middot; [Building](docs/building.md) &middot; [Releasing](docs/releasing.md)
-
-</td></tr>
-</table>
-
----
-
-## Community
-
-- [Contributing Guide](CONTRIBUTING.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Support](SUPPORT.md)
-- [Security Policy](SECURITY.md)
-- [Issue Tracker](https://github.com/nyzhi-com/code/issues)
+<br>
 
 ---
 
 <p align="center">
-  <a href="https://github.com/nyzhi-com/code/blob/main/LICENSE">GPL-3.0-or-later</a>
+  <a href="CONTRIBUTING.md">Contributing</a> · <a href="CODE_OF_CONDUCT.md">Code of Conduct</a> · <a href="SUPPORT.md">Support</a> · <a href="SECURITY.md">Security</a> · <a href="https://github.com/nyzhi-com/code/issues">Issues</a>
+</p>
+
+<p align="center">
+  <sub><a href="https://github.com/nyzhi-com/code/blob/main/LICENSE">GPL-3.0-or-later</a></sub>
 </p>
