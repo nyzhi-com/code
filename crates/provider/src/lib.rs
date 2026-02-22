@@ -145,6 +145,15 @@ impl ModelRegistry {
         models.insert("gemini".into(), gemini::default_models());
         models.insert("deepseek".into(), deepseek_models());
         models.insert("groq".into(), groq_models());
+        let kimi = kimi_models();
+        models.insert("kimi".into(), kimi.clone());
+        models.insert("kimi-coding".into(), kimi);
+        let minimax = minimax_models();
+        models.insert("minimax".into(), minimax.clone());
+        models.insert("minimax-coding".into(), minimax);
+        let glm = glm_models();
+        models.insert("glm".into(), glm.clone());
+        models.insert("glm-coding".into(), glm);
         Self { models }
     }
 
@@ -220,6 +229,101 @@ fn groq_models() -> Vec<ModelInfo> {
             supports_tools: true, supports_streaming: true, supports_vision: false,
             input_price_per_m: 0.05, output_price_per_m: 0.08,
             cache_read_price_per_m: 0.0, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Low, thinking: None,
+        },
+    ]
+}
+
+fn kimi_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "kimi-k2.5".into(), name: "Kimi K2.5".into(), provider: "kimi".into(),
+            context_window: 262_144, max_output_tokens: 32_768,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 0.60, output_price_per_m: 3.0,
+            cache_read_price_per_m: 0.10, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: Some(ThinkingSupport::kimi_thinking()),
+        },
+        ModelInfo {
+            id: "kimi-k2-0905-preview".into(), name: "Kimi K2".into(), provider: "kimi".into(),
+            context_window: 262_144, max_output_tokens: 32_768,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.60, output_price_per_m: 2.50,
+            cache_read_price_per_m: 0.15, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
+        },
+        ModelInfo {
+            id: "kimi-k2-turbo-preview".into(), name: "Kimi K2 Turbo".into(), provider: "kimi".into(),
+            context_window: 262_144, max_output_tokens: 32_768,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 1.15, output_price_per_m: 8.0,
+            cache_read_price_per_m: 0.15, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: None,
+        },
+    ]
+}
+
+fn minimax_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "MiniMax-M2.5".into(), name: "MiniMax M2.5".into(), provider: "minimax".into(),
+            context_window: 204_800, max_output_tokens: 65_536,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.30, output_price_per_m: 1.20,
+            cache_read_price_per_m: 0.03, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: None,
+        },
+        ModelInfo {
+            id: "MiniMax-M2.5-highspeed".into(), name: "MiniMax M2.5 Highspeed".into(), provider: "minimax".into(),
+            context_window: 204_800, max_output_tokens: 65_536,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.30, output_price_per_m: 2.40,
+            cache_read_price_per_m: 0.03, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
+        },
+        ModelInfo {
+            id: "MiniMax-M2.1".into(), name: "MiniMax M2.1".into(), provider: "minimax".into(),
+            context_window: 204_800, max_output_tokens: 65_536,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.27, output_price_per_m: 0.95,
+            cache_read_price_per_m: 0.03, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
+        },
+    ]
+}
+
+fn glm_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "glm-5".into(), name: "GLM-5".into(), provider: "glm".into(),
+            context_window: 200_000, max_output_tokens: 128_000,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 1.0, output_price_per_m: 3.20,
+            cache_read_price_per_m: 0.20, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: None,
+        },
+        ModelInfo {
+            id: "glm-5-code".into(), name: "GLM-5 Code".into(), provider: "glm".into(),
+            context_window: 200_000, max_output_tokens: 128_000,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 1.20, output_price_per_m: 5.0,
+            cache_read_price_per_m: 0.24, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: None,
+        },
+        ModelInfo {
+            id: "glm-4.7".into(), name: "GLM-4.7".into(), provider: "glm".into(),
+            context_window: 200_000, max_output_tokens: 128_000,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.60, output_price_per_m: 2.20,
+            cache_read_price_per_m: 0.11, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Medium, thinking: None,
+        },
+        ModelInfo {
+            id: "glm-4.7-flashx".into(), name: "GLM-4.7 FlashX".into(), provider: "glm".into(),
+            context_window: 200_000, max_output_tokens: 128_000,
+            supports_tools: true, supports_streaming: true, supports_vision: false,
+            input_price_per_m: 0.07, output_price_per_m: 0.40,
+            cache_read_price_per_m: 0.01, cache_write_price_per_m: 0.0,
             tier: ModelTier::Low, thinking: None,
         },
     ]

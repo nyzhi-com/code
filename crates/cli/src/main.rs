@@ -841,10 +841,14 @@ async fn main() -> Result<()> {
         _ => {}
     }
 
-    let provider: std::sync::Arc<dyn nyzhi_provider::Provider> =
-        nyzhi_provider::create_provider_async(provider_name, &config)
-            .await?
-            .into();
+    let provider: Option<std::sync::Arc<dyn nyzhi_provider::Provider>> =
+        match nyzhi_provider::create_provider_async(provider_name, &config).await {
+            Ok(p) => Some(p.into()),
+            Err(e) => {
+                tracing::debug!("Provider init deferred: {e}");
+                None
+            }
+        };
     let bundle = nyzhi_core::tools::default_registry();
     let mut registry = bundle.registry;
     let _todo_store = bundle.todo_store;
@@ -946,8 +950,12 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Run { prompt, images }) => {
+            let Some(ref provider) = provider else {
+                eprintln!("No credentials configured. Set an API key or run `nyz login`.");
+                std::process::exit(1);
+            };
             run_once(
-                &*provider,
+                &**provider,
                 &prompt,
                 &images,
                 &registry,
@@ -1001,11 +1009,9 @@ async fn main() -> Result<()> {
 
             let model_name = cli.model.clone().unwrap_or_else(|| {
                 provider
-                    .supported_models()
-                    .first()
-                    .map(|m| m.id.as_str())
-                    .unwrap_or("default")
-                    .to_string()
+                    .as_ref()
+                    .and_then(|p| p.supported_models().first().map(|m| m.id.clone()))
+                    .unwrap_or_else(|| "default".to_string())
             });
 
             let mut app =
@@ -1035,8 +1041,12 @@ async fn main() -> Result<()> {
                  the fix passes. Be surgical - only change what's needed to make CI green."
             );
 
+            let Some(ref provider) = provider else {
+                eprintln!("No credentials configured. Set an API key or run `nyz login`.");
+                std::process::exit(1);
+            };
             run_once(
-                &*provider,
+                &**provider,
                 &prompt,
                 &[],
                 &registry,

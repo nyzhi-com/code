@@ -1,6 +1,27 @@
-# nyzhi code
+<p align="center">
+  <img src="https://raw.githubusercontent.com/nyzhi-com/code/main/docs/assets/nyzhi-combined-dark.svg" alt="nyzhi" width="260" />
+</p>
 
-A performance-optimized AI coding agent for the terminal, built in Rust.
+<p align="center">
+  <strong>A performance-optimized AI coding agent for the terminal, built in Rust.</strong>
+</p>
+
+<p align="center">
+  <a href="https://nyzhi.com/docs">Docs</a> &middot;
+  <a href="#install">Install</a> &middot;
+  <a href="#quick-start">Quick Start</a> &middot;
+  <a href="docs/">Full Documentation</a>
+</p>
+
+---
+
+## What is nyzhi?
+
+Nyzhi is a terminal-native AI coding agent. You give it a task, it reads your codebase, writes code, runs commands, and verifies the result -- all inside a rich TUI or as a single non-interactive command. It ships as a single static binary with no runtime dependencies.
+
+Multi-provider by design. Nyzhi works with OpenAI, Anthropic, Google Gemini, OpenRouter, DeepSeek, Groq, and any OpenAI-compatible endpoint. Switch providers mid-session, route prompts to the right model tier automatically, and keep costs visible with built-in analytics.
+
+---
 
 ## Install
 
@@ -8,114 +29,188 @@ A performance-optimized AI coding agent for the terminal, built in Rust.
 curl -fsSL https://get.nyzhi.com | sh
 ```
 
-This installs the `nyz` binary to `~/.nyzhi/bin/` and adds it to your PATH.
-Your config (`~/.config/nyzhi/`), data (`~/.local/share/nyzhi/`), and OAuth tokens are never touched by installs or updates.
+This installs the `nyz` binary to `~/.nyzhi/bin/` and adds it to your PATH. Your config, sessions, and OAuth tokens are never touched by installs or updates.
 
 **Self-update:**
 
 ```bash
-nyzhi update            # check and apply updates
-nyzhi update --force    # force re-check ignoring throttle
-nyzhi update --list-backups   # list available rollback points
-nyzhi update --rollback latest  # rollback to previous version
+nyz update                   # check and apply
+nyz update --force           # ignore throttle
+nyz update --list-backups    # list rollback points
+nyz update --rollback latest # rollback to previous
 ```
 
-Updates are checked automatically when the TUI starts (every 4 hours by default). A banner offers `[u] Update`, `[s] Skip`, or `[i] Ignore version`. Every update backs up the current binary and verifies the new one before completing. If the new binary fails, it auto-rolls back.
+Updates are checked automatically when the TUI starts (every 4 hours by default). Every update backs up the current binary and verifies the new one before completing. If the new binary fails, it auto-rolls back.
 
-## Features
+**Build from source:**
 
-- **Multi-provider** -- OpenAI, Anthropic, and Google Gemini with streaming
-- **Rich TUI** -- ratatui-based interface with 8 built-in themes, persistent theme/accent selection, ASCII logo, animated spinner
-- **35+ built-in tools** -- file ops, git, grep, glob, bash, sub-agents, todo, verify, notepad, LSP, AST search
-- **MCP support** -- connect external tool servers via stdio or HTTP
-- **OAuth + API key auth** -- Google PKCE, OpenAI device code, or plain API keys
-- **Session persistence** -- auto-save, resume, search, rename, delete sessions
-- **Context management** -- token estimation, configurable auto-compaction, `@file` mentions
-- **Smart model routing** -- auto-select model tier (low/medium/high) based on task complexity
-- **Change tracking** -- undo/revert any file change, diff view on approval
-- **Trust mode** -- auto-approve tools (off / limited / full)
-- **Custom commands** -- user-defined slash commands from `.nyzhi/commands/` and config
-- **Hooks** -- run lint, format, or tests automatically after edits or turns
-- **Magic keywords** -- `plan:`, `persist:`, `eco:`, `tdd:`, `review:`, `parallel:` prefixes
-- **Verification protocol** -- auto-detect build/test/lint for Rust, Node, Go, Python projects
-- **Token analytics** -- track costs per provider/model, daily/weekly/monthly reports
-- **Notepad wisdom** -- persist learnings, decisions, issues across sessions
-- **Session replay** -- event-level replay of past sessions
-- **Iterative planning** -- planner/critic loop for complex tasks
-- **LSP integration** -- detect available language servers, structural AST search
-- **External notifications** -- webhook, Telegram, Discord, Slack on turn complete
-- **Deep init** -- `nyzhi deepinit` generates AGENTS.md with project analysis
-- **Skill learning** -- `/learn` extracts reusable patterns from sessions
-- **Team orchestration** -- `/team N <task>` spawns coordinated sub-agents
-- **Autopilot** -- `/autopilot <idea>` for fully autonomous 5-phase execution
-- **Auto-update** -- background update checks with one-key apply, backup, rollback
-- **Multi-line input** -- Alt+Enter for newlines, `/editor` for `$EDITOR`, bracketed paste
-- **Input history** -- persistent across sessions, Ctrl+R reverse search
-- **Syntax highlighting** -- code blocks and inline markdown via syntect
-- **Tab completion** -- slash commands, `@`-mention file paths
-- **Conversation export** -- `/export` to save session as markdown
-- **In-session search** -- `/search` with highlighted matches and Ctrl+N/P navigation
-- **Completion notifications** -- terminal bell + desktop notifications when turns finish (configurable threshold)
-- **Prompt caching** -- Anthropic cache_control + OpenAI/Gemini automatic caching for lower costs
-- **Retry logic** -- exponential backoff for 429/5xx errors
-- **Single binary** -- no runtime dependencies
+```bash
+cargo build --release
+# Binary: target/release/nyz
+```
+
+Requires Rust 1.75+. See [docs/building.md](docs/building.md) for details.
+
+---
 
 ## Quick Start
 
 ```bash
-# Set your API key (or use `nyzhi login <provider>` for OAuth)
+# 1. Set your API key (or use `nyz login <provider>` for OAuth)
 export OPENAI_API_KEY="sk-..."
 
-# Launch the TUI
-nyzhi
+# 2. Launch the TUI
+nyz
 
-# One-shot mode
-nyzhi run "explain this codebase"
+# 3. One-shot mode (non-interactive)
+nyz run "explain this codebase"
 
-# Continue the most recent session
-nyzhi --continue
+# 4. Continue the most recent session
+nyz --continue
 
-# Resume a specific session
-nyzhi --session "refactor"
+# 5. Resume a specific session
+nyz --session "refactor auth"
 ```
+
+---
+
+## Features
+
+### Core
+
+- **Multi-provider** -- OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq, Kimi, MiniMax, GLM, and any OpenAI-compatible API
+- **50+ built-in tools** -- file ops, git, grep, glob, bash, sub-agents, todo, verify, notepad, LSP, AST search, web fetch, browser automation, PR workflows
+- **MCP support** -- connect external tool servers via stdio or HTTP (compatible with Claude Code / Codex `.mcp.json`)
+- **Streaming** -- real-time token-by-token output with thinking/reasoning display
+- **Prompt caching** -- Anthropic `cache_control`, OpenAI/Gemini automatic caching for lower costs
+- **Retry logic** -- exponential backoff for 429/5xx with multi-account rate-limit rotation
+- **Single binary** -- no runtime dependencies, no Docker, no node_modules
+
+### Agent
+
+- **Autopilot** -- `/autopilot <idea>` for fully autonomous 5-phase execution (expansion, planning, execution, QA, validation)
+- **Team orchestration** -- `/team N <task>` spawns coordinated sub-agents with mailbox messaging and task boards
+- **Iterative planning** -- planner/critic loop for complex tasks with persistent plans
+- **Smart routing** -- auto-select model tier (low/medium/high) based on task complexity
+- **Verification protocol** -- auto-detect build/test/lint for Rust, Node, Go, Python projects
+- **Skill learning** -- `/learn` extracts reusable patterns from sessions
+- **Notepad wisdom** -- persist learnings, decisions, issues across sessions
+- **Magic keywords** -- `plan:`, `persist:`, `eco:`, `tdd:`, `review:`, `parallel:` prefixes
+
+### TUI
+
+- **8 theme presets** -- Nyzhi Dark, Nyzhi Light, Tokyo Night, Catppuccin Mocha, Dracula, Solarized Dark/Light, Gruvbox Dark
+- **14 accent colors** -- copper, blue, orange, emerald, violet, rose, amber, cyan, red, pink, teal, indigo, lime, monochrome
+- **Per-slot color overrides** -- customize any theme token via hex values in config
+- **Syntax highlighting** -- code blocks and inline markdown via syntect
+- **Tab completion** -- slash commands, `@`-mention file paths
+- **Input history** -- persistent across sessions with Ctrl+R reverse search
+- **Multi-line input** -- Alt+Enter for newlines, `/editor` for `$EDITOR`, bracketed paste
+- **In-session search** -- `/search` with highlighted matches and Ctrl+N/P navigation
+
+### Workflow
+
+- **Session persistence** -- auto-save, resume, search, rename, delete
+- **Hooks** -- run lint, format, or tests automatically after edits or turns
+- **Custom commands** -- user-defined slash commands from `.nyzhi/commands/` and config
+- **Conversation export** -- `/export` to markdown
+- **Session replay** -- event-level replay of past sessions
+- **Token analytics** -- track costs per provider/model with daily/weekly/monthly reports
+- **Notifications** -- terminal bell, desktop notifications, webhook, Telegram, Discord, Slack
+- **Deep init** -- `nyz deepinit` generates AGENTS.md with project analysis
+
+### Security
+
+- **Trust mode** -- `off` (approve everything), `limited` (approve by tool/path), `full` (auto-approve all)
+- **Change tracking** -- every file modification tracked with diffs
+- **Undo** -- `/undo` reverts the last change, `/undo all` reverts everything
+- **Checksum-verified updates** -- SHA256 verification, integrity manifests, automatic rollback on failure
+
+---
+
+## Providers
+
+| Provider | Auth | Models |
+|----------|------|--------|
+| **OpenAI** | API key or OAuth (device code) | GPT-5.3 Codex, GPT-5.2 Codex, GPT-5.2, o3, o4-mini |
+| **Anthropic** | API key or OAuth (PKCE) | Claude Opus 4.6, Claude Sonnet 4.6, Claude Haiku 4.5 |
+| **Gemini** | API key or OAuth (Google PKCE) | Gemini 3.1 Pro, Gemini 3 Flash, Gemini 3 Pro, Gemini 2.5 Flash |
+| **OpenRouter** | API key | Any model on OpenRouter |
+| **DeepSeek** | API key | DeepSeek models |
+| **Groq** | API key | Groq-hosted models |
+| **Kimi** | API key | Moonshot models |
+| **MiniMax** | API key | MiniMax models |
+| **GLM** | API key | ChatGLM models |
+| **Custom** | API key | Any OpenAI-compatible endpoint |
+
+```bash
+# OAuth login
+nyz login gemini
+nyz login openai
+nyz login anthropic
+
+# API key (environment variable)
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GEMINI_API_KEY="AI..."
+
+# Check auth status
+nyz whoami
+```
+
+See [docs/providers.md](docs/providers.md) and [docs/authentication.md](docs/authentication.md) for full details.
+
+---
 
 ## CLI Reference
 
 ```
-nyzhi                        Launch interactive TUI
-nyzhi run "<prompt>"         One-shot prompt (non-interactive)
-nyzhi run -i img.png "<p>"   Attach image to prompt
-nyzhi login <provider>       OAuth login (gemini, openai)
-nyzhi logout <provider>      Remove stored OAuth token
-nyzhi whoami                 Show auth status for all providers
-nyzhi config                 Show current configuration
-nyzhi init                   Create .nyzhi/ project directory
-nyzhi update                 Check for updates and self-update
-nyzhi update --force         Force update check
-nyzhi update --list-backups  List available backups
-nyzhi update --rollback <p>  Rollback to a backup ("latest" or path)
-nyzhi mcp add <name> -- cmd  Add stdio MCP server
-nyzhi mcp add <name> --url   Add HTTP MCP server
-nyzhi mcp list               List configured MCP servers
-nyzhi mcp remove <name>      Remove an MCP server
-nyzhi sessions [query]       List saved sessions
-nyzhi export <id> [-o path]  Export session to markdown
-nyzhi session delete <id>    Delete a saved session
-nyzhi session rename <id> <t> Rename a saved session
-nyzhi stats                  Show all-time session statistics
-nyzhi cost [daily|weekly|monthly] Show cost report by period
-nyzhi replay <id> [--filter] Replay session event timeline
-nyzhi deepinit               Generate AGENTS.md from project analysis
-nyzhi skills                 List learned skills
-nyzhi wait                   Check rate limit status
-
-Flags:
-  -p, --provider <name>      Provider (openai, anthropic, gemini)
-  -m, --model <id>           Model ID
-  -y, --trust <mode>         Trust mode (off, limited, full)
-  -c, --continue             Resume most recent session
-  -s, --session <query>      Resume session by ID or title
+nyz                              Launch interactive TUI
+nyz run "<prompt>"               One-shot prompt (non-interactive)
+nyz run -i img.png "<prompt>"    Attach image to prompt
+nyz login <provider>             OAuth login (gemini, openai, anthropic)
+nyz logout <provider>            Remove stored OAuth token
+nyz whoami                       Show auth status for all providers
+nyz config                       Show current configuration
+nyz init                         Create .nyzhi/ project directory
+nyz update                       Check for updates and self-update
+nyz update --force               Force update check
+nyz update --list-backups        List available backups
+nyz update --rollback <path>     Rollback to a backup ("latest" or path)
+nyz mcp add <name> -- cmd        Add stdio MCP server
+nyz mcp add <name> --url <url>   Add HTTP MCP server
+nyz mcp list                     List configured MCP servers
+nyz mcp remove <name>            Remove an MCP server
+nyz sessions [query]             List saved sessions
+nyz export <id> [-o path]        Export session to markdown
+nyz session delete <id>          Delete a saved session
+nyz session rename <id> <title>  Rename a saved session
+nyz stats                        Show all-time session statistics
+nyz cost [daily|weekly|monthly]  Show cost report by period
+nyz replay <id> [--filter]       Replay session event timeline
+nyz deepinit                     Generate AGENTS.md from project analysis
+nyz skills                       List learned skills
+nyz wait                         Check rate limit status
+nyz teams list                   List agent teams
+nyz teams show <name>            Show team details
+nyz teams delete <name>          Delete a team
+nyz ci-fix [--log-file <path>]   Auto-fix CI failures
+nyz uninstall [--yes]            Uninstall nyzhi
 ```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `-p, --provider <name>` | Provider (openai, anthropic, gemini, etc.) |
+| `-m, --model <id>` | Model ID |
+| `-y, --trust <mode>` | Trust mode (off, limited, full) |
+| `-c, --continue` | Resume most recent session |
+| `-s, --session <query>` | Resume session by ID or title |
+| `--team-name <name>` | Join agent team as lead |
+| `--teammate-mode <mode>` | in-process or tmux (default: in-process) |
+
+---
 
 ## TUI Commands
 
@@ -144,52 +239,105 @@ Flags:
 | `/undo all` | Undo all file changes |
 | `/changes` | List file changes in session |
 | `/export [path]` | Export conversation as markdown |
-| `/search <query>` | Search session (Ctrl+N/P to navigate, Esc to clear) |
-| `/notify` | Show or toggle notification settings (bell, desktop, duration) |
+| `/search <query>` | Search session messages |
+| `/notify` | Toggle notification settings |
 | `/autopilot <idea>` | Start autonomous 5-phase execution |
 | `/team N <task>` | Spawn N coordinated sub-agents |
-| `/plan [name]` | List/view saved plans |
+| `/plan [name]` | List or view saved plans |
 | `/persist` | Activate verify/fix loop mode |
 | `/qa` | Activate autonomous QA cycling |
 | `/verify` | Show detected verification checks |
 | `/todo` | View current todo list |
-| `/learn [name]` | List/create skill templates |
-| `/notepad [plan]` | List/view notepad entries |
+| `/learn [name]` | List or create skill templates |
+| `/notepad [topic]` | List or view notepad entries |
 | `/quit` | Exit |
 
-**Shortcuts:** Tab (completion), Alt+Enter (newline), Ctrl+R (history search), Ctrl+N/P (search next/prev), Ctrl+T (theme), Ctrl+A (accent), Ctrl+L (clear), PageUp/PageDown (scroll), Ctrl+C (exit)
+### Keyboard Shortcuts
 
-## Built-in Tools
+| Shortcut | Action |
+|----------|--------|
+| Tab | Completion |
+| Alt+Enter | Newline |
+| Ctrl+R | History search |
+| Ctrl+N / Ctrl+P | Search next / prev |
+| Ctrl+T | Cycle theme |
+| Ctrl+A | Cycle accent |
+| Ctrl+L | Clear screen |
+| PageUp / PageDown | Scroll |
+| Ctrl+C | Exit |
+
+---
+
+## Tools
 
 ### File Operations
-`read`, `write`, `edit`, `glob`, `grep`, `list_dir`, `directory_tree`, `file_info`, `delete_file`, `move_file`, `copy_file`, `create_dir`
+
+`read`, `write`, `edit`, `multi_edit`, `apply_patch`, `glob`, `grep`, `list_dir`, `directory_tree`, `file_info`, `delete_file`, `move_file`, `copy_file`, `create_dir`
 
 ### Shell
+
 `bash` -- run commands with live streaming output
 
 ### Git
-`git_status`, `git_diff`, `git_log`, `git_show`, `git_branch` (read-only), `git_commit`, `git_checkout` (require approval)
 
-### Agent
-`task` -- delegate sub-tasks to child agents, `todowrite`, `todoread`, `notepad_write`, `notepad_read`
+`git_status`, `git_diff`, `git_log`, `git_show`, `git_branch` (read-only) | `git_commit`, `git_checkout` (require approval)
 
-### Verification
-`verify` -- run project build/test/lint checks with structured results
+### Agent and Task Management
 
-### LSP / AST
-`lsp_diagnostics` -- detect available language servers, `ast_search` -- structural code pattern matching
+`task` (sub-agents), `todo_write`, `todo_read`, `notepad_write`, `notepad_read`, `update_plan`, `think`, `load_skill`, `tool_search`
+
+### Code Analysis
+
+`verify` (build/test/lint), `lsp_diagnostics`, `ast_search`, `lsp_goto_definition`, `lsp_find_references`, `lsp_hover`
+
+### Web
+
+`web_fetch`, `web_search`
+
+### Browser Automation
+
+`browser_open`, `browser_screenshot`, `browser_evaluate`
+
+### Team Orchestration
+
+`team_create`, `team_delete`, `send_message`, `task_create`, `task_update`, `task_list`, `team_list`, `read_inbox`
+
+### PR Workflow
+
+`create_pr`, `review_pr`
+
+### Search
+
+`semantic_search`, `fuzzy_find`
+
+### Debug
+
+`instrument`, `remove_instrumentation`, `tail_file`, `batch_apply`
+
+### Memory
+
+`memory_read`, `memory_write`
+
+See [docs/tools.md](docs/tools.md) for full parameter documentation.
+
+---
 
 ## Configuration
 
 Global config: `~/.config/nyzhi/config.toml`
-Project config: `.nyzhi/config.toml` (overrides global)
+Project config: `.nyzhi/config.toml` (merges with global)
+Local overrides: `.nyzhi/config.local.toml` (merges on top, gitignored)
 
 ```toml
+# --- Provider -----------------------------------------------------------
+
 [provider]
 default = "anthropic"
 
 [provider.openai]
-model = "gpt-4.1"
+model = "gpt-5.2-codex"
+# api_key = "sk-..."          # or use OPENAI_API_KEY env var
+# base_url = "https://..."    # for custom endpoints
 
 [provider.anthropic]
 model = "claude-sonnet-4-20250514"
@@ -197,40 +345,63 @@ model = "claude-sonnet-4-20250514"
 [provider.gemini]
 model = "gemini-2.5-flash"
 
-[tui]
-theme = "nyzhi-dark"  # nyzhi-dark, nyzhi-light, tokyonight, catppuccin-mocha,
-                      # dracula, solarized-dark, solarized-light, gruvbox-dark
-accent = "copper"     # copper, blue, orange, emerald, violet, rose, amber,
-                      # cyan, red, pink, teal, indigo, lime, monochrome
+# Custom OpenAI-compatible provider
+# [provider.my-provider]
+# base_url = "https://api.example.com/v1"
+# api_key = "..."
+# api_style = "openai"
+# env_var = "MY_PROVIDER_API_KEY"
 
-[tui.colors]          # optional per-slot hex overrides (applied on top of preset)
+# --- Models -------------------------------------------------------------
+
+[models]
+max_tokens = 16384
+# temperature = 0.7
+
+# --- TUI ----------------------------------------------------------------
+
+[tui]
+theme = "nyzhi-dark"          # nyzhi-dark, nyzhi-light, tokyonight,
+                              # catppuccin-mocha, dracula, solarized-dark,
+                              # solarized-light, gruvbox-dark
+accent = "copper"             # copper, blue, orange, emerald, violet, rose,
+                              # amber, cyan, red, pink, teal, indigo, lime,
+                              # monochrome
+
+[tui.colors]                  # optional per-slot hex overrides
 # bg_page = "#1a1b26"
 # text_primary = "#c0caf5"
 
 [tui.notify]
-bell = true           # terminal bell on turn complete (default: true)
-desktop = false       # desktop notification on turn complete (default: false)
-min_duration_ms = 5000  # only notify if turn took longer than this (default: 5000)
+bell = true                   # terminal bell on turn complete
+desktop = false               # desktop notification on turn complete
+min_duration_ms = 5000        # only notify if turn took longer than this
+
+# --- Update -------------------------------------------------------------
 
 [update]
-enabled = true             # check for updates on TUI start (default: true)
-check_interval_hours = 4   # minimum hours between checks (default: 4)
-release_url = "https://get.nyzhi.com"  # override for self-hosted releases
+enabled = true
+check_interval_hours = 4
+# release_url = "https://get.nyzhi.com"
+
+# --- Agent --------------------------------------------------------------
 
 [agent]
 max_steps = 100
-custom_instructions = "Always write tests."
+# custom_instructions = "Always write tests first."
 auto_compact_threshold = 0.8  # auto-compact at 80% context window
-enforce_todos = false          # continue until all todos complete
-auto_simplify = false          # simplify code after each turn
+# enforce_todos = false
+# auto_simplify = false
 
 [agent.routing]
-enabled = false                # auto-select model tier by prompt complexity
+enabled = false               # auto-select model tier by prompt complexity
+# low_keywords = ["typo", "rename"]
+# high_keywords = ["architect", "refactor"]
 
 [agent.trust]
-mode = "off"              # off, limited, full
-allow_tools = ["edit"]    # tools to auto-approve (limited mode)
-allow_paths = ["src/"]    # paths to auto-approve (limited mode)
+mode = "off"                  # off, limited, full
+# allow_tools = ["edit"]      # tools to auto-approve (limited mode)
+# allow_paths = ["src/"]      # paths to auto-approve (limited mode)
 
 [agent.retry]
 max_retries = 3
@@ -238,22 +409,49 @@ initial_backoff_ms = 1000
 max_backoff_ms = 30000
 
 [[agent.hooks]]
-event = "after_edit"               # run after file-modifying tools
-command = "cargo fmt -- {file}"    # {file} is replaced with the changed path
-pattern = "*.rs"                   # only for Rust files
-timeout = 30                       # seconds
+event = "after_edit"
+command = "cargo fmt -- {file}"
+pattern = "*.rs"
+timeout = 30
 
 [[agent.hooks]]
-event = "after_turn"               # run after each agent turn
+event = "after_turn"
 command = "cargo clippy --all -- -D warnings"
 timeout = 60
+
+[[agent.commands]]
+name = "test"
+prompt = "Write comprehensive tests for $ARGUMENTS"
+description = "Generate tests for a module"
+
+# --- MCP ----------------------------------------------------------------
+
+[mcp.servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]
+
+# [mcp.servers.remote]
+# url = "https://mcp.example.com"
+# headers = { Authorization = "Bearer token" }
+
+# --- Notifications (external) ------------------------------------------
+
+# [notify]
+# webhook = { url = "https://..." }
+# telegram = { bot_token = "...", chat_id = "..." }
+# discord = { webhook_url = "https://..." }
+# slack = { webhook_url = "https://..." }
 ```
+
+See [docs/configuration.md](docs/configuration.md) for the full reference.
+
+### Project Rules
+
+Place an `AGENTS.md` or `.nyzhi/rules.md` in your project root to give the agent project-specific instructions. Nyzhi also reads `.cursorrules` and `CLAUDE.md` for compatibility.
 
 ### Custom Commands
 
-Define reusable prompt templates as slash commands. Two methods:
-
-**Markdown files** in `.nyzhi/commands/`:
+Define reusable prompt templates as slash commands:
 
 ```markdown
 <!-- .nyzhi/commands/review.md -->
@@ -261,69 +459,123 @@ Define reusable prompt templates as slash commands. Two methods:
 Review $ARGUMENTS for bugs, security issues, and improvements.
 ```
 
-Then use as `/review src/main.rs` -- `$ARGUMENTS` is replaced with everything after the command name.
+Then use as `/review src/main.rs`. See [docs/commands.md](docs/commands.md).
 
-**Inline in config:**
+---
 
-```toml
-[[agent.commands]]
-name = "test"
-prompt = "Write comprehensive tests for $ARGUMENTS"
-description = "Generate tests for a module"
+## Architecture
+
+```
+                    ┌──────────────┐
+                    │  nyzhi (cli) │
+                    │   bin: nyz   │
+                    └──────┬───────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         │                 │                 │
+         ▼                 ▼                 ▼
+   ┌───────────┐    ┌───────────┐    ┌─────────────┐
+   │ nyzhi-tui │    │ nyzhi-core│    │nyzhi-provider│
+   │  ratatui  │    │ agent loop│    │  LLM API    │
+   └─────┬─────┘    └─────┬─────┘    └──────┬──────┘
+         │                │                  │
+         └────────┬───────┴──────────┬───────┘
+                  │                  │
+                  ▼                  ▼
+           ┌───────────┐      ┌───────────┐
+           │ nyzhi-auth│      │nyzhi-config│
+           │ OAuth/keys│      │ TOML load  │
+           └───────────┘      └───────────┘
 ```
 
-Config entries override file-based commands with the same name. List all with `/commands`.
+| Crate | Role |
+|-------|------|
+| **nyzhi** (cli) | Binary entry point. CLI parsing, command dispatch, MCP/tool setup. |
+| **nyzhi-core** | Agent loop, 50+ tools, sessions, workspace, MCP, planning, teams, hooks, skills, verification, analytics. |
+| **nyzhi-provider** | LLM abstraction. OpenAI, Anthropic, Gemini implementations with streaming, thinking support, and model registry. |
+| **nyzhi-tui** | Terminal UI. ratatui-based app with themes, syntax highlighting, completion, history, export. |
+| **nyzhi-auth** | OAuth2 PKCE/device-code flows, API key resolution, token storage, multi-account rotation. |
+| **nyzhi-config** | Configuration loading and merging. Global, project, and local config with provider definitions. |
 
-### MCP Servers
+See [docs/architecture.md](docs/architecture.md) for the full deep-dive.
 
-Configure in `config.toml` or `.mcp.json` at project root:
-
-```toml
-[mcp.servers.filesystem]
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]
-
-[mcp.servers.remote]
-url = "https://mcp.example.com"
-headers = { Authorization = "Bearer token" }
-```
-
-### Project Rules
-
-Place an `AGENTS.md` or `.nyzhi/rules.md` in your project root to give the agent project-specific instructions.
+---
 
 ## Data Locations
 
 | What | Path | Touched by updates? |
 |------|------|---------------------|
 | Binary | `~/.nyzhi/bin/nyz` | Yes (replaced, old version backed up) |
-| Config | `~/.config/nyzhi/config.toml` | **Never** |
-| Project config | `.nyzhi/config.toml` | **Never** |
-| Sessions & history | `~/.local/share/nyzhi/` | **Never** |
-| OAuth tokens | OS keyring | **Never** |
-| Backups | `~/.local/share/nyzhi/backups/` | Pruned to last 3 |
+| Global config | `~/.config/nyzhi/config.toml` | Never |
+| Project config | `.nyzhi/config.toml` | Never |
+| Sessions and history | `~/.local/share/nyzhi/sessions/` | Never |
+| Analytics | `~/.local/share/nyzhi/analytics.jsonl` | Never |
+| OAuth tokens | `~/.local/share/nyzhi/auth.json` | Never |
+| Backups | `~/.nyzhi/backups/` | Pruned to last 3 |
+| Memory | `~/.local/share/nyzhi/MEMORY.md` | Never |
+| MCP config | `.mcp.json` (project root) | Never |
+
+---
 
 ## Building from Source
 
 ```bash
+# Prerequisites: Rust 1.75+
 cargo build --release
 ```
 
-The binary is at `target/release/nyz`.
+The binary is at `target/release/nyz`. See [docs/building.md](docs/building.md).
+
+**Run tests:**
+
+```bash
+cargo test
+```
+
+---
 
 ## Releasing
 
-Releases are automated via GitHub Actions. Push a version tag to trigger:
+Releases are automated via GitHub Actions. Push a version tag to trigger cross-compilation for linux/darwin x x86_64/aarch64:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
-The workflow cross-compiles for linux/darwin x x86_64/aarch64, uploads to R2, and creates a GitHub release.
+The workflow builds, checksums, uploads to GitHub Releases and Cloudflare R2, and updates `latest.json`. See [docs/releasing.md](docs/releasing.md).
 
-Required GitHub secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+Required secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+
+---
+
+## Documentation
+
+Full documentation lives in the [`docs/`](docs/) directory:
+
+- [Architecture](docs/architecture.md) -- crate graph, module map, agent lifecycle
+- [Configuration](docs/configuration.md) -- every config section with types and defaults
+- [Authentication](docs/authentication.md) -- OAuth flows, API keys, multi-account
+- [Providers](docs/providers.md) -- all providers, models, thinking support
+- [Tools](docs/tools.md) -- all 50+ tools with parameters
+- [TUI](docs/tui.md) -- commands, shortcuts, themes, accents
+- [MCP](docs/mcp.md) -- stdio/HTTP setup, tool naming
+- [Sessions](docs/sessions.md) -- save, resume, search, export, replay
+- [Teams](docs/teams.md) -- multi-agent orchestration
+- [Autopilot](docs/autopilot.md) -- autonomous 5-phase execution
+- [Hooks](docs/hooks.md) -- after_edit, after_turn, pre/post tool
+- [Custom Commands](docs/commands.md) -- slash command templates
+- [Skills](docs/skills.md) -- pattern learning
+- [Verification](docs/verification.md) -- auto-detect build/test/lint
+- [Model Routing](docs/routing.md) -- tier-based model selection
+- [Notifications](docs/notifications.md) -- bell, desktop, external
+- [Self-Update](docs/self-update.md) -- update, backup, rollback
+- [Memory](docs/memory.md) -- persistent notepad and topics
+- [Building](docs/building.md) -- build from source
+- [Releasing](docs/releasing.md) -- CI/CD pipeline
+
+---
 
 ## License
 
-GPL-3.0-or-later
+[GPL-3.0-or-later](https://www.gnu.org/licenses/gpl-3.0.html)

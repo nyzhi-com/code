@@ -270,7 +270,7 @@ impl App {
 
     pub async fn run(
         &mut self,
-        provider: std::sync::Arc<dyn Provider>,
+        provider: Option<std::sync::Arc<dyn Provider>>,
         mut registry: ToolRegistry,
         config: &nyzhi_config::Config,
     ) -> Result<()> {
@@ -345,19 +345,22 @@ impl App {
             Vec::new()
         };
 
-        let mut model_info_idx = provider
-            .supported_models()
-            .iter()
-            .position(|m| m.id == self.model_name)
-            .or(if provider.supported_models().is_empty() {
-                None
-            } else {
-                Some(0)
-            });
+        let mut model_info_idx = provider.as_ref().and_then(|p| {
+            p.supported_models()
+                .iter()
+                .position(|m| m.id == self.model_name)
+                .or(if p.supported_models().is_empty() {
+                    None
+                } else {
+                    Some(0)
+                })
+        });
 
-        let supports_vision = model_info_idx
-            .map(|i| provider.supported_models()[i].supports_vision)
-            .unwrap_or(false);
+        let supports_vision = provider.as_ref().map_or(false, |p| {
+            model_info_idx
+                .map(|i| p.supported_models()[i].supports_vision)
+                .unwrap_or(false)
+        });
 
         let skills = nyzhi_core::skills::load_skills(&self.workspace.project_root)
             .unwrap_or_default();
@@ -402,43 +405,49 @@ impl App {
             is_team_lead: false,
         };
 
-        let agent_registry = std::sync::Arc::new(nyzhi_core::tools::default_registry().registry);
-        let agent_manager = std::sync::Arc::new(nyzhi_core::agent_manager::AgentManager::new(
-            provider.clone(),
-            agent_registry,
-            event_tx.clone(),
-            config.agent.agents.max_threads,
-            config.agent.agents.max_depth,
-        ));
+        let agent_manager = if let Some(ref p) = provider {
+            let agent_registry = std::sync::Arc::new(nyzhi_core::tools::default_registry().registry);
+            Some(std::sync::Arc::new(nyzhi_core::agent_manager::AgentManager::new(
+                p.clone(),
+                agent_registry,
+                event_tx.clone(),
+                config.agent.agents.max_threads,
+                config.agent.agents.max_depth,
+            )))
+        } else {
+            None
+        };
 
-        let user_agent_roles =
-            nyzhi_core::agent_roles::convert_user_roles(&config.agent.agents.roles);
-        let file_agent_roles =
-            nyzhi_core::agent_files::load_file_based_roles(&self.workspace.project_root);
-        let mut all_user_roles = user_agent_roles;
-        all_user_roles.extend(file_agent_roles);
+        if let Some(ref agent_manager) = agent_manager {
+            let user_agent_roles =
+                nyzhi_core::agent_roles::convert_user_roles(&config.agent.agents.roles);
+            let file_agent_roles =
+                nyzhi_core::agent_files::load_file_based_roles(&self.workspace.project_root);
+            let mut all_user_roles = user_agent_roles;
+            all_user_roles.extend(file_agent_roles);
 
-        registry.register(Box::new(
-            nyzhi_core::tools::spawn_agent::SpawnAgentTool::with_user_roles(
-                agent_manager.clone(),
-                all_user_roles,
-            ),
-        ));
-        registry.register(Box::new(
-            nyzhi_core::tools::send_input::SendInputTool::new(agent_manager.clone()),
-        ));
-        registry.register(Box::new(
-            nyzhi_core::tools::wait_tool::WaitTool::new(agent_manager.clone()),
-        ));
-        registry.register(Box::new(
-            nyzhi_core::tools::close_agent::CloseAgentTool::new(agent_manager.clone()),
-        ));
-        registry.register(Box::new(
-            nyzhi_core::tools::resume_agent::ResumeAgentTool::new(agent_manager.clone()),
-        ));
-        registry.register(Box::new(
-            nyzhi_core::tools::team::SpawnTeammateTool::new(agent_manager.clone()),
-        ));
+            registry.register(Box::new(
+                nyzhi_core::tools::spawn_agent::SpawnAgentTool::with_user_roles(
+                    agent_manager.clone(),
+                    all_user_roles,
+                ),
+            ));
+            registry.register(Box::new(
+                nyzhi_core::tools::send_input::SendInputTool::new(agent_manager.clone()),
+            ));
+            registry.register(Box::new(
+                nyzhi_core::tools::wait_tool::WaitTool::new(agent_manager.clone()),
+            ));
+            registry.register(Box::new(
+                nyzhi_core::tools::close_agent::CloseAgentTool::new(agent_manager.clone()),
+            ));
+            registry.register(Box::new(
+                nyzhi_core::tools::resume_agent::ResumeAgentTool::new(agent_manager.clone()),
+            ));
+            registry.register(Box::new(
+                nyzhi_core::tools::team::SpawnTeammateTool::new(agent_manager.clone()),
+            ));
+        }
 
         let registry = Arc::new(registry);
 
@@ -613,11 +622,13 @@ impl App {
                         {
                             self.ctrl_f_pending = false;
                         }
-                        let mi = model_info_idx.map(|i| &provider.supported_models()[i]);
+                        let mi = provider.as_ref().and_then(|p| {
+                            model_info_idx.map(|i| &p.supported_models()[i])
+                        });
                         handle_key(
                             self,
                             key,
-                            &*provider,
+                            provider.as_deref(),
                             t,
                             &mut agent_config,
                             &event_tx,
@@ -640,6 +651,14 @@ impl App {
 
             // --- Spawn turn from request set by handle_key ---
             if let Some(req) = self.turn_request.take() {
+                let Some(ref provider) = provider else {
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No provider configured. Run /login or set an API key in ~/.config/nyzhi/config.toml".to_string(),
+                    });
+                    self.turn_request = None;
+                    continue;
+                };
                 let mi_c = model_info_idx.map(|i| provider.supported_models()[i].clone());
                 if req.is_background {
                     let bg_thread = thread.as_ref().unwrap().clone();

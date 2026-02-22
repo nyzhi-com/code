@@ -11,7 +11,7 @@ use crate::app::{App, AppMode, DisplayItem, PendingImage, TurnRequest};
 pub async fn handle_key(
     app: &mut App,
     key: KeyEvent,
-    provider: &dyn Provider,
+    provider: Option<&dyn Provider>,
     thread: &mut Thread,
     agent_config: &mut AgentConfig,
     _event_tx: &broadcast::Sender<nyzhi_core::agent::AgentEvent>,
@@ -163,6 +163,13 @@ pub async fn handle_key(
                     };
 
                     let recent_files = nyzhi_core::context::extract_recent_file_paths(thread.messages(), 3);
+                    let Some(provider) = provider else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "No provider configured. Use /login first.".to_string(),
+                        });
+                        return;
+                    };
                     match provider.chat(&summary_request).await {
                         Ok(resp) => {
                             let summary = resp.message.content.as_text().to_string();
@@ -970,11 +977,11 @@ pub async fn handle_key(
             }
 
             if input == "/model" {
-                let models = provider.supported_models();
+                let models = provider.map(|p| p.supported_models()).unwrap_or(&[]);
                 if models.is_empty() {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
-                        content: "No models available.".to_string(),
+                        content: "No models available. Configure a provider first.".to_string(),
                     });
                 } else {
                     app.open_model_selector(models);
@@ -996,11 +1003,11 @@ pub async fn handle_key(
                         content: format!("Switched to {}/{} ({})", prov, found.id, found.name),
                     });
                 } else if let Some(idx) = provider
-                    .supported_models()
-                    .iter()
-                    .position(|m| m.id == new_model)
+                    .and_then(|p| p.supported_models()
+                        .iter()
+                        .position(|m| m.id == new_model))
                 {
-                    let mi = &provider.supported_models()[idx];
+                    let mi = &provider.unwrap().supported_models()[idx];
                     app.model_name = mi.id.clone();
                     *model_info_idx = Some(idx);
                     app.items.push(DisplayItem::Message {
@@ -1008,8 +1015,9 @@ pub async fn handle_key(
                         content: format!("Switched to {} ({})", mi.id, mi.name),
                     });
                 } else {
-                    let available: Vec<&str> =
-                        provider.supported_models().iter().map(|m| m.id.as_str()).collect();
+                    let available: Vec<&str> = provider
+                        .map(|p| p.supported_models().iter().map(|m| m.id.as_str()).collect())
+                        .unwrap_or_default();
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
                         content: format!(

@@ -61,6 +61,13 @@ impl ThinkingSupport {
         }
     }
 
+    pub fn kimi_thinking() -> Self {
+        ThinkingSupport::ReasoningEffort {
+            levels: vec!["on".into()],
+            default: "on".into(),
+        }
+    }
+
     pub fn gemini_levels(levels: &[&str]) -> Self {
         let lvls: Vec<String> = levels.iter().map(|s| s.to_string()).collect();
         let default = lvls.get(lvls.len() / 2).cloned().unwrap_or_else(|| "medium".into());
@@ -72,13 +79,23 @@ impl ThinkingSupport {
 
     pub fn user_facing_levels(&self) -> Vec<(&str, &str)> {
         match self {
-            ThinkingSupport::ReasoningEffort { .. } => vec![
-                ("off", "No reasoning"),
-                ("low", "Quick reasoning"),
-                ("medium", "Balanced"),
-                ("high", "Deep reasoning"),
-                ("xhigh", "Maximum reasoning"),
-            ],
+            ThinkingSupport::ReasoningEffort { levels, .. } => {
+                if levels.len() == 1 && levels[0] == "on" {
+                    return vec![("off", "Thinking off"), ("on", "Thinking on")];
+                }
+                let mut result = vec![("off", "No reasoning")];
+                for l in levels {
+                    let desc = match l.as_str() {
+                        "low" => "Quick reasoning",
+                        "medium" => "Balanced",
+                        "high" => "Deep reasoning",
+                        "xhigh" => "Maximum reasoning",
+                        _ => l.as_str(),
+                    };
+                    result.push((l.as_str(), desc));
+                }
+                result
+            }
             ThinkingSupport::AdaptiveEffort { .. } => vec![
                 ("off", "No thinking"),
                 ("low", "Light thinking"),

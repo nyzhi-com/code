@@ -278,12 +278,19 @@ impl Provider for OpenAIProvider {
             }
         }
         if thinking_enabled {
-            let effort = request
-                .thinking
-                .as_ref()
-                .and_then(|t| t.reasoning_effort.as_deref())
-                .unwrap_or("high");
-            body["reasoning_effort"] = json!(effort);
+            let is_kimi = model.starts_with("kimi-k2");
+            if is_kimi {
+                body["thinking"] = json!({"type": "enabled"});
+                body["temperature"] = json!(1.0);
+                body["top_p"] = json!(0.95);
+            } else {
+                let effort = request
+                    .thinking
+                    .as_ref()
+                    .and_then(|t| t.reasoning_effort.as_deref())
+                    .unwrap_or("high");
+                body["reasoning_effort"] = json!(effort);
+            }
         }
         if !request.tools.is_empty() {
             body["tools"] = json!(self.build_tools(&request.tools));
