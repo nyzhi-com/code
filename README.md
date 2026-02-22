@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/nyzhi-com/code/main/docs/assets/nyzhi-combined-dark.svg" alt="nyzhi" width="260" />
+  <img src="https://raw.githubusercontent.com/nyzhi-com/code/master/docs/assets/nyzhi-combined-dark.svg" alt="nyzhi" width="260" />
 </p>
 
 <p align="center">
