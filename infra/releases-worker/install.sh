@@ -313,7 +313,7 @@ setup_path() {
     *)    PROFILE="$HOME/.profile" ;;
   esac
 
-  if [ -f "$PROFILE" ] && grep -q "nyzhi" "$PROFILE" 2>/dev/null; then
+  if [ -f "$PROFILE" ] && grep -q '\.nyzhi/bin' "$PROFILE" 2>/dev/null; then
     return
   fi
 
