@@ -122,6 +122,7 @@ pub struct App {
     pub search_matches: Vec<usize>,
     pub search_match_idx: usize,
     pub notify: nyzhi_config::NotifyConfig,
+    pub output_style: nyzhi_config::OutputStyle,
     pub turn_request: Option<TurnRequest>,
     pub foreground_task: Option<ForegroundTask>,
     pub background_tasks: Vec<BackgroundTask>,
@@ -176,6 +177,7 @@ impl App {
             search_matches: Vec::new(),
             search_match_idx: 0,
             notify: config.notify.clone(),
+            output_style: config.output_style,
             turn_request: None,
             foreground_task: None,
             background_tasks: Vec::new(),
@@ -369,11 +371,15 @@ impl App {
 
         let user_agent_roles =
             nyzhi_core::agent_roles::convert_user_roles(&config.agent.agents.roles);
+        let file_agent_roles =
+            nyzhi_core::agent_files::load_file_based_roles(&self.workspace.project_root);
+        let mut all_user_roles = user_agent_roles;
+        all_user_roles.extend(file_agent_roles);
 
         registry.register(Box::new(
             nyzhi_core::tools::spawn_agent::SpawnAgentTool::with_user_roles(
                 agent_manager.clone(),
-                user_agent_roles,
+                all_user_roles,
             ),
         ));
         registry.register(Box::new(

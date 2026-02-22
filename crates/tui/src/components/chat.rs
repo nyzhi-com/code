@@ -63,7 +63,25 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 status,
                 elapsed_ms,
             } => {
-                render_tool_call(&mut lines, name, args_summary, output, status, elapsed_ms, theme);
+                match app.output_style {
+                    nyzhi_config::OutputStyle::Minimal => {
+                        // In minimal mode, only show the tool name on one line
+                        let dim = Style::default().fg(theme.text_disabled);
+                        let icon = match status {
+                            ToolStatus::Running => "*",
+                            ToolStatus::WaitingApproval => "?",
+                            ToolStatus::Completed => "+",
+                            ToolStatus::Denied => "x",
+                        };
+                        lines.push(Line::from(Span::styled(
+                            format!("    {icon} {name}"),
+                            dim,
+                        )));
+                    }
+                    _ => {
+                        render_tool_call(&mut lines, name, args_summary, output, status, elapsed_ms, theme);
+                    }
+                }
             }
         }
 

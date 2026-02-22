@@ -253,6 +253,10 @@ pub struct TrustConfig {
     pub allow_tools: Vec<String>,
     #[serde(default)]
     pub allow_paths: Vec<String>,
+    #[serde(default)]
+    pub deny_tools: Vec<String>,
+    #[serde(default)]
+    pub deny_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,6 +317,27 @@ pub struct ModelsConfig {
     pub temperature: Option<f32>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputStyle {
+    #[default]
+    Normal,
+    Verbose,
+    Minimal,
+    Structured,
+}
+
+impl std::fmt::Display for OutputStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutputStyle::Normal => write!(f, "normal"),
+            OutputStyle::Verbose => write!(f, "verbose"),
+            OutputStyle::Minimal => write!(f, "minimal"),
+            OutputStyle::Structured => write!(f, "structured"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TuiConfig {
     #[serde(default = "default_true")]
@@ -327,6 +352,8 @@ pub struct TuiConfig {
     pub colors: ThemeOverrides,
     #[serde(default)]
     pub notify: NotifyConfig,
+    #[serde(default)]
+    pub output_style: OutputStyle,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -433,6 +460,7 @@ impl Default for TuiConfig {
             accent: default_accent(),
             colors: ThemeOverrides::default(),
             notify: NotifyConfig::default(),
+            output_style: OutputStyle::Normal,
         }
     }
 }
@@ -499,6 +527,19 @@ impl Config {
         }
     }
 
+    pub fn load_local(project_root: &std::path::Path) -> Result<Option<Self>> {
+        let path = project_root.join(".nyzhi").join("config.local.toml");
+        if path.exists() {
+            let content =
+                std::fs::read_to_string(&path).context("Failed to read local config")?;
+            let config: Config =
+                toml::from_str(&content).context("Failed to parse local config")?;
+            Ok(Some(config))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn merge(global: &Config, project: &Config) -> Config {
         let provider = ProviderConfig {
             default: if project.provider.default != default_provider() {
@@ -536,10 +577,25 @@ impl Config {
                     .custom_instructions
                     .clone()
                     .or_else(|| global.agent.custom_instructions.clone()),
-                trust: if project.agent.trust.mode != TrustMode::Off {
-                    project.agent.trust.clone()
-                } else {
-                    global.agent.trust.clone()
+                trust: {
+                    let base = if project.agent.trust.mode != TrustMode::Off {
+                        project.agent.trust.clone()
+                    } else {
+                        global.agent.trust.clone()
+                    };
+                    let mut deny_tools = global.agent.trust.deny_tools.clone();
+                    deny_tools.extend(project.agent.trust.deny_tools.clone());
+                    deny_tools.sort();
+                    deny_tools.dedup();
+                    let mut deny_paths = global.agent.trust.deny_paths.clone();
+                    deny_paths.extend(project.agent.trust.deny_paths.clone());
+                    deny_paths.sort();
+                    deny_paths.dedup();
+                    TrustConfig {
+                        deny_tools,
+                        deny_paths,
+                        ..base
+                    }
                 },
                 retry: RetrySettings {
                     max_retries: if project.agent.retry.max_retries != default_max_retries() {

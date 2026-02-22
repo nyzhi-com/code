@@ -1145,12 +1145,20 @@ pub async fn handle_key(
                 let mode = &agent_config.trust.mode;
                 let tools = &agent_config.trust.allow_tools;
                 let paths = &agent_config.trust.allow_paths;
+                let deny_tools = &agent_config.trust.deny_tools;
+                let deny_paths = &agent_config.trust.deny_paths;
                 let mut msg = format!("Trust mode: {mode}");
                 if !tools.is_empty() {
                     msg.push_str(&format!("\nAllowed tools: {}", tools.join(", ")));
                 }
                 if !paths.is_empty() {
                     msg.push_str(&format!("\nAllowed paths: {}", paths.join(", ")));
+                }
+                if !deny_tools.is_empty() {
+                    msg.push_str(&format!("\nDenied tools: {}", deny_tools.join(", ")));
+                }
+                if !deny_paths.is_empty() {
+                    msg.push_str(&format!("\nDenied paths: {}", deny_paths.join(", ")));
                 }
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
@@ -1247,6 +1255,74 @@ pub async fn handle_key(
                         content: "Usage: /bg [kill <id>]".to_string(),
                     });
                 }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/style" || input.starts_with("/style ") {
+                let arg = input.strip_prefix("/style").unwrap().trim();
+                match arg {
+                    "normal" => {
+                        app.output_style = nyzhi_config::OutputStyle::Normal;
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Output style: normal".to_string(),
+                        });
+                    }
+                    "verbose" => {
+                        app.output_style = nyzhi_config::OutputStyle::Verbose;
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Output style: verbose (all tool args/outputs expanded)".to_string(),
+                        });
+                    }
+                    "minimal" => {
+                        app.output_style = nyzhi_config::OutputStyle::Minimal;
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Output style: minimal (tool details hidden)".to_string(),
+                        });
+                    }
+                    "structured" => {
+                        app.output_style = nyzhi_config::OutputStyle::Structured;
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Output style: structured (JSON)".to_string(),
+                        });
+                    }
+                    "" => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Current output style: {}", app.output_style),
+                        });
+                    }
+                    _ => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Usage: /style [normal|verbose|minimal|structured]".to_string(),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/agents" {
+                let built_in = nyzhi_core::agent_roles::built_in_roles();
+                let empty = std::collections::HashMap::new();
+                let file_roles =
+                    nyzhi_core::agent_files::load_file_based_roles(&tool_ctx.project_root);
+                let list = nyzhi_core::agent_files::format_role_list(
+                    &built_in,
+                    &empty,
+                    &file_roles,
+                );
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: list,
+                });
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;

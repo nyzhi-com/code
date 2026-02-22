@@ -26,3 +26,4 @@ dirs.workspace = true
 rmcp.workspace = true
 reqwest.workspace = true
 rand.workspace = true
+urlencoding = "2.1.3"

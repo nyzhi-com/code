@@ -19,6 +19,7 @@ pub mod send_input;
 pub mod spawn_agent;
 pub mod verify;
 pub mod wait_tool;
+pub mod web;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -199,5 +200,7 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(notepad::NotepadReadTool));
     registry.register(Box::new(lsp::LspDiagnosticsTool));
     registry.register(Box::new(lsp::AstSearchTool));
+    registry.register(Box::new(web::WebFetchTool));
+    registry.register(Box::new(web::WebSearchTool));
     RegistryBundle { registry, todo_store }
 }

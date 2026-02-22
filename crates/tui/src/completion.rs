@@ -3,6 +3,7 @@ use std::path::Path;
 const MAX_CANDIDATES: usize = 50;
 const SLASH_COMMANDS: &[&str] = &[
     "/accent",
+    "/agents",
     "/autopilot",
     "/changes",
     "/clear",
@@ -34,6 +35,7 @@ const SLASH_COMMANDS: &[&str] = &[
     "/session delete",
     "/session rename",
     "/sessions",
+    "/style",
     "/theme",
     "/think",
     "/trust",

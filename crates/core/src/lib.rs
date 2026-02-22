@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod agent_files;
 pub mod agent_manager;
 pub mod agent_roles;
 pub mod analytics;
@@ -8,6 +9,7 @@ pub mod context;
 pub mod deepinit;
 pub mod context_files;
 pub mod conversation;
+pub mod diagnostics;
 pub mod hooks;
 pub mod keywords;
 pub mod lsp;

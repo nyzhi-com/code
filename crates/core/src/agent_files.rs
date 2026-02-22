@@ -37,51 +37,15 @@ pub fn load_file_based_roles(project_root: &Path) -> HashMap<String, AgentRoleCo
             .unwrap_or("unknown")
             .to_string();
 
-        let (frontmatter, body) = parse_frontmatter(&content);
+        let (fm, body) = parse_frontmatter(&content);
 
-        let name = frontmatter
-            .get("name")
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .unwrap_or_else(|| file_name.clone());
-
-        let description = frontmatter
-            .get("description")
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
-        let model_override = frontmatter
-            .get("model")
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
-        let max_steps_override = frontmatter
-            .get("max_steps")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as u32);
-
-        let read_only = frontmatter
-            .get("read_only")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let allowed_tools = frontmatter
-            .get("allowed_tools")
-            .and_then(|v| v.as_sequence())
-            .map(|seq| {
-                seq.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
-
-        let disallowed_tools = frontmatter
-            .get("disallowed_tools")
-            .and_then(|v| v.as_sequence())
-            .map(|seq| {
-                seq.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
+        let name = fm.get("name").cloned().unwrap_or_else(|| file_name.clone());
+        let description = fm.get("description").cloned();
+        let model_override = fm.get("model").cloned();
+        let max_steps_override = fm.get("max_steps").and_then(|v| v.parse::<u32>().ok());
+        let read_only = fm.get("read_only").map(|v| v == "true").unwrap_or(false);
+        let allowed_tools = fm.get("allowed_tools").map(|v| parse_yaml_list(v));
+        let disallowed_tools = fm.get("disallowed_tools").map(|v| parse_yaml_list(v));
 
         let system_prompt = if body.trim().is_empty() {
             None
@@ -108,21 +72,52 @@ pub fn load_file_based_roles(project_root: &Path) -> HashMap<String, AgentRoleCo
     roles
 }
 
-fn parse_frontmatter(content: &str) -> (serde_yaml::Value, String) {
+/// Simple YAML-like frontmatter parser. Returns key-value pairs from `---` delimited block.
+fn parse_frontmatter(content: &str) -> (HashMap<String, String>, String) {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
-        return (serde_yaml::Value::Mapping(Default::default()), content.to_string());
+        return (HashMap::new(), content.to_string());
     }
 
     let after_first = &trimmed[3..];
     if let Some(end) = after_first.find("\n---") {
         let yaml_str = &after_first[..end];
         let body = &after_first[end + 4..];
-        let fm: serde_yaml::Value = serde_yaml::from_str(yaml_str)
-            .unwrap_or(serde_yaml::Value::Mapping(Default::default()));
-        (fm, body.to_string())
+
+        let mut map = HashMap::new();
+        for line in yaml_str.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((key, val)) = line.split_once(':') {
+                let key = key.trim().to_string();
+                let val = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                if !key.is_empty() {
+                    map.insert(key, val);
+                }
+            }
+        }
+        (map, body.to_string())
     } else {
-        (serde_yaml::Value::Mapping(Default::default()), content.to_string())
+        (HashMap::new(), content.to_string())
+    }
+}
+
+fn parse_yaml_list(value: &str) -> Vec<String> {
+    if value.starts_with('[') && value.ends_with(']') {
+        let inner = &value[1..value.len() - 1];
+        inner
+            .split(',')
+            .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    } else {
+        value
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
     }
 }
 

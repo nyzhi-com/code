@@ -585,6 +585,15 @@ async fn execute_with_permission(
         .get(tool_name)
         .ok_or_else(|| anyhow::anyhow!("Unknown tool: {tool_name}"))?;
 
+    let target_path = extract_target_path(tool_name, &args);
+    if crate::tools::permission::check_deny(tool_name, target_path.as_deref(), trust) {
+        return Ok(crate::tools::ToolResult {
+            output: format!("Tool `{tool_name}` is blocked by deny rules"),
+            title: format!("{tool_name} (blocked)"),
+            metadata: serde_json::json!({ "denied": true, "reason": "deny_rule" }),
+        });
+    }
+
     if tool.permission() == ToolPermission::NeedsApproval
         && !should_auto_approve(trust, tool_name, &args)
     {
