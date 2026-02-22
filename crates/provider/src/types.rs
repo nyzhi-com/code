@@ -19,9 +19,114 @@ impl std::fmt::Display for ModelTier {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ThinkingSupport {
+    /// OpenAI: reasoning.effort = "low" | "medium" | "high" | "xhigh"
+    ReasoningEffort {
+        levels: Vec<String>,
+        default: String,
+    },
+    /// Anthropic Opus 4.6: adaptive thinking with effort levels
+    AdaptiveEffort {
+        levels: Vec<String>,
+        default: String,
+    },
+    /// Anthropic (non-Opus 4.6): budget_tokens in thinking block
+    BudgetTokens { max: u32, default: u32 },
+    /// Gemini: thinking_level or thinking_budget
+    ThinkingLevel {
+        levels: Vec<String>,
+        default: String,
+    },
+}
+
+impl ThinkingSupport {
+    pub fn openai_reasoning() -> Self {
+        ThinkingSupport::ReasoningEffort {
+            levels: vec!["low".into(), "medium".into(), "high".into(), "xhigh".into()],
+            default: "medium".into(),
+        }
+    }
+
+    pub fn anthropic_adaptive() -> Self {
+        ThinkingSupport::AdaptiveEffort {
+            levels: vec!["low".into(), "medium".into(), "high".into(), "max".into()],
+            default: "high".into(),
+        }
+    }
+
+    pub fn anthropic_budget(max: u32) -> Self {
+        ThinkingSupport::BudgetTokens {
+            max,
+            default: max / 2,
+        }
+    }
+
+    pub fn gemini_levels(levels: &[&str]) -> Self {
+        let lvls: Vec<String> = levels.iter().map(|s| s.to_string()).collect();
+        let default = lvls.get(lvls.len() / 2).cloned().unwrap_or_else(|| "medium".into());
+        ThinkingSupport::ThinkingLevel {
+            levels: lvls,
+            default,
+        }
+    }
+
+    pub fn user_facing_levels(&self) -> Vec<(&str, &str)> {
+        match self {
+            ThinkingSupport::ReasoningEffort { .. } => vec![
+                ("off", "No reasoning"),
+                ("low", "Quick reasoning"),
+                ("medium", "Balanced"),
+                ("high", "Deep reasoning"),
+                ("xhigh", "Maximum reasoning"),
+            ],
+            ThinkingSupport::AdaptiveEffort { .. } => vec![
+                ("off", "No thinking"),
+                ("low", "Light thinking"),
+                ("medium", "Moderate thinking"),
+                ("high", "Deep thinking (default)"),
+                ("max", "Maximum thinking"),
+            ],
+            ThinkingSupport::BudgetTokens { max, .. } => {
+                let mut levels = vec![("off", "No extended thinking")];
+                if *max >= 4096 {
+                    levels.push(("low", "4K token budget"));
+                }
+                if *max >= 8192 {
+                    levels.push(("medium", "8K token budget"));
+                }
+                if *max >= 16384 {
+                    levels.push(("high", "16K token budget"));
+                }
+                levels.push(("max", "Max token budget"));
+                levels
+            }
+            ThinkingSupport::ThinkingLevel { levels, .. } => levels
+                .iter()
+                .map(|l| {
+                    let desc = match l.as_str() {
+                        "minimal" => "Minimal thinking",
+                        "low" => "Low thinking",
+                        "medium" => "Balanced",
+                        "high" => "Deep thinking",
+                        other => other,
+                    };
+                    (l.as_str(), desc)
+                })
+                .collect(),
+        }
+    }
+
+    /// Returns the ordered list of all level names (including "off") for Tab cycling.
+    pub fn cycle_levels(&self) -> Vec<&str> {
+        self.user_facing_levels().into_iter().map(|(k, _)| k).collect()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
-    pub id: &'static str,
-    pub name: &'static str,
+    pub id: String,
+    pub name: String,
+    pub provider: String,
     pub context_window: u32,
     pub max_output_tokens: u32,
     pub supports_tools: bool,
@@ -38,6 +143,8 @@ pub struct ModelInfo {
     pub cache_write_price_per_m: f64,
     #[serde(default = "default_tier")]
     pub tier: ModelTier,
+    #[serde(default)]
+    pub thinking: Option<ThinkingSupport>,
 }
 
 fn default_tier() -> ModelTier {
@@ -48,6 +155,8 @@ fn default_tier() -> ModelTier {
 pub struct ThinkingConfig {
     pub enabled: bool,
     pub budget_tokens: Option<u32>,
+    pub reasoning_effort: Option<String>,
+    pub thinking_level: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -156,6 +265,22 @@ impl ModelInfo {
         let write_cost = usage.cache_creation_tokens as f64 * self.cache_write_price_per_m;
         let output_cost = usage.output_tokens as f64 * self.output_price_per_m;
         (input_cost + read_cost + write_cost + output_cost) / 1_000_000.0
+    }
+
+    pub fn short_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn context_display(&self) -> String {
+        if self.context_window >= 1_000_000 {
+            format!("{}M", self.context_window / 1_000_000)
+        } else {
+            format!("{}K", self.context_window / 1_000)
+        }
+    }
+
+    pub fn has_thinking(&self) -> bool {
+        self.thinking.is_some()
     }
 }
 

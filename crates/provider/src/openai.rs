@@ -8,72 +8,59 @@ use crate::types::*;
 use crate::{Provider, ProviderError};
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
-const DEFAULT_MODEL: &str = "gpt-4.1";
+const DEFAULT_MODEL: &str = "gpt-5.3-codex";
 
-static MODELS: &[ModelInfo] = &[
-    ModelInfo {
-        id: "gpt-4.1",
-        name: "GPT-4.1",
-        context_window: 1_047_576,
-        max_output_tokens: 32_768,
-        supports_tools: true,
-        supports_streaming: true,
-        supports_vision: true,
-        input_price_per_m: 2.0,
-        output_price_per_m: 8.0,
-        cache_read_price_per_m: 0.5,
-        cache_write_price_per_m: 0.0,
-        tier: ModelTier::Medium,
-    },
-    ModelInfo {
-        id: "gpt-4.1-mini",
-        name: "GPT-4.1 Mini",
-        context_window: 1_047_576,
-        max_output_tokens: 32_768,
-        supports_tools: true,
-        supports_streaming: true,
-        supports_vision: true,
-        input_price_per_m: 0.4,
-        output_price_per_m: 1.6,
-        cache_read_price_per_m: 0.1,
-        cache_write_price_per_m: 0.0,
-        tier: ModelTier::Low,
-    },
-    ModelInfo {
-        id: "o3",
-        name: "o3",
-        context_window: 200_000,
-        max_output_tokens: 100_000,
-        supports_tools: true,
-        supports_streaming: true,
-        supports_vision: true,
-        input_price_per_m: 2.0,
-        output_price_per_m: 8.0,
-        cache_read_price_per_m: 0.5,
-        cache_write_price_per_m: 0.0,
-        tier: ModelTier::High,
-    },
-    ModelInfo {
-        id: "o4-mini",
-        name: "o4-mini",
-        context_window: 200_000,
-        max_output_tokens: 100_000,
-        supports_tools: true,
-        supports_streaming: true,
-        supports_vision: true,
-        input_price_per_m: 1.1,
-        output_price_per_m: 4.4,
-        cache_read_price_per_m: 0.275,
-        cache_write_price_per_m: 0.0,
-        tier: ModelTier::Low,
-    },
-];
+pub fn default_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "gpt-5.3-codex".into(), name: "GPT-5.3 Codex".into(), provider: "openai".into(),
+            context_window: 272_000, max_output_tokens: 100_000,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 2.0, output_price_per_m: 8.0,
+            cache_read_price_per_m: 0.5, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: Some(ThinkingSupport::openai_reasoning()),
+        },
+        ModelInfo {
+            id: "gpt-5.2-codex".into(), name: "GPT-5.2 Codex".into(), provider: "openai".into(),
+            context_window: 272_000, max_output_tokens: 100_000,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 2.0, output_price_per_m: 8.0,
+            cache_read_price_per_m: 0.5, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: Some(ThinkingSupport::openai_reasoning()),
+        },
+        ModelInfo {
+            id: "gpt-5.2".into(), name: "GPT-5.2".into(), provider: "openai".into(),
+            context_window: 272_000, max_output_tokens: 100_000,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 2.0, output_price_per_m: 8.0,
+            cache_read_price_per_m: 0.5, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: Some(ThinkingSupport::openai_reasoning()),
+        },
+        ModelInfo {
+            id: "o3".into(), name: "o3".into(), provider: "openai".into(),
+            context_window: 200_000, max_output_tokens: 100_000,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 2.0, output_price_per_m: 8.0,
+            cache_read_price_per_m: 0.5, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: Some(ThinkingSupport::openai_reasoning()),
+        },
+        ModelInfo {
+            id: "o4-mini".into(), name: "o4-mini".into(), provider: "openai".into(),
+            context_window: 200_000, max_output_tokens: 100_000,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 1.1, output_price_per_m: 4.4,
+            cache_read_price_per_m: 0.275, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Low, thinking: Some(ThinkingSupport::openai_reasoning()),
+        },
+    ]
+}
 
 pub struct OpenAIProvider {
     client: reqwest::Client,
     base_url: String,
     api_key: String,
     default_model: String,
+    models: Vec<ModelInfo>,
 }
 
 impl OpenAIProvider {
@@ -86,7 +73,15 @@ impl OpenAIProvider {
             base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
             api_key,
             default_model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+            models: default_models(),
         }
+    }
+
+    pub fn with_models(mut self, models: Vec<ModelInfo>) -> Self {
+        if !models.is_empty() {
+            self.models = models;
+        }
+        self
     }
 
     pub fn from_config(config: &nyzhi_config::Config) -> Result<Self> {
@@ -179,7 +174,7 @@ impl Provider for OpenAIProvider {
     }
 
     fn supported_models(&self) -> &[ModelInfo] {
-        MODELS
+        &self.models
     }
 
     async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse> {
@@ -283,7 +278,12 @@ impl Provider for OpenAIProvider {
             }
         }
         if thinking_enabled {
-            body["reasoning_effort"] = json!("high");
+            let effort = request
+                .thinking
+                .as_ref()
+                .and_then(|t| t.reasoning_effort.as_deref())
+                .unwrap_or("high");
+            body["reasoning_effort"] = json!(effort);
         }
         if !request.tools.is_empty() {
             body["tools"] = json!(self.build_tools(&request.tools));

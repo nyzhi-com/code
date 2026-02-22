@@ -198,6 +198,8 @@ pub struct AgentConfig {
     pub auto_compact_threshold: Option<f64>,
     pub thinking_enabled: bool,
     pub thinking_budget: Option<u32>,
+    pub reasoning_effort: Option<String>,
+    pub thinking_level: Option<String>,
     pub team_name: Option<String>,
     pub agent_name: Option<String>,
 }
@@ -215,6 +217,8 @@ impl Default for AgentConfig {
             auto_compact_threshold: None,
             thinking_enabled: false,
             thinking_budget: None,
+            reasoning_effort: None,
+            thinking_level: None,
             team_name: None,
             agent_name: None,
         }
@@ -357,6 +361,8 @@ pub async fn run_turn_with_content(
             Some(nyzhi_provider::ThinkingConfig {
                 enabled: true,
                 budget_tokens: config.thinking_budget,
+                reasoning_effort: config.reasoning_effort.clone(),
+                thinking_level: config.thinking_level.clone(),
             })
         } else {
             None

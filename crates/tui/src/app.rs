@@ -149,6 +149,7 @@ pub struct App {
     pub update_status: UpdateStatus,
     update_info: Option<nyzhi_core::updater::UpdateInfo>,
     update_done_rx: Option<tokio::sync::mpsc::Receiver<anyhow::Result<nyzhi_core::updater::UpdateResult>>>,
+    pub thinking_level: Option<String>,
 }
 
 impl App {
@@ -211,6 +212,7 @@ impl App {
             update_status: UpdateStatus::None,
             update_info: None,
             update_done_rx: None,
+            thinking_level: None,
         }
     }
 
@@ -1177,9 +1179,29 @@ impl App {
                         );
                     }
                     SelectorKind::Model => {
-                        let idx = self.selector.as_ref().unwrap().cursor;
-                        *model_info_idx = Some(idx);
-                        self.model_name = value;
+                        let is_thinking = self.selector.as_ref()
+                            .and_then(|s| s.context_value.as_deref())
+                            == Some("thinking");
+                        if is_thinking {
+                            let label = if value == "off" { "off".to_string() } else { value.clone() };
+                            self.thinking_level = if value == "off" { None } else { Some(value.clone()) };
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Thinking level set to: {}", label),
+                            });
+                        } else if let Some((prov, model_id)) = value.split_once('/') {
+                            self.provider_name = prov.to_string();
+                            self.model_name = model_id.to_string();
+                            *model_info_idx = None;
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Switched to {}/{}", prov, model_id),
+                            });
+                        } else {
+                            let idx = self.selector.as_ref().unwrap().cursor;
+                            *model_info_idx = Some(idx);
+                            self.model_name = value;
+                        }
                     }
                     SelectorKind::Provider => {
                         self.selector = None;
@@ -1350,37 +1372,66 @@ impl App {
         ));
     }
 
-    pub fn open_model_selector(&mut self, models: &[nyzhi_provider::ModelInfo]) {
+    pub fn open_model_selector(&mut self, _models: &[nyzhi_provider::ModelInfo]) {
         use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
 
-        let items: Vec<SelectorItem> = models
-            .iter()
-            .map(|m| SelectorItem::entry(m.id, m.id))
-            .collect();
-        self.selector = Some(SelectorState::new(
-            SelectorKind::Model,
-            "Model",
-            items,
-            &self.model_name,
-        ));
+        let registry = nyzhi_provider::ModelRegistry::new();
+        let provider_order = ["openai", "anthropic", "gemini", "deepseek", "groq"];
+        let mut items = Vec::new();
+
+        for provider_id in &provider_order {
+            let models = registry.models_for(provider_id);
+            if models.is_empty() {
+                continue;
+            }
+            let status = nyzhi_auth::auth_status(provider_id);
+            let display_name = nyzhi_config::find_provider_def(provider_id)
+                .map(|d| d.name)
+                .unwrap_or(provider_id);
+            items.push(SelectorItem::header(&format!("{} ({})", display_name, status)));
+            for m in models {
+                let thinking_badge = if m.has_thinking() { " [thinking]" } else { "" };
+                let label = format!(
+                    "{:<24} {:>4}  {:>5}{}",
+                    m.name,
+                    m.tier,
+                    m.context_display(),
+                    thinking_badge
+                );
+                let value = format!("{}/{}", provider_id, m.id);
+                items.push(SelectorItem::entry(&label, &value));
+            }
+        }
+
+        let current = format!("{}/{}", self.provider_name, self.model_name);
+        let mut state = SelectorState::new(SelectorKind::Model, "Model", items, &current);
+        state.kind = SelectorKind::Provider;
+        self.selector = Some(state);
     }
 
     pub fn open_provider_selector(&mut self) {
         use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
 
         let mut items = Vec::new();
-        items.push(SelectorItem::header("Popular"));
-        for def in nyzhi_config::BUILT_IN_PROVIDERS.iter().filter(|d| d.category == "popular") {
-            let label = if def.supports_oauth {
-                format!("{} (OAuth or API key)", def.name)
-            } else {
-                def.name.to_string()
-            };
-            items.push(SelectorItem::entry(&label, def.id));
-        }
-        items.push(SelectorItem::header("Other"));
-        for def in nyzhi_config::BUILT_IN_PROVIDERS.iter().filter(|d| d.category == "other") {
-            items.push(SelectorItem::entry(def.name, def.id));
+        let categories = [("popular", "Popular"), ("agents", "Agents"), ("other", "Other")];
+        for (cat_id, cat_name) in &categories {
+            let providers: Vec<_> = nyzhi_config::BUILT_IN_PROVIDERS.iter()
+                .filter(|d| d.category == *cat_id)
+                .collect();
+            if providers.is_empty() {
+                continue;
+            }
+            items.push(SelectorItem::header(cat_name));
+            for def in providers {
+                let status = nyzhi_auth::auth_status(def.id);
+                let auth_info = if def.supports_oauth {
+                    format!(" ({}, OAuth or API key)", status)
+                } else {
+                    format!(" ({})", status)
+                };
+                let label = format!("{}{}", def.name, auth_info);
+                items.push(SelectorItem::entry(&label, def.id));
+            }
         }
         self.selector = Some(SelectorState::new(
             SelectorKind::Provider,
@@ -1388,6 +1439,40 @@ impl App {
             items,
             &self.provider_name,
         ));
+    }
+
+    pub fn open_thinking_selector(&mut self, model_info: Option<&nyzhi_provider::ModelInfo>) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let thinking = model_info.and_then(|m| m.thinking.as_ref());
+        let levels: Vec<(&str, &str)> = match thinking {
+            Some(ts) => ts.user_facing_levels(),
+            None => {
+                self.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: "Current model does not support thinking/reasoning.".to_string(),
+                });
+                return;
+            }
+        };
+
+        let items: Vec<SelectorItem> = levels
+            .iter()
+            .map(|(value, desc)| {
+                SelectorItem::entry(&format!("{:<12} {}", value, desc), value)
+            })
+            .collect();
+
+        let current = self.thinking_level.as_deref().unwrap_or("off");
+        self.selector = Some(SelectorState::new(
+            SelectorKind::Model,
+            "Thinking Level",
+            items,
+            current,
+        ));
+        if let Some(sel) = &mut self.selector {
+            sel.context_value = Some("thinking".to_string());
+        }
     }
 
     pub fn open_api_key_input(&mut self, provider_id: &str) {

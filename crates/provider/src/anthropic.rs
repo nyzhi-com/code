@@ -8,59 +8,44 @@ use crate::types::*;
 use crate::{Provider, ProviderError};
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
-const DEFAULT_MODEL: &str = "claude-sonnet-4-20250514";
+const DEFAULT_MODEL: &str = "claude-sonnet-4-6-20260217";
 const API_VERSION: &str = "2023-06-01";
 
-static MODELS: &[ModelInfo] = &[
-    ModelInfo {
-        id: "claude-sonnet-4-20250514",
-        name: "Claude Sonnet 4",
-        context_window: 200_000,
-        max_output_tokens: 16_384,
-        supports_tools: true,
-        supports_streaming: true,
-        supports_vision: true,
-        input_price_per_m: 3.0,
-        output_price_per_m: 15.0,
-        cache_read_price_per_m: 0.3,
-        cache_write_price_per_m: 3.75,
-        tier: ModelTier::Medium,
-    },
-    ModelInfo {
-        id: "claude-opus-4-20250514",
-        name: "Claude Opus 4",
-        context_window: 200_000,
-        max_output_tokens: 32_768,
-        supports_tools: true,
-        supports_streaming: true,
-        supports_vision: true,
-        input_price_per_m: 15.0,
-        output_price_per_m: 75.0,
-        cache_read_price_per_m: 1.5,
-        cache_write_price_per_m: 18.75,
-        tier: ModelTier::High,
-    },
-    ModelInfo {
-        id: "claude-haiku-3-5-20241022",
-        name: "Claude 3.5 Haiku",
-        context_window: 200_000,
-        max_output_tokens: 8_192,
-        supports_tools: true,
-        supports_streaming: true,
-        supports_vision: true,
-        input_price_per_m: 0.8,
-        output_price_per_m: 4.0,
-        cache_read_price_per_m: 0.08,
-        cache_write_price_per_m: 1.0,
-        tier: ModelTier::Low,
-    },
-];
+pub fn default_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "claude-opus-4-6-20260205".into(), name: "Claude Opus 4.6".into(), provider: "anthropic".into(),
+            context_window: 1_000_000, max_output_tokens: 128_000,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 15.0, output_price_per_m: 75.0,
+            cache_read_price_per_m: 1.5, cache_write_price_per_m: 18.75,
+            tier: ModelTier::High, thinking: Some(ThinkingSupport::anthropic_adaptive()),
+        },
+        ModelInfo {
+            id: "claude-sonnet-4-6-20260217".into(), name: "Claude Sonnet 4.6".into(), provider: "anthropic".into(),
+            context_window: 1_000_000, max_output_tokens: 16_384,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 3.0, output_price_per_m: 15.0,
+            cache_read_price_per_m: 0.3, cache_write_price_per_m: 3.75,
+            tier: ModelTier::Medium, thinking: Some(ThinkingSupport::anthropic_adaptive()),
+        },
+        ModelInfo {
+            id: "claude-haiku-4-5-20251022".into(), name: "Claude Haiku 4.5".into(), provider: "anthropic".into(),
+            context_window: 200_000, max_output_tokens: 8_192,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 0.8, output_price_per_m: 4.0,
+            cache_read_price_per_m: 0.08, cache_write_price_per_m: 1.0,
+            tier: ModelTier::Low, thinking: None,
+        },
+    ]
+}
 
 pub struct AnthropicProvider {
     client: reqwest::Client,
     base_url: String,
     api_key: String,
     default_model: String,
+    models: Vec<ModelInfo>,
 }
 
 impl AnthropicProvider {
@@ -73,7 +58,15 @@ impl AnthropicProvider {
             base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
             api_key,
             default_model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+            models: default_models(),
         }
+    }
+
+    pub fn with_models(mut self, models: Vec<ModelInfo>) -> Self {
+        if !models.is_empty() {
+            self.models = models;
+        }
+        self
     }
 
     pub fn from_config(config: &nyzhi_config::Config) -> Result<Self> {
@@ -169,7 +162,7 @@ impl Provider for AnthropicProvider {
     }
 
     fn supported_models(&self) -> &[ModelInfo] {
-        MODELS
+        &self.models
     }
 
     async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse> {
@@ -281,15 +274,28 @@ impl Provider for AnthropicProvider {
         });
 
         if thinking_enabled {
-            let budget = request
-                .thinking
-                .as_ref()
-                .and_then(|t| t.budget_tokens)
-                .unwrap_or(10_000);
-            body["thinking"] = json!({
-                "type": "enabled",
-                "budget_tokens": budget
-            });
+            let is_adaptive_model = model.contains("opus-4-6") || model.contains("sonnet-4-6");
+            if is_adaptive_model {
+                let effort = request
+                    .thinking
+                    .as_ref()
+                    .and_then(|t| t.thinking_level.as_deref())
+                    .unwrap_or("high");
+                body["thinking"] = json!({
+                    "type": "adaptive",
+                    "effort": effort
+                });
+            } else {
+                let budget = request
+                    .thinking
+                    .as_ref()
+                    .and_then(|t| t.budget_tokens)
+                    .unwrap_or(10_000);
+                body["thinking"] = json!({
+                    "type": "enabled",
+                    "budget_tokens": budget
+                });
+            }
             body.as_object_mut().unwrap().remove("temperature");
         }
 

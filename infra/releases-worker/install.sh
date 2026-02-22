@@ -1,6 +1,7 @@
 #!/bin/sh
 # nyzhi code installer
 # Usage: curl -fsSL https://get.nyzhi.com | sh
+#        curl -fsSL https://get.nyzhi.com | sh -s -- --uninstall
 #
 # This script ONLY touches:
 #   - $NYZHI_HOME/bin/nyzhi  (the binary)
@@ -28,6 +29,10 @@ BACKUP_PATH=""
 BAR_WIDTH=40
 
 main() {
+  case "${1:-}" in
+    --uninstall) do_uninstall; return ;;
+  esac
+
   check_deps
   detect_platform
   fetch_version_info
@@ -40,6 +45,55 @@ main() {
   verify_install
   setup_path
   print_success
+}
+
+# ---- uninstall -----------------------------------------------------------
+
+do_uninstall() {
+  CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nyzhi"
+  DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/nyzhi"
+
+  printf '\n  This will permanently remove:\n'
+  printf '    %s\n' "$NYZHI_HOME"
+  printf '    %s\n' "$CONFIG_DIR"
+  printf '    %s\n' "$DATA_DIR"
+  printf '    Shell PATH entries for nyzhi\n\n'
+
+  printf '  Continue? [y/N] '
+  read -r REPLY
+  case "$REPLY" in
+    y|Y|yes|YES) ;;
+    *) printf '  Aborted.\n\n'; exit 0 ;;
+  esac
+
+  printf '\n'
+
+  for DIR in "$NYZHI_HOME" "$CONFIG_DIR" "$DATA_DIR"; do
+    if [ -d "$DIR" ]; then
+      rm -rf "$DIR" && printf '  ✓ Removed %s\n' "$DIR" \
+                     || printf '  ✗ Failed to remove %s\n' "$DIR"
+    fi
+  done
+
+  # Clean shell profiles
+  for PROFILE in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    if [ -f "$PROFILE" ] && grep -q "nyzhi" "$PROFILE" 2>/dev/null; then
+      TMPF="$(mktemp)"
+      grep -v "nyzhi" "$PROFILE" > "$TMPF"
+      mv "$TMPF" "$PROFILE"
+      printf '  ✓ Cleaned PATH from %s\n' "$PROFILE"
+    fi
+  done
+
+  FISH_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/nyzhi.fish"
+  if [ -f "$FISH_CONF" ]; then
+    rm -f "$FISH_CONF"
+    printf '  ✓ Removed %s\n' "$FISH_CONF"
+  fi
+
+  printf '\n  nyzhi has been uninstalled.\n'
+  printf '  Note: OAuth tokens in your OS keyring are not removed by this script.\n'
+  printf '  To clear them, run: nyzhi uninstall --yes  (before uninstalling)\n\n'
 }
 
 # ---- progress bar --------------------------------------------------------

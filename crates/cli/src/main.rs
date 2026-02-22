@@ -126,6 +126,12 @@ enum Commands {
         #[arg(long)]
         list_backups: bool,
     },
+    /// Completely uninstall nyzhi: remove binary, config, data, backups, and PATH entries
+    Uninstall {
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
     /// Auto-diagnose and fix CI failures. Reads failure logs and runs an agent to fix them.
     CiFix {
         /// Path to CI log file (reads from stdin if not provided)
@@ -319,35 +325,30 @@ async fn main() -> Result<()> {
             let mut seen = std::collections::HashSet::new();
             for def in nyzhi_config::BUILT_IN_PROVIDERS {
                 seen.insert(def.id.to_string());
-                let conf_entry = config.provider.entry(def.id);
-                let has_api_key = conf_entry
-                    .and_then(|e| e.api_key.as_deref())
-                    .is_some();
-                let env_var = &nyzhi_auth::api_key::env_var_name(def.id);
-                let has_env = std::env::var(env_var).map(|v| !v.is_empty()).unwrap_or(false);
-                let has_token = nyzhi_auth::token_store::load_token(def.id)
-                    .ok()
-                    .flatten()
-                    .is_some();
-
-                let method = if has_api_key {
-                    "config api_key".to_string()
-                } else if has_env {
-                    format!("env ({env_var})")
-                } else if has_token {
-                    "auth.json".to_string()
-                } else {
-                    "none".to_string()
-                };
-                let marker = if has_api_key || has_env || has_token { "✓" } else { "✗" };
-                println!("  {marker} {}: {method}", def.name);
+                let status = nyzhi_auth::auth_status(def.id);
+                let marker = if status != "not connected" { "✓" } else { "✗" };
+                let mut line = format!("  {marker} {}: {status}", def.name);
+                if let Ok(accounts) = nyzhi_auth::token_store::list_accounts(def.id) {
+                    if accounts.len() > 1 {
+                        line.push_str(&format!(" ({} accounts)", accounts.len()));
+                        for (i, acc) in accounts.iter().enumerate() {
+                            let label = acc.label.as_deref().unwrap_or("default");
+                            let active = if acc.active { " [active]" } else { "" };
+                            let rl = if acc.rate_limited_until.is_some() {
+                                " [rate-limited]"
+                            } else {
+                                ""
+                            };
+                            println!("      {}. {}{}{}", i + 1, label, active, rl);
+                        }
+                    }
+                }
+                println!("{line}");
             }
             for (name, _entry) in &config.provider.providers {
                 if seen.contains(name) { continue; }
-                let has_token = nyzhi_auth::token_store::load_token(name)
-                    .ok().flatten().is_some();
-                let marker = if has_token { "✓" } else { "✗" };
-                let status = if has_token { "auth.json" } else { "none" };
+                let status = nyzhi_auth::auth_status(name);
+                let marker = if status != "not connected" { "✓" } else { "✗" };
                 println!("  {marker} {name} (custom): {status}");
             }
             return Ok(());
@@ -702,6 +703,121 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         }
+        Some(Commands::Uninstall { yes }) => {
+            let nyzhi_home = std::env::var("NYZHI_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| dirs::home_dir().unwrap_or_default().join(".nyzhi"));
+            let config_dir = nyzhi_config::Config::config_dir();
+            let data_dir = nyzhi_config::Config::data_dir();
+
+            println!("This will permanently remove:");
+            println!("  Binary & backups:  {}", nyzhi_home.display());
+            println!("  Configuration:     {}", config_dir.display());
+            println!("  Data & sessions:   {}", data_dir.display());
+            println!("  OAuth tokens:      OS keyring (nyzhi-*)");
+            println!("  Shell PATH entry:  ~/.zshrc / ~/.bashrc / fish conf.d");
+            println!();
+
+            if !yes {
+                eprint!("Are you sure? Type 'yes' to confirm: ");
+                use std::io::Write;
+                std::io::stderr().flush()?;
+                let mut answer = String::new();
+                std::io::stdin().read_line(&mut answer)?;
+                if answer.trim() != "yes" {
+                    println!("Aborted.");
+                    return Ok(());
+                }
+            }
+
+            let mut removed = Vec::new();
+            let mut errors = Vec::new();
+
+            for dir in [&nyzhi_home, &config_dir, &data_dir] {
+                if dir.exists() {
+                    match std::fs::remove_dir_all(dir) {
+                        Ok(()) => removed.push(format!("  ✓ {}", dir.display())),
+                        Err(e) => errors.push(format!("  ✗ {}: {e}", dir.display())),
+                    }
+                }
+            }
+
+            for provider in ["openai", "anthropic", "gemini", "openrouter"] {
+                if let Ok(entry) = keyring::Entry::new("nyzhi", provider) {
+                    match entry.delete_credential() {
+                        Ok(()) => removed.push(format!("  ✓ keyring: nyzhi/{provider}")),
+                        Err(keyring::Error::NoEntry) => {}
+                        Err(e) => errors.push(format!("  ✗ keyring nyzhi/{provider}: {e}")),
+                    }
+                }
+                let svc = format!("nyzhi-{provider}");
+                if let Ok(entry) = keyring::Entry::new(&svc, "oauth_token") {
+                    match entry.delete_credential() {
+                        Ok(()) => removed.push(format!("  ✓ keyring: {svc}/oauth_token")),
+                        Err(keyring::Error::NoEntry) => {}
+                        Err(e) => errors.push(format!("  ✗ keyring {svc}: {e}")),
+                    }
+                }
+            }
+
+            for (shell, profile_path) in [
+                ("zsh", dirs::home_dir().map(|h| h.join(".zshrc"))),
+                ("bash", dirs::home_dir().map(|h| h.join(".bashrc"))),
+                ("bash", dirs::home_dir().map(|h| h.join(".bash_profile"))),
+                ("sh", dirs::home_dir().map(|h| h.join(".profile"))),
+            ] {
+                if let Some(path) = profile_path {
+                    if path.exists() {
+                        if let Ok(contents) = std::fs::read_to_string(&path) {
+                            let filtered: Vec<&str> = contents
+                                .lines()
+                                .filter(|line| {
+                                    !line.contains("nyzhi") || line.trim_start().starts_with('#')
+                                })
+                                .collect();
+                            if filtered.len() < contents.lines().count() {
+                                let new_contents = filtered.join("\n") + "\n";
+                                match std::fs::write(&path, new_contents) {
+                                    Ok(()) => removed.push(format!(
+                                        "  ✓ cleaned PATH from {} ({})",
+                                        path.display(),
+                                        shell
+                                    )),
+                                    Err(e) => errors.push(format!(
+                                        "  ✗ {}: {e}",
+                                        path.display()
+                                    )),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(fish_conf) = dirs::config_dir().map(|c| c.join("fish/conf.d/nyzhi.fish")) {
+                if fish_conf.exists() {
+                    match std::fs::remove_file(&fish_conf) {
+                        Ok(()) => removed.push(format!("  ✓ {}", fish_conf.display())),
+                        Err(e) => errors.push(format!("  ✗ {}: {e}", fish_conf.display())),
+                    }
+                }
+            }
+
+            println!();
+            if !removed.is_empty() {
+                println!("Removed:");
+                for r in &removed {
+                    println!("{r}");
+                }
+            }
+            if !errors.is_empty() {
+                println!("\nErrors:");
+                for e in &errors {
+                    eprintln!("{e}");
+                }
+            }
+            println!("\nnyzhi has been uninstalled. Restart your shell to update PATH.");
+            return Ok(());
+        }
         Some(Commands::Cost { period }) => {
             let entries = nyzhi_core::analytics::load_entries()?;
             if entries.is_empty() {
@@ -883,16 +999,17 @@ async fn main() -> Result<()> {
                 None
             };
 
-            let model_name = cli.model.as_deref().unwrap_or(
+            let model_name = cli.model.clone().unwrap_or_else(|| {
                 provider
                     .supported_models()
                     .first()
-                    .map(|m| m.id)
-                    .unwrap_or("default"),
-            );
+                    .map(|m| m.id.as_str())
+                    .unwrap_or("default")
+                    .to_string()
+            });
 
             let mut app =
-                nyzhi_tui::App::new(provider_name, model_name, &config.tui, workspace.clone());
+                nyzhi_tui::App::new(provider_name, &model_name, &config.tui, workspace.clone());
             app.mcp_manager = mcp_manager.clone();
             app.initial_session = initial_session;
             app.run(provider.clone(), registry, &config).await?;

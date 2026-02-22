@@ -24,6 +24,8 @@ pub struct PluginManifest {
     pub mcp_servers: Option<String>,
     #[serde(default)]
     pub settings: Option<String>,
+    #[serde(default)]
+    pub auth: Option<PluginAuthConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +33,14 @@ pub struct AuthorInfo {
     pub name: String,
     #[serde(default)]
     pub url: Option<String>,
+}
+
+/// Auth extension point for plugins that provide custom auth providers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginAuthConfig {
+    pub provider: String,
+    #[serde(default)]
+    pub methods: Vec<String>,
 }
 
 impl PluginManifest {

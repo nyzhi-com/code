@@ -96,6 +96,8 @@ impl Tool for TaskTool {
             auto_compact_threshold: None,
             thinking_enabled: false,
             thinking_budget: None,
+            reasoning_effort: None,
+            thinking_level: None,
             team_name: ctx.team_name.clone(),
             agent_name: ctx.agent_name.clone(),
         };

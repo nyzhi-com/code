@@ -6,10 +6,10 @@ use tokio::net::TcpListener;
 
 use crate::token_store::{self, StoredToken};
 
-const CLIENT_ID: &str = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
-const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
-const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const SCOPE: &str = "https://www.googleapis.com/auth/generative-language.retriever";
+const CLIENT_ID: &str = "9d578f71-0cdb-4744-8473-89d98ac13a3a";
+const AUTH_URL: &str = "https://console.anthropic.com/oauth/authorize";
+const TOKEN_URL: &str = "https://console.anthropic.com/oauth/token";
+const SCOPE: &str = "user:inference";
 
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
@@ -33,15 +33,13 @@ pub async fn login() -> Result<StoredToken> {
          &scope={SCOPE}\
          &code_challenge={challenge}\
          &code_challenge_method=S256\
-         &state={state}\
-         &access_type=offline\
-         &prompt=consent",
+         &state={state}",
         redirect = urlencoding(&redirect_uri),
         challenge = pkce_challenge.as_str(),
         state = csrf_state.secret(),
     );
 
-    eprintln!("Opening browser for Google login...");
+    eprintln!("Opening browser for Anthropic (Claude Pro/Max) login...");
     eprintln!("If the browser doesn't open, visit:\n  {auth_url}\n");
 
     if let Err(e) = open::that(&auth_url) {
@@ -51,7 +49,7 @@ pub async fn login() -> Result<StoredToken> {
     let (code, state) = accept_callback(&listener).await?;
 
     if state != *csrf_state.secret() {
-        anyhow::bail!("CSRF state mismatch -- possible attack or stale request");
+        anyhow::bail!("CSRF state mismatch");
     }
 
     eprintln!("Authorization code received. Exchanging for tokens...");
@@ -71,7 +69,7 @@ pub async fn login() -> Result<StoredToken> {
 
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Token exchange failed: {body}");
+        anyhow::bail!("Anthropic token exchange failed: {body}");
     }
 
     let tokens: TokenResponse = resp.json().await?;
@@ -84,20 +82,11 @@ pub async fn login() -> Result<StoredToken> {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         expires_at,
-        provider: "gemini".to_string(),
+        provider: "anthropic".to_string(),
     };
 
-    let accounts = token_store::list_accounts("gemini")?;
-    let label = if accounts.is_empty() {
-        None
-    } else {
-        Some(format!("account-{}", accounts.len() + 1))
-    };
-    token_store::store_account("gemini", &stored, label.as_deref())?;
-    eprintln!("Google/Gemini login successful. Token stored.");
-    if accounts.len() >= 1 {
-        eprintln!("You now have {} Gemini accounts configured.", accounts.len() + 1);
-    }
+    token_store::store_token("anthropic", &stored)?;
+    eprintln!("Anthropic login successful. Token stored.");
 
     Ok(stored)
 }
@@ -134,7 +123,7 @@ async fn accept_callback(listener: &TcpListener) -> Result<(String, String)> {
     let state = params.get("state").unwrap_or(&"").to_string();
 
     let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n\
-        <html><body><h2>Login successful!</h2>\
+        <html><body><h2>Anthropic login successful!</h2>\
         <p>You can close this tab and return to the terminal.</p></body></html>";
     stream.write_all(response.as_bytes()).await?;
     stream.flush().await?;

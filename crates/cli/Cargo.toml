@@ -29,3 +29,5 @@ futures.workspace = true
 base64.workspace = true
 notify-rust.workspace = true
 crossterm.workspace = true
+keyring.workspace = true
+dirs.workspace = true

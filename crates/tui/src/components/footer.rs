@@ -96,6 +96,12 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     right_parts.push(&app.provider_name);
     right_parts.push(&app.model_name);
+
+    let thinking_label;
+    if let Some(ref level) = app.thinking_level {
+        thinking_label = format!("[thinking: {}]", level);
+        right_parts.push(&thinking_label);
+    }
     let theme_label = match theme.mode {
         crate::theme::ThemeMode::Dark => "dark",
         crate::theme::ThemeMode::Light => "light",
@@ -104,7 +110,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let right = right_parts.join("  ");
 
-    let shortcuts = "ctrl+t theme  ctrl+a accent  /model switch";
+    let shortcuts = "ctrl+t theme  ctrl+a accent  /model switch  tab thinking";
 
     let available = area.width as usize;
     let right_len = right.len();

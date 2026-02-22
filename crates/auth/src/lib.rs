@@ -1,5 +1,6 @@
 pub mod api_key;
 pub mod oauth;
+pub mod plugin_hook;
 pub mod token_store;
 
 mod error;
@@ -94,4 +95,28 @@ pub async fn resolve_credential_async(
         oauth_hint,
     }
     .into())
+}
+
+/// Call when a 429 rate limit is received; rotates to the next account if available.
+pub fn handle_rate_limit(provider: &str) -> Result<Option<Credential>> {
+    if let Ok(Some(token)) = token_store::rotate_on_rate_limit(provider, 60) {
+        if token.refresh_token.is_some() {
+            Ok(Some(Credential::Bearer(token.access_token)))
+        } else {
+            Ok(Some(Credential::ApiKey(token.access_token)))
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+/// Returns the auth status string for a provider (for UI display).
+pub fn auth_status(provider: &str) -> &'static str {
+    if api_key::from_env(provider).is_ok() {
+        return "env";
+    }
+    if let Ok(Some(_)) = token_store::load_token(provider) {
+        return "connected";
+    }
+    "not connected"
 }

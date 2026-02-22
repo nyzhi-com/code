@@ -10,6 +10,9 @@ const GOOGLE_CLIENT_ID: &str =
 const OPENAI_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const OPENAI_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 
+const ANTHROPIC_TOKEN_URL: &str = "https://console.anthropic.com/oauth/token";
+const ANTHROPIC_CLIENT_ID: &str = "9d578f71-0cdb-4744-8473-89d98ac13a3a";
+
 #[derive(Debug, Deserialize)]
 struct RefreshResponse {
     access_token: String,
@@ -49,7 +52,8 @@ pub async fn refresh_if_needed(provider: &str) -> Result<Option<StoredToken>> {
 
     let refreshed = match provider {
         "gemini" | "google" => refresh_google(&refresh_token).await?,
-        "openai" => refresh_openai(&refresh_token).await?,
+        "openai" | "chatgpt" => refresh_openai(&refresh_token).await?,
+        "anthropic" => refresh_anthropic(&refresh_token).await?,
         _ => return Ok(None),
     };
 
@@ -101,6 +105,26 @@ async fn refresh_openai(refresh_token: &str) -> Result<RefreshResponse> {
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
         anyhow::bail!("OpenAI token refresh failed: {body}");
+    }
+
+    Ok(resp.json().await?)
+}
+
+async fn refresh_anthropic(refresh_token: &str) -> Result<RefreshResponse> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(ANTHROPIC_TOKEN_URL)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("client_id", ANTHROPIC_CLIENT_ID),
+            ("refresh_token", refresh_token),
+        ])
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Anthropic token refresh failed: {body}");
     }
 
     Ok(resp.json().await?)

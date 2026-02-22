@@ -1,3 +1,5 @@
+pub mod anthropic;
+pub mod chatgpt;
 pub mod google;
 pub mod openai;
 pub mod refresh;
@@ -10,6 +12,8 @@ pub async fn login(provider: &str) -> Result<StoredToken> {
     match provider {
         "gemini" | "google" => google::login().await,
         "openai" => openai::login().await,
+        "anthropic" => anthropic::login().await,
+        "chatgpt" => chatgpt::login().await,
         other => {
             if let Some(def) = nyzhi_config::find_provider_def(other) {
                 if !def.supports_oauth {

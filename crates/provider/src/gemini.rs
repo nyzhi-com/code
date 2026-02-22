@@ -8,38 +8,44 @@ use crate::types::*;
 use crate::{Provider, ProviderError};
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
-const DEFAULT_MODEL: &str = "gemini-2.5-flash";
+const DEFAULT_MODEL: &str = "gemini-3-flash";
 
-static MODELS: &[ModelInfo] = &[
-    ModelInfo {
-        id: "gemini-2.5-flash",
-        name: "Gemini 2.5 Flash",
-        context_window: 1_048_576,
-        max_output_tokens: 65_536,
-        supports_tools: true,
-        supports_streaming: true,
-        supports_vision: true,
-        input_price_per_m: 0.15,
-        output_price_per_m: 0.60,
-        cache_read_price_per_m: 0.0375,
-        cache_write_price_per_m: 0.0,
-        tier: ModelTier::Low,
-    },
-    ModelInfo {
-        id: "gemini-2.5-pro",
-        name: "Gemini 2.5 Pro",
-        context_window: 1_048_576,
-        max_output_tokens: 65_536,
-        supports_tools: true,
-        supports_streaming: true,
-        supports_vision: true,
-        input_price_per_m: 1.25,
-        output_price_per_m: 10.0,
-        cache_read_price_per_m: 0.3125,
-        cache_write_price_per_m: 0.0,
-        tier: ModelTier::High,
-    },
-];
+pub fn default_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "gemini-3.1-pro-preview".into(), name: "Gemini 3.1 Pro".into(), provider: "gemini".into(),
+            context_window: 1_048_576, max_output_tokens: 65_536,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 1.25, output_price_per_m: 10.0,
+            cache_read_price_per_m: 0.3125, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: Some(ThinkingSupport::gemini_levels(&["low", "high"])),
+        },
+        ModelInfo {
+            id: "gemini-3-flash".into(), name: "Gemini 3 Flash".into(), provider: "gemini".into(),
+            context_window: 1_048_576, max_output_tokens: 65_536,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 0.15, output_price_per_m: 0.60,
+            cache_read_price_per_m: 0.0375, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Low, thinking: Some(ThinkingSupport::gemini_levels(&["minimal", "low", "medium", "high"])),
+        },
+        ModelInfo {
+            id: "gemini-3-pro-preview".into(), name: "Gemini 3 Pro".into(), provider: "gemini".into(),
+            context_window: 1_048_576, max_output_tokens: 65_536,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 1.25, output_price_per_m: 10.0,
+            cache_read_price_per_m: 0.3125, cache_write_price_per_m: 0.0,
+            tier: ModelTier::High, thinking: Some(ThinkingSupport::gemini_levels(&["low", "high"])),
+        },
+        ModelInfo {
+            id: "gemini-2.5-flash".into(), name: "Gemini 2.5 Flash".into(), provider: "gemini".into(),
+            context_window: 1_048_576, max_output_tokens: 65_536,
+            supports_tools: true, supports_streaming: true, supports_vision: true,
+            input_price_per_m: 0.15, output_price_per_m: 0.60,
+            cache_read_price_per_m: 0.0375, cache_write_price_per_m: 0.0,
+            tier: ModelTier::Low, thinking: Some(ThinkingSupport::anthropic_budget(32768)),
+        },
+    ]
+}
 
 pub enum GeminiAuthMode {
     ApiKey(String),
@@ -51,6 +57,7 @@ pub struct GeminiProvider {
     base_url: String,
     auth: GeminiAuthMode,
     default_model: String,
+    models: Vec<ModelInfo>,
 }
 
 impl GeminiProvider {
@@ -63,6 +70,7 @@ impl GeminiProvider {
             base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
             auth: GeminiAuthMode::ApiKey(api_key),
             default_model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+            models: default_models(),
         }
     }
 
@@ -83,7 +91,15 @@ impl GeminiProvider {
             base_url: base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
             auth,
             default_model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+            models: default_models(),
         }
+    }
+
+    pub fn with_models(mut self, models: Vec<ModelInfo>) -> Self {
+        if !models.is_empty() {
+            self.models = models;
+        }
+        self
     }
 
     pub fn from_config(config: &nyzhi_config::Config) -> Result<Self> {
@@ -182,7 +198,7 @@ impl Provider for GeminiProvider {
     }
 
     fn supported_models(&self) -> &[ModelInfo] {
-        MODELS
+        &self.models
     }
 
     async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse> {

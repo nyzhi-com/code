@@ -68,7 +68,14 @@ pub async fn handle_key(
             }
         }
         KeyCode::Tab if app.completion.is_none() => {
-            try_open_completion(app, &tool_ctx.cwd);
+            if app.input.is_empty() {
+                cycle_thinking_level(app, model_info, false);
+            } else {
+                try_open_completion(app, &tool_ctx.cwd);
+            }
+        }
+        KeyCode::BackTab if app.completion.is_none() && app.input.is_empty() => {
+            cycle_thinking_level(app, model_info, true);
         }
         KeyCode::Esc => {
             if app.completion.is_some() {
@@ -979,13 +986,22 @@ pub async fn handle_key(
 
             if let Some(new_model) = input.strip_prefix("/model ") {
                 let new_model = new_model.trim();
-                if let Some(idx) = provider
+                let registry = nyzhi_provider::ModelRegistry::new();
+                if let Some((prov, found)) = registry.find_any(new_model) {
+                    app.provider_name = prov.to_string();
+                    app.model_name = found.id.clone();
+                    *model_info_idx = None;
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Switched to {}/{} ({})", prov, found.id, found.name),
+                    });
+                } else if let Some(idx) = provider
                     .supported_models()
                     .iter()
                     .position(|m| m.id == new_model)
                 {
                     let mi = &provider.supported_models()[idx];
-                    app.model_name = mi.id.to_string();
+                    app.model_name = mi.id.clone();
                     *model_info_idx = Some(idx);
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
@@ -993,7 +1009,7 @@ pub async fn handle_key(
                     });
                 } else {
                     let available: Vec<&str> =
-                        provider.supported_models().iter().map(|m| m.id).collect();
+                        provider.supported_models().iter().map(|m| m.id.as_str()).collect();
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
                         content: format!(
@@ -1001,6 +1017,33 @@ pub async fn handle_key(
                             new_model,
                             available.join(", ")
                         ),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/thinking" {
+                app.open_thinking_selector(model_info);
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if let Some(level) = input.strip_prefix("/thinking ") {
+                let level = level.trim();
+                if level == "off" {
+                    app.thinking_level = None;
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Thinking disabled.".to_string(),
+                    });
+                } else {
+                    app.thinking_level = Some(level.to_string());
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Thinking level set to: {}", level),
                     });
                 }
                 app.input.clear();
@@ -1044,20 +1087,27 @@ pub async fn handle_key(
             if input == "/login" {
                 let mut lines = vec!["Auth status:".to_string()];
                 for def in nyzhi_config::BUILT_IN_PROVIDERS {
-                    let has_token = nyzhi_auth::token_store::load_token(def.id)
-                        .ok()
-                        .flatten()
-                        .is_some();
-                    let has_env = std::env::var(def.env_var).map(|v| !v.is_empty()).unwrap_or(false);
-                    let status = if has_env {
-                        format!("env ({})", def.env_var)
-                    } else if has_token {
-                        "connected".to_string()
-                    } else {
-                        "not configured".to_string()
-                    };
-                    let marker = if has_env || has_token { "✓" } else { "✗" };
-                    lines.push(format!("  {marker} {}: {status}", def.name));
+                    let status = nyzhi_auth::auth_status(def.id);
+                    let marker = if status != "not connected" { "✓" } else { "✗" };
+                    let mut line = format!("  {marker} {}: {status}", def.name);
+                    if let Ok(accounts) = nyzhi_auth::token_store::list_accounts(def.id) {
+                        if accounts.len() > 1 {
+                            let active_count = accounts.iter().filter(|a| a.active).count();
+                            let rl_count = accounts.iter()
+                                .filter(|a| a.rate_limited_until.is_some())
+                                .count();
+                            line.push_str(&format!(
+                                " ({} accounts, {} active{})",
+                                accounts.len(),
+                                active_count,
+                                if rl_count > 0 { format!(", {} rate-limited", rl_count) } else { String::new() }
+                            ));
+                        }
+                    }
+                    lines.push(line);
+                }
+                if let Some(ref level) = app.thinking_level {
+                    lines.push(format!("\nThinking: {level}"));
                 }
                 lines.push(String::new());
                 lines.push("Use /connect to add a provider, or `nyzhi login <provider>` for OAuth.".to_string());
@@ -1547,8 +1597,10 @@ pub async fn handle_key(
                     content: [
                         "Commands:",
                         "  /help           Show this help",
-                        "  /model          List available models",
-                        "  /model <id>     Switch to a different model",
+                        "  /model          Pick model from all providers",
+                        "  /model <id>     Switch model (e.g. anthropic/claude-opus-4.6)",
+                        "  /thinking       Set thinking/reasoning level",
+                        "  /thinking <lvl> Set level directly (off/low/medium/high)",
                         "  /image <path>   Attach an image for the next prompt",
                         "  /connect        Connect a provider (add API key)",
                         "  /login          Show auth status for all providers",
@@ -1699,6 +1751,41 @@ pub async fn handle_key(
 
             if flags.think {
                 agent_config.thinking_enabled = true;
+            }
+
+            if let Some(ref level) = app.thinking_level {
+                agent_config.thinking_enabled = true;
+                match level.as_str() {
+                    "low" => {
+                        agent_config.reasoning_effort = Some("low".into());
+                        agent_config.thinking_budget = Some(4096);
+                        agent_config.thinking_level = Some("low".into());
+                    }
+                    "medium" => {
+                        agent_config.reasoning_effort = Some("medium".into());
+                        agent_config.thinking_budget = Some(8192);
+                        agent_config.thinking_level = Some("medium".into());
+                    }
+                    "high" => {
+                        agent_config.reasoning_effort = Some("high".into());
+                        agent_config.thinking_budget = Some(16384);
+                        agent_config.thinking_level = Some("high".into());
+                    }
+                    "xhigh" => {
+                        agent_config.reasoning_effort = Some("xhigh".into());
+                        agent_config.thinking_budget = Some(32768);
+                        agent_config.thinking_level = Some("xhigh".into());
+                    }
+                    "max" => {
+                        agent_config.reasoning_effort = Some("max".into());
+                        agent_config.thinking_budget = Some(32768);
+                        agent_config.thinking_level = Some("max".into());
+                    }
+                    other => {
+                        agent_config.reasoning_effort = Some(other.into());
+                        agent_config.thinking_level = Some(other.into());
+                    }
+                }
             }
 
             app.last_prompt = Some(input.clone());
@@ -1973,6 +2060,42 @@ fn load_image(path_str: &str) -> anyhow::Result<PendingImage> {
         data,
         size_bytes,
     })
+}
+
+fn cycle_thinking_level(app: &mut App, model_info: Option<&ModelInfo>, reverse: bool) {
+    let levels: Vec<&str> = model_info
+        .and_then(|m| m.thinking.as_ref())
+        .map(|ts| ts.cycle_levels())
+        .unwrap_or_else(|| vec!["off", "low", "medium", "high"]);
+
+    if levels.is_empty() {
+        return;
+    }
+
+    let current = app.thinking_level.as_deref().unwrap_or("off");
+    let current_idx = levels.iter().position(|&l| l == current).unwrap_or(0);
+
+    let next_idx = if reverse {
+        if current_idx == 0 { levels.len() - 1 } else { current_idx - 1 }
+    } else {
+        (current_idx + 1) % levels.len()
+    };
+
+    let next = levels[next_idx];
+    if next == "off" {
+        app.thinking_level = None;
+        app.items.push(DisplayItem::Message {
+            role: "system".to_string(),
+            content: "Thinking: off".to_string(),
+        });
+    } else {
+        app.thinking_level = Some(next.to_string());
+        app.items.push(DisplayItem::Message {
+            role: "system".to_string(),
+            content: format!("Thinking: {}", next),
+        });
+    }
+    app.scroll_offset = 0;
 }
 
 fn try_open_completion(app: &mut App, cwd: &std::path::Path) {
