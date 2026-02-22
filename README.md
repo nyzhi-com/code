@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/hero.svg">
-    <img src="docs/assets/hero.svg" alt="nyzhi" width="720" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://nyzhi-hero.nyzhi.workers.dev/hero.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="https://nyzhi-hero.nyzhi.workers.dev/hero.svg" />
+    <img src="https://nyzhi-hero.nyzhi.workers.dev/hero.svg" alt="nyzhi" width="720" />
   </picture>
 </p>
 
