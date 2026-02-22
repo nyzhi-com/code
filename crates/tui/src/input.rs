@@ -1260,6 +1260,112 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/enable_exa" {
+                // Check if already configured
+                let config_check = nyzhi_config::Config::load().ok();
+                let already = config_check
+                    .as_ref()
+                    .map(|c| c.mcp.servers.contains_key("exa"))
+                    .unwrap_or(false);
+
+                if already {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Exa is already configured in your config.".to_string(),
+                    });
+                } else {
+                    use crate::components::text_prompt::{TextPromptKind, TextPromptState};
+                    app.text_prompt = Some(TextPromptState::new(
+                        TextPromptKind::ExaApiKey,
+                        "Enable Exa Web Search",
+                        &[
+                            "Exa provides AI-powered web search with",
+                            "clean, structured results.",
+                            "Get your API key at: dashboard.exa.ai",
+                        ],
+                        "Paste your API key from dashboard.exa.ai",
+                        true,
+                    ));
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/doctor" {
+                let results = nyzhi_core::diagnostics::run_diagnostics(
+                    &app.provider_name,
+                    &tool_ctx.project_root,
+                    0, // MCP count approximation
+                    _registry.names().len(),
+                );
+                let output = nyzhi_core::diagnostics::format_diagnostics(&results);
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: output,
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/bug" {
+                let report = nyzhi_core::diagnostics::generate_bug_report(
+                    &app.provider_name,
+                    &app.model_name,
+                    &format!("{}", agent_config.trust.mode),
+                    &tool_ctx.session_id,
+                );
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: report,
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/status" {
+                let usage = &app.session_usage;
+                let elapsed = app.session_start.elapsed();
+                let mins = elapsed.as_secs() / 60;
+                let secs = elapsed.as_secs() % 60;
+                let content = format!(
+                    "Session Status\n\n\
+                     Provider: {}\n\
+                     Model: {}\n\
+                     Trust mode: {}\n\
+                     Output style: {}\n\
+                     Thinking: {}\n\
+                     Session duration: {mins}m {secs}s\n\
+                     Token usage:\n\
+                       Input:  {} (cached read: {}, cached write: {})\n\
+                       Output: {}\n\
+                       Cost:   ${:.4}\n\
+                     Hooks: {} configured\n\
+                     Messages: {} items",
+                    app.provider_name,
+                    app.model_name,
+                    agent_config.trust.mode,
+                    app.output_style,
+                    if agent_config.thinking_enabled { "on" } else { "off" },
+                    usage.total_input_tokens,
+                    usage.total_cache_read_tokens,
+                    usage.total_cache_creation_tokens,
+                    usage.total_output_tokens,
+                    usage.total_cost_usd,
+                    app.hooks_config.len(),
+                    app.items.len(),
+                );
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content,
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/style" || input.starts_with("/style ") {
                 let arg = input.strip_prefix("/style").unwrap().trim();
                 match arg {

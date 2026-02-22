@@ -97,6 +97,7 @@ pub struct App {
     pub theme: Theme,
     pub spinner: SpinnerState,
     pub session_usage: SessionUsage,
+    pub session_start: std::time::Instant,
     pub workspace: WorkspaceContext,
     pub mcp_manager: Option<std::sync::Arc<nyzhi_core::mcp::McpManager>>,
     pub pending_approval:
@@ -104,6 +105,7 @@ pub struct App {
     pub pending_images: Vec<PendingImage>,
     pub trust_mode: nyzhi_config::TrustMode,
     pub selector: Option<crate::components::selector::SelectorState>,
+    pub text_prompt: Option<crate::components::text_prompt::TextPromptState>,
     pub wants_editor: bool,
     pub history: crate::history::InputHistory,
     pub history_search: Option<crate::history::HistorySearch>,
@@ -151,12 +153,14 @@ impl App {
             theme: Theme::from_config(config),
             spinner: SpinnerState::new(),
             session_usage: SessionUsage::default(),
+            session_start: std::time::Instant::now(),
             workspace,
             mcp_manager: None,
             pending_approval: None,
             pending_images: Vec::new(),
             trust_mode: nyzhi_config::TrustMode::Off,
             selector: None,
+            text_prompt: None,
             wants_editor: false,
             history: crate::history::InputHistory::new(
                 nyzhi_config::Config::data_dir().join("history"),
@@ -411,7 +415,9 @@ impl App {
                     }
                 }
                 Event::Key(key) => {
-                    if self.selector.is_some() {
+                    if self.text_prompt.is_some() {
+                        self.handle_text_prompt_key(key, config).await;
+                    } else if self.selector.is_some() {
                         self.handle_selector_key(key, &mut model_info_idx);
                     } else if key.code == KeyCode::Char('c')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
@@ -1033,6 +1039,103 @@ impl App {
             SelectorAction::None => {}
         }
         let _ = model_info_idx;
+    }
+
+    async fn handle_text_prompt_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        _config: &nyzhi_config::Config,
+    ) {
+        use crate::components::text_prompt::{TextPromptAction, TextPromptKind};
+
+        let action = if let Some(prompt) = &mut self.text_prompt {
+            prompt.handle_key(key)
+        } else {
+            return;
+        };
+
+        match action {
+            TextPromptAction::Submit(value) => {
+                let kind = self.text_prompt.as_ref().unwrap().kind;
+                match kind {
+                    TextPromptKind::ExaApiKey => {
+                        self.text_prompt = None;
+                        self.handle_exa_setup(value).await;
+                    }
+                }
+            }
+            TextPromptAction::Cancel => {
+                self.text_prompt = None;
+                self.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: "Cancelled".to_string(),
+                });
+            }
+            TextPromptAction::None => {}
+        }
+    }
+
+    async fn handle_exa_setup(&mut self, api_key: String) {
+        let mut env = std::collections::HashMap::new();
+        env.insert("EXA_API_KEY".to_string(), api_key);
+        let exa_config = nyzhi_config::McpServerConfig::Stdio {
+            command: "npx".to_string(),
+            args: vec!["-y".to_string(), "exa-mcp-server".to_string()],
+            env,
+        };
+
+        match nyzhi_config::Config::load() {
+            Ok(mut global_config) => {
+                global_config
+                    .mcp
+                    .servers
+                    .insert("exa".to_string(), exa_config.clone());
+                if let Err(e) = global_config.save() {
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Failed to save config: {e}"),
+                    });
+                    return;
+                }
+            }
+            Err(e) => {
+                self.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!("Failed to load config: {e}"),
+                });
+                return;
+            }
+        }
+
+        if let Some(mcp) = &self.mcp_manager {
+            match mcp.connect_server("exa", &exa_config).await {
+                Ok(tool_count) => {
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!(
+                            "Exa web search enabled! {tool_count} tool(s) registered.\n\
+                             Restart nyzhi to fully activate Exa tools in the current session."
+                        ),
+                    });
+                }
+                Err(e) => {
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!(
+                            "Exa config saved, but live connection failed: {e}\n\
+                             Restart nyzhi to connect."
+                        ),
+                    });
+                }
+            }
+        } else {
+            self.items.push(DisplayItem::Message {
+                role: "system".to_string(),
+                content: "Exa config saved to ~/.config/nyzhi/config.toml.\n\
+                         Restart nyzhi to enable Exa web search tools."
+                    .to_string(),
+            });
+        }
     }
 
     pub fn open_theme_selector(&mut self) {

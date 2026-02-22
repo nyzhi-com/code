@@ -172,6 +172,37 @@ impl McpManager {
         Ok(output)
     }
 
+    /// Hot-add a single MCP server at runtime. Returns the number of tools discovered.
+    pub async fn connect_server(&self, name: &str, config: &McpServerConfig) -> Result<usize> {
+        let conn = Self::connect(name, config).await?;
+        let tool_count = conn.tools.len();
+        tracing::info!(
+            server = %name,
+            tools = tool_count,
+            "MCP server hot-connected"
+        );
+        self.connections.write().await.push(conn);
+        Ok(tool_count)
+    }
+
+    /// Returns tool summaries suitable for prompt injection.
+    pub fn tool_summaries(&self) -> Vec<crate::prompt::McpToolSummary> {
+        let conns = self.connections.try_read();
+        match conns {
+            Ok(conns) => conns
+                .iter()
+                .flat_map(|c| {
+                    c.tools.iter().map(|t| crate::prompt::McpToolSummary {
+                        server_name: c.name.clone(),
+                        tool_name: t.name.to_string(),
+                        description: t.description.as_deref().unwrap_or("").to_string(),
+                    })
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        }
+    }
+
     pub async fn server_info_list(&self) -> Vec<McpServerInfo> {
         let conns = self.connections.read().await;
         conns

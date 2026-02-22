@@ -231,7 +231,7 @@ fn parse_ddg_results(html: &str, max: usize) -> Vec<SearchResult> {
         };
 
         let clean_url = if url.starts_with("//duckduckgo.com/l/?") {
-            extract_between(&url, "uddg=", "&")
+            extract_between(url, "uddg=", "&")
                 .map(|u| urlencoding::decode(u).unwrap_or_default().into_owned())
                 .unwrap_or_else(|| url.to_string())
         } else {

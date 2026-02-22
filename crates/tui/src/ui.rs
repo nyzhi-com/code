@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
 
 use crate::app::App;
-use crate::components::{chat, footer, input_box, selector, welcome};
+use crate::components::{chat, footer, input_box, selector, text_prompt, welcome};
 use crate::spinner::SpinnerState;
 use crate::theme::Theme;
 
@@ -38,5 +38,9 @@ pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState)
 
     if let Some(sel) = &app.selector {
         selector::draw(frame, sel, theme);
+    }
+
+    if let Some(prompt) = &app.text_prompt {
+        text_prompt::draw(frame, prompt, theme);
     }
 }
