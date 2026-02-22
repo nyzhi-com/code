@@ -1,0 +1,37 @@
+name: Documentation
+description: Report missing, incorrect, or unclear documentation
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the docs. Please share what is unclear or missing.
+
+  - type: input
+    id: page
+    attributes:
+      label: Page or file
+      description: Link to the doc page or file path if known.
+      placeholder: "https://code.nyzhi.com/docs/tools or docs/tools.md"
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing?
+      description: Describe what you expected to find and what was unclear.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested
+    attributes:
+      label: Suggested improvement
+      description: Propose wording, examples, or structure changes.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have checked existing documentation and issues
+          required: true

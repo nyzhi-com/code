@@ -1,0 +1,14 @@
+# Default ownership for all files.
+* @nyzhi-com
+
+# Core crates.
+/crates/core/ @nyzhi-com
+/crates/provider/ @nyzhi-com
+/crates/auth/ @nyzhi-com
+/crates/tui/ @nyzhi-com
+/crates/config/ @nyzhi-com
+/crates/cli/ @nyzhi-com
+
+# Project infrastructure and docs.
+/.github/ @nyzhi-com
+/docs/ @nyzhi-com

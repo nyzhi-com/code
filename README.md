@@ -10,7 +10,8 @@
   <a href="https://code.nyzhi.com/docs"><strong>Documentation</strong></a> &ensp;&middot;&ensp;
   <a href="#install"><strong>Install</strong></a> &ensp;&middot;&ensp;
   <a href="#quick-start"><strong>Quick Start</strong></a> &ensp;&middot;&ensp;
-  <a href="https://github.com/nyzhi-com/code/releases"><strong>Releases</strong></a>
+  <a href="https://github.com/nyzhi-com/code/releases"><strong>Releases</strong></a> &ensp;&middot;&ensp;
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
 </p>
 
 <br>
@@ -358,6 +359,16 @@ Full docs at **[code.nyzhi.com/docs](https://code.nyzhi.com/docs)** or in the [`
 
 </td></tr>
 </table>
+
+---
+
+## Community
+
+- [Contributing Guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Support](SUPPORT.md)
+- [Security Policy](SECURITY.md)
+- [Issue Tracker](https://github.com/nyzhi-com/code/issues)
 
 ---
 

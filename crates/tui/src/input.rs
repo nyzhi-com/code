@@ -1874,11 +1874,15 @@ pub async fn handle_key(
             }
         }
         KeyCode::Char(c) => {
-            app.input.insert(app.cursor_pos, c);
-            app.cursor_pos += 1;
-            app.history.reset_cursor();
-            app.completion = None;
-            try_open_completion(app, &tool_ctx.cwd);
+            if c == '/' && app.input.is_empty() {
+                app.open_command_selector();
+            } else {
+                app.input.insert(app.cursor_pos, c);
+                app.cursor_pos += 1;
+                app.history.reset_cursor();
+                app.completion = None;
+                try_open_completion(app, &tool_ctx.cwd);
+            }
         }
         KeyCode::Backspace => {
             if app.cursor_pos > 0 {

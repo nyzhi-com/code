@@ -151,6 +151,7 @@ pub struct App {
     update_info: Option<nyzhi_core::updater::UpdateInfo>,
     update_done_rx: Option<tokio::sync::mpsc::Receiver<anyhow::Result<nyzhi_core::updater::UpdateResult>>>,
     pub thinking_level: Option<String>,
+    pub pending_command_dispatch: bool,
     pub pending_oauth: Option<(String, String)>,
     oauth_rx: Option<tokio::sync::oneshot::Receiver<(String, Result<nyzhi_auth::token_store::StoredToken>)>>,
     oauth_msg_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
@@ -218,6 +219,7 @@ impl App {
             update_info: None,
             update_done_rx: None,
             thinking_level: None,
+            pending_command_dispatch: false,
             pending_oauth: None,
             oauth_rx: None,
             oauth_msg_rx: None,
@@ -1361,6 +1363,13 @@ impl App {
                         }
                         return;
                     }
+                    SelectorKind::Command => {
+                        self.selector = None;
+                        self.input = value;
+                        self.cursor_pos = self.input.len();
+                        self.pending_command_dispatch = true;
+                        return;
+                    }
                     SelectorKind::ApiKeyInput => {
                         let provider_id = self.selector.as_ref()
                             .and_then(|s| s.context_value.clone())
@@ -1530,10 +1539,14 @@ impl App {
         use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
 
         let registry = nyzhi_provider::ModelRegistry::new();
-        let provider_order = ["openai", "anthropic", "gemini", "deepseek", "groq"];
+        let mut all_providers = registry.providers();
+        let priority = ["openai", "anthropic", "gemini", "antigravity", "deepseek", "groq"];
+        all_providers.sort_by_key(|p| {
+            priority.iter().position(|&x| x == *p).unwrap_or(priority.len())
+        });
         let mut items = Vec::new();
 
-        for provider_id in &provider_order {
+        for provider_id in &all_providers {
             let models = registry.models_for(provider_id);
             if models.is_empty() {
                 continue;
@@ -1722,6 +1735,42 @@ impl App {
         );
         state.context_value = Some(provider_id.to_string());
         self.selector = Some(state);
+    }
+
+    pub fn open_command_selector(&mut self) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let categories: &[(&str, &[&str])] = &[
+            ("Provider", &["/model", "/connect", "/login"]),
+            ("Agent", &["/autopilot", "/team", "/qa", "/persist", "/think", "/style", "/trust"]),
+            ("Session", &["/clear", "/compact", "/resume", "/sessions", "/export", "/search", "/retry"]),
+            ("Project", &["/init", "/doctor", "/verify", "/hooks", "/mcp", "/commands", "/learn"]),
+            ("View", &["/status", "/context", "/changes", "/todo", "/plan", "/notepad", "/bg"]),
+            ("UI", &["/theme", "/accent", "/notify", "/image"]),
+            ("System", &["/help", "/bug", "/editor", "/enable_exa", "/undo", "/exit"]),
+        ];
+
+        let cmd_defs: std::collections::HashMap<&str, &str> = crate::completion::SLASH_COMMANDS
+            .iter()
+            .map(|c| (c.name, c.description))
+            .collect();
+
+        let mut items = Vec::new();
+        for (cat_name, cmds) in categories {
+            items.push(SelectorItem::header(cat_name));
+            for &cmd in *cmds {
+                let desc = cmd_defs.get(cmd).copied().unwrap_or("");
+                let label = format!("{:<18} {}", cmd, desc);
+                items.push(SelectorItem::entry(&label, cmd));
+            }
+        }
+
+        self.selector = Some(SelectorState::new(
+            SelectorKind::Command,
+            "Commands",
+            items,
+            "",
+        ));
     }
 
     async fn respond_approval(&mut self, approved: bool) {

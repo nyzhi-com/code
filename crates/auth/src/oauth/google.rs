@@ -11,7 +11,7 @@ const CLIENT_ID: &str = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.goog
 const CLIENT_SECRET: &str = "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";
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const SCOPES: &str = "openid+email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform";
+const SCOPES: &str = "openid+email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgenerative-language+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloudaicompanion";
 
 #[derive(Debug, Deserialize)]
 struct TokenResponse {

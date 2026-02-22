@@ -16,6 +16,8 @@ cargo fmt --all -- --check
 Requires **Rust 1.75+**. The repo includes a `rust-toolchain.toml` that pins to
 stable with `rustfmt` and `clippy` components.
 
+Need troubleshooting help before contributing? See [SUPPORT.md](SUPPORT.md).
+
 ## Development Workflow
 
 1. Fork the repository and create a branch from `main`.
@@ -53,6 +55,18 @@ crates/
 For larger changes (new features, architectural shifts), please open an issue
 first to discuss the approach.
 
+## Issue and PR Workflows
+
+- **Issue forms**: bug, feature, and documentation templates are available in
+  GitHub Issues.
+- **Automatic issue triage**: new and reopened issues are labeled
+  `needs-triage`.
+- **Automatic PR labeling**: pull requests are labeled by changed paths
+  (for example: `core`, `provider`, `docs`, `ci`).
+- **Automatic stale management**: inactive issues and PRs are marked stale first
+  and only closed after an additional inactivity period.
+- **Automatic reviewers**: CODEOWNERS routes review requests to maintainers.
+
 ## Pull Request Guidelines
 
 - Keep PRs focused on a single concern.
@@ -88,6 +102,14 @@ Open an issue using the **Bug Report** template. Include:
 - Steps to reproduce
 - Expected vs actual behavior
 - Relevant logs or error output
+
+If your report is about docs quality rather than behavior, use the
+**Documentation** issue template.
+
+## Code of Conduct
+
+This project follows [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). By participating,
+you agree to uphold it.
 
 ## Security
 

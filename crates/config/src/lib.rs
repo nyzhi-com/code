@@ -443,7 +443,7 @@ pub const BUILT_IN_PROVIDERS: &[ProviderDef] = &[
     ProviderDef { id: "claude-sdk", name: "Claude Agent SDK", env_var: "ANTHROPIC_API_KEY",
                   default_base_url: "",
                   api_style: "claude-sdk", category: "agents", supports_oauth: false },
-    ProviderDef { id: "codex", name: "OpenAI Codex CLI", env_var: "OPENAI_API_KEY",
+    ProviderDef { id: "codex", name: "OpenAI Codex CLI", env_var: "CODEX_API_KEY",
                   default_base_url: "",
                   api_style: "codex", category: "agents", supports_oauth: true },
     ProviderDef { id: "groq", name: "Groq", env_var: "GROQ_API_KEY",

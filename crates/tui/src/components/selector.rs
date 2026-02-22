@@ -35,6 +35,7 @@ pub enum SelectorKind {
     Provider,
     ConnectMethod,
     ApiKeyInput,
+    Command,
 }
 
 #[derive(Debug, Clone)]
@@ -166,7 +167,7 @@ impl SelectorState {
                 }
                 SelectorAction::None
             }
-            KeyCode::Char(c) if matches!(self.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput) => {
+            KeyCode::Char(c) if matches!(self.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput | SelectorKind::Command) => {
                 self.search.push(c);
                 let filtered = self.filtered_indices();
                 if let Some(&first) = filtered.iter().find(|&&i| !self.items[i].is_header) {
@@ -184,9 +185,11 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
     let filtered = selector.filtered_indices();
 
     let item_count = filtered.len() as u16;
-    let search_rows = if matches!(selector.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput) { 2 } else { 0 };
+    let has_search = matches!(selector.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput | SelectorKind::Command);
+    let search_rows = if has_search { 2 } else { 0 };
     let popup_h = (item_count + 4 + search_rows).min(area.height.saturating_sub(4));
-    let popup_w = 50u16.min(area.width.saturating_sub(8));
+    let base_w = if matches!(selector.kind, SelectorKind::Command) { 60u16 } else { 50u16 };
+    let popup_w = base_w.min(area.width.saturating_sub(8));
 
     let x = area.x + (area.width.saturating_sub(popup_w)) / 2;
     let y = area.y + (area.height.saturating_sub(popup_h)) / 2;
@@ -211,7 +214,7 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
 
     let mut content_area = inner;
 
-    if matches!(selector.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput) {
+    if has_search {
         let search_area = Rect::new(content_area.x, content_area.y, content_area.width, 1);
         let search_text = if selector.search.is_empty() {
             if selector.kind == SelectorKind::ApiKeyInput {

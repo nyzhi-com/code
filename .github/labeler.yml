@@ -1,0 +1,62 @@
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "README.md"
+          - "CONTRIBUTING.md"
+          - "SECURITY.md"
+          - "SUPPORT.md"
+          - "CODE_OF_CONDUCT.md"
+          - "docs/**"
+          - "**/*.md"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/dependabot.yml"
+          - ".github/labeler.yml"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Cargo.toml"
+          - "Cargo.lock"
+          - "crates/**/Cargo.toml"
+          - "npm/**/package.json"
+          - "npm/**/package-lock.json"
+
+core:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "crates/core/**"
+
+provider:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "crates/provider/**"
+
+auth:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "crates/auth/**"
+
+tui:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "crates/tui/**"
+
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "crates/config/**"
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "crates/cli/**"
+
+release:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "infra/releases-worker/**"
+          - ".github/workflows/release.yml"

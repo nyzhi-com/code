@@ -1,0 +1,63 @@
+name: Sync Labels
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/labels.yml"
+      - ".github/workflows/pr-labeler.yml"
+      - ".github/labeler.yml"
+      - ".github/ISSUE_TEMPLATE/*.yml"
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    name: Ensure standard labels exist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upsert labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: "bug", color: "d73a4a", description: "Something is not working" },
+              { name: "enhancement", color: "a2eeef", description: "New feature or request" },
+              { name: "documentation", color: "0e8a16", description: "Documentation and markdown updates" },
+              { name: "security", color: "b60205", description: "Security-related work" },
+              { name: "ci", color: "5319e7", description: "CI and workflow changes" },
+              { name: "dependencies", color: "1d76db", description: "Dependency updates" },
+              { name: "core", color: "fbca04", description: "Core crate changes" },
+              { name: "provider", color: "0366d6", description: "Provider crate changes" },
+              { name: "auth", color: "d73a4a", description: "Authentication crate changes" },
+              { name: "tui", color: "c2e0c6", description: "Terminal UI crate changes" },
+              { name: "config", color: "bfdadc", description: "Configuration crate changes" },
+              { name: "cli", color: "f9d0c4", description: "CLI crate changes" },
+              { name: "release", color: "0052cc", description: "Release tooling and packaging changes" },
+              { name: "needs-triage", color: "ededed", description: "Needs maintainer triage" },
+              { name: "stale", color: "ffffff", description: "No recent activity" }
+            ];
+
+            const { owner, repo } = context.repo;
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: label.name });
+                await github.rest.issues.updateLabel({
+                  owner,
+                  repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description
+                });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  ...label
+                });
+              }
+            }
