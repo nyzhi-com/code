@@ -1,11 +1,11 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use nyzhi_core::agent::{AgentConfig, AgentEvent};
+use nyzhi_core::agent::AgentConfig;
 use nyzhi_core::conversation::Thread;
 use nyzhi_core::tools::{ToolContext, ToolRegistry};
 use nyzhi_provider::{ContentPart, MessageContent, ModelInfo, Provider};
 use tokio::sync::broadcast;
 
-use crate::app::{App, AppMode, DisplayItem, PendingImage};
+use crate::app::{App, AppMode, DisplayItem, PendingImage, TurnRequest};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_key(
@@ -14,8 +14,8 @@ pub async fn handle_key(
     provider: &dyn Provider,
     thread: &mut Thread,
     agent_config: &mut AgentConfig,
-    event_tx: &broadcast::Sender<AgentEvent>,
-    registry: &ToolRegistry,
+    _event_tx: &broadcast::Sender<nyzhi_core::agent::AgentEvent>,
+    _registry: &ToolRegistry,
     tool_ctx: &ToolContext,
     model_info: Option<&ModelInfo>,
     model_info_idx: &mut Option<usize>,
@@ -1190,6 +1190,67 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/bg" || input == "/background" || input.starts_with("/bg ") || input.starts_with("/background ") {
+                let arg = input
+                    .strip_prefix("/background")
+                    .or_else(|| input.strip_prefix("/bg"))
+                    .unwrap_or("")
+                    .trim();
+                if arg.is_empty() {
+                    if app.background_tasks.is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "No background tasks running.".to_string(),
+                        });
+                    } else {
+                        let mut lines = vec![format!("Background tasks ({}):", app.background_tasks.len())];
+                        for bg in &app.background_tasks {
+                            let elapsed = bg.started.elapsed();
+                            lines.push(format!(
+                                "  #{}: {} ({:.1}s)",
+                                bg.id, bg.label, elapsed.as_secs_f64()
+                            ));
+                        }
+                        lines.push(String::new());
+                        lines.push("Use /bg kill <id> to cancel a task.".to_string());
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: lines.join("\n"),
+                        });
+                    }
+                } else if let Some(rest) = arg.strip_prefix("kill") {
+                    let rest = rest.trim();
+                    if let Ok(id) = rest.parse::<usize>() {
+                        if let Some(pos) = app.background_tasks.iter().position(|b| b.id == id) {
+                            let bg = app.background_tasks.remove(pos);
+                            bg.join_handle.abort();
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Killed background task #{id}: {}", bg.label),
+                            });
+                        } else {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("No background task with id #{id}"),
+                            });
+                        }
+                    } else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Usage: /bg kill <id>".to_string(),
+                        });
+                    }
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /bg [kill <id>]".to_string(),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/help" {
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
@@ -1221,6 +1282,8 @@ pub async fn handle_key(
                         "  /changes        List all file changes in this session",
                         "  /export [path]  Export conversation as markdown",
                         "  /search <q>     Search session (Ctrl+N/P next/prev, Esc clear)",
+                        "  /bg             List background tasks",
+                        "  /bg kill <id>   Cancel a background task",
                         "  /notify         Show notification settings",
                         "  /notify bell|desktop on|off  Toggle notifications",
                         "  /notify duration <ms>        Set min turn duration threshold",
@@ -1249,6 +1312,11 @@ pub async fn handle_key(
                         "  up/down         Navigate input history (single-line)",
                         "  ctrl+r          Reverse search history",
                         "",
+                        "Background:",
+                        "  & <prompt>      Run prompt in background",
+                        "  ctrl+b          Move current task to background (during streaming)",
+                        "  ctrl+f          Kill all background tasks (double-press)",
+                        "",
                         "Shortcuts:",
                         "  ctrl+t          Open theme picker",
                         "  ctrl+a          Open accent picker",
@@ -1268,27 +1336,18 @@ pub async fn handle_key(
                     let retry_input = last.clone();
                     app.input.clear();
                     app.cursor_pos = 0;
+                    let label = truncate_label(&retry_input);
                     app.items.push(DisplayItem::Message {
                         role: "user".to_string(),
                         content: format!("[retry] {retry_input}"),
                     });
                     app.mode = AppMode::Streaming;
-                    let event_tx = event_tx.clone();
-                    let result = nyzhi_core::agent::run_turn(
-                        provider,
-                        thread,
-                        &retry_input,
-                        agent_config,
-                        &event_tx,
-                        registry,
-                        tool_ctx,
-                        model_info,
-                        &mut app.session_usage,
-                    )
-                    .await;
-                    if let Err(e) = result {
-                        let _ = event_tx.send(AgentEvent::Error(e.to_string()));
-                    }
+                    app.turn_request = Some(TurnRequest {
+                        input: retry_input,
+                        content: None,
+                        is_background: false,
+                        label,
+                    });
                 } else {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
@@ -1311,6 +1370,7 @@ pub async fn handle_key(
                 let expanded = nyzhi_core::commands::expand_template(&cmd.prompt_template, args);
                 app.last_prompt = Some(expanded.clone());
                 app.history.push(input.clone());
+                let label = truncate_label(format!("/{} {args}", cmd.name).trim());
                 app.items.push(DisplayItem::Message {
                     role: "user".to_string(),
                     content: format!("/{} {args}", cmd.name).trim().to_string(),
@@ -1318,27 +1378,27 @@ pub async fn handle_key(
                 app.input.clear();
                 app.cursor_pos = 0;
                 app.mode = AppMode::Streaming;
-                let event_tx = event_tx.clone();
-                let result = nyzhi_core::agent::run_turn(
-                    provider,
-                    thread,
-                    &expanded,
-                    agent_config,
-                    &event_tx,
-                    registry,
-                    tool_ctx,
-                    model_info,
-                    &mut app.session_usage,
-                )
-                .await;
-                if let Err(e) = result {
-                    let _ = event_tx.send(AgentEvent::Error(e.to_string()));
-                }
+                app.turn_request = Some(TurnRequest {
+                    input: expanded,
+                    content: None,
+                    is_background: false,
+                    label,
+                });
+                return;
+            }
+
+            let is_background = input.starts_with('&');
+            let input = if is_background {
+                input[1..].trim().to_string()
+            } else {
+                input
+            };
+            if input.is_empty() {
                 return;
             }
 
             app.last_prompt = Some(input.clone());
-            app.history.push(input.clone());
+            app.history.push(if is_background { format!("&{input}") } else { input.clone() });
 
             let mentions = nyzhi_core::context_files::parse_mentions(&input);
             let context_files = if mentions.is_empty() {
@@ -1362,6 +1422,9 @@ pub async fn handle_key(
                     .collect();
                 display_content = format!("{input}\n[images: {}]", names.join(", "));
             }
+            if is_background {
+                display_content = format!("[bg] {display_content}");
+            }
 
             app.items.push(DisplayItem::Message {
                 role: "user".to_string(),
@@ -1383,42 +1446,32 @@ pub async fn handle_key(
                 input.clone()
             };
 
+            let label = truncate_label(&input);
+            let content = if has_images {
+                let images = std::mem::take(&mut app.pending_images);
+                Some(build_multimodal_content(&agent_input, &images))
+            } else {
+                None
+            };
+
             app.input.clear();
             app.cursor_pos = 0;
-            app.mode = AppMode::Streaming;
 
-            let event_tx = event_tx.clone();
-            let result = if has_images {
-                let images = std::mem::take(&mut app.pending_images);
-                let content = build_multimodal_content(&agent_input, &images);
-                nyzhi_core::agent::run_turn_with_content(
-                    provider,
-                    thread,
+            if is_background {
+                app.turn_request = Some(TurnRequest {
+                    input: agent_input,
                     content,
-                    agent_config,
-                    &event_tx,
-                    registry,
-                    tool_ctx,
-                    model_info,
-                    &mut app.session_usage,
-                )
-                .await
+                    is_background: true,
+                    label,
+                });
             } else {
-                nyzhi_core::agent::run_turn(
-                    provider,
-                    thread,
-                    &agent_input,
-                    agent_config,
-                    &event_tx,
-                    registry,
-                    tool_ctx,
-                    model_info,
-                    &mut app.session_usage,
-                )
-                .await
-            };
-            if let Err(e) = result {
-                let _ = event_tx.send(AgentEvent::Error(e.to_string()));
+                app.mode = AppMode::Streaming;
+                app.turn_request = Some(TurnRequest {
+                    input: agent_input,
+                    content,
+                    is_background: false,
+                    label,
+                });
             }
         }
         KeyCode::Char(c) => {
@@ -1669,4 +1722,13 @@ fn build_multimodal_content(text: &str, images: &[PendingImage]) -> MessageConte
         text: text.to_string(),
     });
     MessageContent::Parts(parts)
+}
+
+fn truncate_label(s: &str) -> String {
+    let first_line = s.lines().next().unwrap_or(s);
+    if first_line.len() > 60 {
+        format!("{}...", &first_line[..57])
+    } else {
+        first_line.to_string()
+    }
 }

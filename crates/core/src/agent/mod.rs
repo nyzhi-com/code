@@ -175,6 +175,7 @@ impl std::fmt::Debug for AgentEvent {
     }
 }
 
+#[derive(Clone)]
 pub struct AgentConfig {
     pub name: String,
     pub system_prompt: String,

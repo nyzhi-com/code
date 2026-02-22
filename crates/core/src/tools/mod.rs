@@ -41,6 +41,7 @@ pub trait Tool: Send + Sync {
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult>;
 }
 
+#[derive(Clone)]
 pub struct ToolContext {
     pub session_id: String,
     pub cwd: PathBuf,

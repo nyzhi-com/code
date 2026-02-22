@@ -1,5 +1,6 @@
 use std::io;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::Result;
 use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyModifiers};
@@ -9,7 +10,7 @@ use nyzhi_core::agent::{AgentConfig, AgentEvent, SessionUsage};
 use nyzhi_core::conversation::Thread;
 use nyzhi_core::tools::{ToolContext, ToolRegistry};
 use nyzhi_core::workspace::WorkspaceContext;
-use nyzhi_provider::Provider;
+use nyzhi_provider::{MessageContent, Provider};
 use ratatui::prelude::*;
 use tokio::sync::broadcast;
 
@@ -55,6 +56,32 @@ pub struct PendingImage {
     pub size_bytes: usize,
 }
 
+pub struct TurnRequest {
+    pub input: String,
+    pub content: Option<MessageContent>,
+    pub is_background: bool,
+    pub label: String,
+}
+
+pub struct TurnResult {
+    pub thread: Thread,
+    pub session_usage: SessionUsage,
+    pub result: anyhow::Result<()>,
+}
+
+pub struct ForegroundTask {
+    pub join_handle: tokio::task::JoinHandle<TurnResult>,
+    pub thread_snapshot: Thread,
+    pub label: String,
+}
+
+pub struct BackgroundTask {
+    pub id: usize,
+    pub label: String,
+    pub join_handle: tokio::task::JoinHandle<TurnResult>,
+    pub started: std::time::Instant,
+}
+
 pub struct App {
     pub mode: AppMode,
     pub input: String,
@@ -93,6 +120,11 @@ pub struct App {
     pub search_matches: Vec<usize>,
     pub search_match_idx: usize,
     pub notify: nyzhi_config::NotifyConfig,
+    pub turn_request: Option<TurnRequest>,
+    pub foreground_task: Option<ForegroundTask>,
+    pub background_tasks: Vec<BackgroundTask>,
+    pub background_next_id: usize,
+    pub ctrl_f_pending: bool,
 }
 
 impl App {
@@ -141,6 +173,11 @@ impl App {
             search_matches: Vec::new(),
             search_match_idx: 0,
             notify: config.notify.clone(),
+            turn_request: None,
+            foreground_task: None,
+            background_tasks: Vec::new(),
+            background_next_id: 1,
+            ctrl_f_pending: false,
         }
     }
 
@@ -215,7 +252,7 @@ impl App {
         let mut terminal = Terminal::new(backend)?;
 
         let (event_tx, mut event_rx) = broadcast::channel::<AgentEvent>(256);
-        let mut thread = if let Some((loaded_thread, loaded_meta)) = self.initial_session.take() {
+        let mut thread: Option<Thread> = Some(if let Some((loaded_thread, loaded_meta)) = self.initial_session.take() {
             for msg in loaded_thread.messages() {
                 let role = match msg.role {
                     nyzhi_provider::Role::User => "user",
@@ -243,7 +280,7 @@ impl App {
             loaded_thread
         } else {
             Thread::new()
-        };
+        });
 
         let mcp_tool_summaries = if let Some(mgr) = &self.mcp_manager {
             let mut summaries = Vec::new();
@@ -303,7 +340,7 @@ impl App {
             nyzhi_core::tools::change_tracker::ChangeTracker::new(),
         ));
         let tool_ctx = ToolContext {
-            session_id: thread.id.clone(),
+            session_id: thread.as_ref().unwrap().id.clone(),
             cwd,
             project_root: self.workspace.project_root.clone(),
             depth: 0,
@@ -343,7 +380,7 @@ impl App {
             nyzhi_core::tools::resume_agent::ResumeAgentTool::new(agent_manager.clone()),
         ));
 
-        let registry = registry;
+        let registry = Arc::new(registry);
 
         loop {
             self.spinner.tick();
@@ -377,9 +414,63 @@ impl App {
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
                         self.items.clear();
-                        thread.clear();
+                        if let Some(t) = thread.as_mut() {
+                            t.clear();
+                        }
                         self.input.clear();
                         self.cursor_pos = 0;
+                    } else if key.code == KeyCode::Char('b')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                        && matches!(self.mode, AppMode::Streaming)
+                    {
+                        if let Some(fg) = self.foreground_task.take() {
+                            thread = Some(fg.thread_snapshot);
+                            let id = self.background_next_id;
+                            self.background_next_id += 1;
+                            let label = fg.label.clone();
+                            self.background_tasks.push(BackgroundTask {
+                                id,
+                                label: fg.label,
+                                join_handle: fg.join_handle,
+                                started: std::time::Instant::now(),
+                            });
+                            if !self.current_stream.is_empty() {
+                                self.current_stream.clear();
+                            }
+                            self.stream_start = None;
+                            self.stream_token_count = 0;
+                            self.turn_start = None;
+                            self.mode = AppMode::Input;
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Task moved to background (#{id}: {label})"),
+                            });
+                        }
+                    } else if key.code == KeyCode::Char('f')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                        && matches!(self.mode, AppMode::Input)
+                        && !self.background_tasks.is_empty()
+                    {
+                        if self.ctrl_f_pending {
+                            let count = self.background_tasks.len();
+                            for bg in self.background_tasks.drain(..) {
+                                bg.join_handle.abort();
+                            }
+                            self.ctrl_f_pending = false;
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Killed {count} background task(s)"),
+                            });
+                        } else {
+                            self.ctrl_f_pending = true;
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!(
+                                    "Press Ctrl+F again to kill {} background task(s)",
+                                    self.background_tasks.len()
+                                ),
+                            });
+                        }
                     } else if matches!(self.mode, AppMode::AwaitingApproval) {
                         match key.code {
                             KeyCode::Char('y') | KeyCode::Char('Y') => {
@@ -390,13 +481,18 @@ impl App {
                             }
                             _ => {}
                         }
-                    } else {
+                    } else if let Some(t) = thread.as_mut() {
+                        if key.code != KeyCode::Char('f')
+                            || !key.modifiers.contains(KeyModifiers::CONTROL)
+                        {
+                            self.ctrl_f_pending = false;
+                        }
                         let mi = model_info_idx.map(|i| &provider.supported_models()[i]);
                         handle_key(
                             self,
                             key,
                             &*provider,
-                            &mut thread,
+                            t,
                             &mut agent_config,
                             &event_tx,
                             &registry,
@@ -416,7 +512,162 @@ impl App {
                 Self::open_external_editor(self, &mut terminal)?;
             }
 
+            // --- Spawn turn from request set by handle_key ---
+            if let Some(req) = self.turn_request.take() {
+                let mi_c = model_info_idx.map(|i| provider.supported_models()[i].clone());
+                if req.is_background {
+                    let bg_thread = thread.as_ref().unwrap().clone();
+                    let bg_usage = self.session_usage.clone();
+                    let (bg_event_tx, _) = broadcast::channel::<AgentEvent>(256);
+                    let provider_c = provider.clone();
+                    let registry_c = registry.clone();
+                    let config_c = agent_config.clone();
+                    let tool_ctx_c = tool_ctx.clone();
+                    let join_handle = tokio::spawn(async move {
+                        let mut t = bg_thread;
+                        let mut u = bg_usage;
+                        let result = if let Some(content) = req.content {
+                            nyzhi_core::agent::run_turn_with_content(
+                                &*provider_c, &mut t, content, &config_c,
+                                &bg_event_tx, &registry_c, &tool_ctx_c,
+                                mi_c.as_ref(), &mut u,
+                            ).await
+                        } else {
+                            nyzhi_core::agent::run_turn(
+                                &*provider_c, &mut t, &req.input, &config_c,
+                                &bg_event_tx, &registry_c, &tool_ctx_c,
+                                mi_c.as_ref(), &mut u,
+                            ).await
+                        };
+                        TurnResult { thread: t, session_usage: u, result }
+                    });
+                    let id = self.background_next_id;
+                    self.background_next_id += 1;
+                    self.background_tasks.push(BackgroundTask {
+                        id,
+                        label: req.label.clone(),
+                        join_handle,
+                        started: std::time::Instant::now(),
+                    });
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Background task #{id} started: {}", req.label),
+                    });
+                } else {
+                    let fg_thread = thread.take().unwrap();
+                    let snapshot = fg_thread.clone();
+                    let fg_usage = self.session_usage.clone();
+                    let provider_c = provider.clone();
+                    let registry_c = registry.clone();
+                    let config_c = agent_config.clone();
+                    let event_tx_c = event_tx.clone();
+                    let tool_ctx_c = tool_ctx.clone();
+                    let join_handle = tokio::spawn(async move {
+                        let mut t = fg_thread;
+                        let mut u = fg_usage;
+                        let result = if let Some(content) = req.content {
+                            nyzhi_core::agent::run_turn_with_content(
+                                &*provider_c, &mut t, content, &config_c,
+                                &event_tx_c, &registry_c, &tool_ctx_c,
+                                mi_c.as_ref(), &mut u,
+                            ).await
+                        } else {
+                            nyzhi_core::agent::run_turn(
+                                &*provider_c, &mut t, &req.input, &config_c,
+                                &event_tx_c, &registry_c, &tool_ctx_c,
+                                mi_c.as_ref(), &mut u,
+                            ).await
+                        };
+                        TurnResult { thread: t, session_usage: u, result }
+                    });
+                    self.foreground_task = Some(ForegroundTask {
+                        join_handle,
+                        thread_snapshot: snapshot,
+                        label: req.label,
+                    });
+                }
+            }
+
+            // --- Foreground task completion ---
+            if self.foreground_task.as_ref().is_some_and(|f| f.join_handle.is_finished()) {
+                let fg = self.foreground_task.take().unwrap();
+                match fg.join_handle.await {
+                    Ok(result) => {
+                        self.session_usage = result.session_usage;
+                        thread = Some(result.thread);
+                        if let Err(e) = &result.result {
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Turn error: {e}"),
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Task panicked: {e}"),
+                        });
+                    }
+                }
+            }
+
+            // --- Background task completion ---
+            let mut bg_completed = Vec::new();
+            for (i, bg) in self.background_tasks.iter().enumerate() {
+                if bg.join_handle.is_finished() {
+                    bg_completed.push(i);
+                }
+            }
+            for i in bg_completed.into_iter().rev() {
+                let bg = self.background_tasks.remove(i);
+                let elapsed = bg.started.elapsed();
+                match bg.join_handle.await {
+                    Ok(result) => {
+                        let last_msg = result.thread.messages().last().map(|m| {
+                            let text = m.content.as_text().to_string();
+                            if text.len() > 500 {
+                                format!("{}...", &text[..500])
+                            } else {
+                                text
+                            }
+                        }).unwrap_or_default();
+                        let status = if result.result.is_ok() { "completed" } else { "failed" };
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "Background task #{} {status} ({:.1}s): {}\n{}",
+                                bg.id, elapsed.as_secs_f64(), bg.label,
+                                if last_msg.is_empty() { "(no output)".to_string() } else { last_msg },
+                            ),
+                        });
+                        if let Err(e) = &result.result {
+                            self.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("  Error: {e}"),
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Background task #{} panicked: {e}", bg.id),
+                        });
+                    }
+                }
+            }
+
+            // --- Drain agent events (only display for foreground) ---
+            let has_foreground = self.foreground_task.is_some();
             while let Ok(agent_event) = event_rx.try_recv() {
+                if !has_foreground {
+                    match &agent_event {
+                        AgentEvent::Usage(usage) => {
+                            self.session_usage = usage.clone();
+                        }
+                        _ => continue,
+                    }
+                    continue;
+                }
                 match agent_event {
                     AgentEvent::TextDelta(text) => {
                         if self.turn_start.is_none() {
@@ -644,12 +895,14 @@ impl App {
                                 });
                             }
                         }
-                        if thread.message_count() > 0 {
-                            let _ = nyzhi_core::session::save_session(
-                                &thread,
-                                &self.provider_name,
-                                &self.model_name,
-                            );
+                        if let Some(t) = thread.as_ref() {
+                            if t.message_count() > 0 {
+                                let _ = nyzhi_core::session::save_session(
+                                    t,
+                                    &self.provider_name,
+                                    &self.model_name,
+                                );
+                            }
                         }
                         if !self.hooks_config.is_empty() {
                             let hooks = self.hooks_config.clone();
@@ -690,6 +943,12 @@ impl App {
             }
         }
 
+        for bg in self.background_tasks.drain(..) {
+            bg.join_handle.abort();
+        }
+        if let Some(fg) = self.foreground_task.take() {
+            fg.join_handle.abort();
+        }
         self.history.save();
 
         io::stdout().execute(DisableBracketedPaste)?;

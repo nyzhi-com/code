@@ -28,7 +28,7 @@ fn format_cost(usd: f64) -> String {
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut left = match app.mode {
         AppMode::Input => "enter send".to_string(),
-        AppMode::Streaming => "esc interrupt".to_string(),
+        AppMode::Streaming => "ctrl+b background  esc interrupt".to_string(),
         AppMode::AwaitingApproval => "y approve  n deny".to_string(),
     };
 
@@ -133,6 +133,16 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         None
     };
 
+    let bg_count = app.background_tasks.len();
+    let bg_span = if bg_count > 0 {
+        Some(Span::styled(
+            format!("bg:{bg_count}  "),
+            Style::default().fg(theme.accent).bold(),
+        ))
+    } else {
+        None
+    };
+
     let line = if total <= available {
         let mut spans = vec![
             Span::styled(
@@ -154,6 +164,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         if let Some(ns) = &notify_span {
             spans.push(ns.clone());
         }
+        if let Some(bs) = &bg_span {
+            spans.push(bs.clone());
+        }
         spans.push(Span::styled(
             format!("{right}  "),
             Style::default().fg(theme.text_tertiary),
@@ -170,6 +183,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         }
         if let Some(ns) = &notify_span {
             spans.push(ns.clone());
+        }
+        if let Some(bs) = &bg_span {
+            spans.push(bs.clone());
         }
         spans.push(Span::styled(
             format!("{:>width$}  ", right, width = available.saturating_sub(left_len + 4)),
