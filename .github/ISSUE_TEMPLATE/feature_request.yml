@@ -1,0 +1,56 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please describe the problem and your proposed solution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this feature solve? What's the motivation?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature or change you'd like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative approaches?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of nyzhi does this relate to?
+      options:
+        - CLI / Commands
+        - TUI / Interface
+        - Agent / Tools
+        - Provider / LLM integration
+        - MCP
+        - Configuration
+        - Authentication
+        - Documentation
+        - Other
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: I am willing to submit a PR for this feature
+          required: false

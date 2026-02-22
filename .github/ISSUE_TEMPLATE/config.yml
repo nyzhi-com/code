@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://code.nyzhi.com/docs
+    about: Check the docs before opening an issue — your answer may already be there.
+  - name: Security vulnerability
+    url: https://github.com/nyzhi-com/code/blob/main/SECURITY.md
+    about: Report security vulnerabilities privately. Do not open a public issue.

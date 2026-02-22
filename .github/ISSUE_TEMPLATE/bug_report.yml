@@ -1,0 +1,94 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the sections below
+        so we can reproduce and fix the issue.
+
+  - type: input
+    id: version
+    attributes:
+      label: nyzhi version
+      description: "Output of `nyz --version`"
+      placeholder: "nyzhi 1.0.3"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and architecture
+      placeholder: "macOS 15.2 aarch64 / Ubuntu 24.04 x86_64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the behavior.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened. Include error messages and stack traces if available.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: "Paste any relevant log output. Run with `RUST_LOG=debug nyz ...` for verbose output."
+      render: text
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: LLM Provider
+      description: Which provider were you using when the issue occurred?
+      options:
+        - OpenAI
+        - Anthropic
+        - Gemini
+        - OpenRouter
+        - DeepSeek
+        - Groq
+        - Custom endpoint
+        - Not applicable
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have searched existing issues to avoid duplicates
+          required: true
+        - label: I am using the latest version of nyzhi
+          required: false
