@@ -10,6 +10,7 @@ const SLASH_COMMANDS: &[&str] = &[
     "/commands",
     "/bug",
     "/compact",
+    "/context",
     "/doctor",
     "/editor",
     "/enable_exa",

@@ -3,19 +3,14 @@ use std::path::Path;
 
 use crate::agent_roles::AgentRoleConfig;
 
-/// Parse `.nyzhi/agents/*.md` files into AgentRoleConfig entries.
-/// Each file has optional YAML frontmatter (delimited by `---`) with fields:
-///   name, description, model, allowed_tools, disallowed_tools, max_steps, read_only
-/// The markdown body becomes the system prompt.
-pub fn load_file_based_roles(project_root: &Path) -> HashMap<String, AgentRoleConfig> {
-    let agents_dir = project_root.join(".nyzhi").join("agents");
+fn scan_agents_dir(dir: &Path) -> HashMap<String, AgentRoleConfig> {
     let mut roles = HashMap::new();
 
-    if !agents_dir.exists() {
+    if !dir.exists() {
         return roles;
     }
 
-    let entries = match std::fs::read_dir(&agents_dir) {
+    let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return roles,
     };
@@ -69,6 +64,15 @@ pub fn load_file_based_roles(project_root: &Path) -> HashMap<String, AgentRoleCo
         );
     }
 
+    roles
+}
+
+/// Parse agent role files from `.nyzhi/agents/` and `.claude/agents/`.
+/// `.nyzhi/agents/` takes priority on name collisions.
+pub fn load_file_based_roles(project_root: &Path) -> HashMap<String, AgentRoleConfig> {
+    let mut roles = scan_agents_dir(&project_root.join(".claude").join("agents"));
+    let primary = scan_agents_dir(&project_root.join(".nyzhi").join("agents"));
+    roles.extend(primary);
     roles
 }
 

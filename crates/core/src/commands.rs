@@ -7,9 +7,8 @@ pub struct CustomCommand {
     pub description: String,
 }
 
-pub fn load_commands_from_dir(project_root: &Path) -> Vec<CustomCommand> {
-    let dir = project_root.join(".nyzhi").join("commands");
-    let entries = match std::fs::read_dir(&dir) {
+fn scan_commands_dir(dir: &Path) -> Vec<CustomCommand> {
+    let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return Vec::new(),
     };
@@ -39,6 +38,19 @@ pub fn load_commands_from_dir(project_root: &Path) -> Vec<CustomCommand> {
             prompt_template: template,
             description,
         });
+    }
+    commands
+}
+
+/// Scans `.nyzhi/commands/` then `.claude/commands/`. Nyzhi wins on name collisions.
+pub fn load_commands_from_dir(project_root: &Path) -> Vec<CustomCommand> {
+    let mut commands = scan_commands_dir(&project_root.join(".nyzhi").join("commands"));
+    let fallback = scan_commands_dir(&project_root.join(".claude").join("commands"));
+
+    for cmd in fallback {
+        if !commands.iter().any(|c| c.name == cmd.name) {
+            commands.push(cmd);
+        }
     }
 
     commands.sort_by(|a, b| a.name.cmp(&b.name));
@@ -124,5 +136,34 @@ mod tests {
     fn expand_no_arguments() {
         let result = expand_template("Run all tests", "");
         assert_eq!(result, "Run all tests");
+    }
+
+    #[test]
+    fn dual_directory_nyzhi_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let nyzhi_cmds = dir.path().join(".nyzhi").join("commands");
+        let claude_cmds = dir.path().join(".claude").join("commands");
+        std::fs::create_dir_all(&nyzhi_cmds).unwrap();
+        std::fs::create_dir_all(&claude_cmds).unwrap();
+        std::fs::write(nyzhi_cmds.join("review.md"), "# Nyzhi review\nReview nyzhi").unwrap();
+        std::fs::write(claude_cmds.join("review.md"), "# Claude review\nReview claude").unwrap();
+        std::fs::write(claude_cmds.join("deploy.md"), "# Deploy\nDeploy $ARGUMENTS").unwrap();
+
+        let cmds = load_commands_from_dir(dir.path());
+        let review = cmds.iter().find(|c| c.name == "review").unwrap();
+        assert_eq!(review.description, "Nyzhi review");
+        assert!(cmds.iter().any(|c| c.name == "deploy"));
+    }
+
+    #[test]
+    fn claude_commands_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_cmds = dir.path().join(".claude").join("commands");
+        std::fs::create_dir_all(&claude_cmds).unwrap();
+        std::fs::write(claude_cmds.join("test.md"), "# Run tests\nRun all tests").unwrap();
+
+        let cmds = load_commands_from_dir(dir.path());
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].name, "test");
     }
 }

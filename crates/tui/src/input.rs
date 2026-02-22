@@ -122,20 +122,24 @@ pub async fn handle_key(
                 return;
             }
 
-            if input == "/compact" {
+            if input == "/compact" || input.starts_with("/compact ") {
+                let focus_hint = input.strip_prefix("/compact").unwrap().trim();
+                let focus = if focus_hint.is_empty() { None } else { Some(focus_hint) };
+
                 if model_info.is_some() {
                     let est = thread.estimated_tokens(&agent_config.system_prompt);
+                    let hint_msg = focus.map(|h| format!(" (focus: {h})")).unwrap_or_default();
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
                         content: format!(
-                            "Compacting... (~{est} tokens, {} messages)",
+                            "Compacting... (~{est} tokens, {} messages){hint_msg}",
                             thread.message_count()
                         ),
                     });
                     app.mode = AppMode::Streaming;
 
                     let summary_prompt =
-                        nyzhi_core::context::build_compaction_prompt(thread.messages());
+                        nyzhi_core::context::build_compaction_prompt(thread.messages(), focus);
                     let summary_request = nyzhi_provider::ChatRequest {
                         model: String::new(),
                         messages: vec![nyzhi_provider::Message {
@@ -149,10 +153,12 @@ pub async fn handle_key(
                         stream: false,
                         thinking: None,
                     };
+
+                    let recent_files = nyzhi_core::context::extract_recent_file_paths(thread.messages(), 3);
                     match provider.chat(&summary_request).await {
                         Ok(resp) => {
                             let summary = resp.message.content.as_text().to_string();
-                            thread.compact(&summary, 4);
+                            thread.compact_with_restore(&summary, 4, &recent_files);
                             let new_est =
                                 thread.estimated_tokens(&agent_config.system_prompt);
                             app.items.push(DisplayItem::Message {
@@ -177,6 +183,24 @@ pub async fn handle_key(
                         content: "No model info available for compaction".to_string(),
                     });
                 }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/context" {
+                let threshold = agent_config.auto_compact_threshold.unwrap_or(0.85);
+                let cw = model_info.map(|m| m.context_window).unwrap_or(0);
+                let breakdown = nyzhi_core::context::ContextBreakdown::compute(
+                    thread.messages(),
+                    &agent_config.system_prompt,
+                    cw,
+                    threshold,
+                );
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: breakdown.format_display(),
+                });
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
@@ -1299,7 +1323,26 @@ pub async fn handle_key(
                     0, // MCP count approximation
                     _registry.names().len(),
                 );
-                let output = nyzhi_core::diagnostics::format_diagnostics(&results);
+                let mut output = nyzhi_core::diagnostics::format_diagnostics(&results);
+
+                output.push_str("\n\nConfig Compatibility:\n");
+                output.push_str(&format!("  Config source: {}\n", app.workspace.config_source.label()));
+                if let Some(rf) = &app.workspace.rules_file {
+                    output.push_str(&format!("  Rules loaded from: {rf}\n"));
+                }
+                let root = &app.workspace.project_root;
+                for (label, path) in [
+                    ("AGENTS.md", root.join("AGENTS.md")),
+                    ("CLAUDE.md", root.join("CLAUDE.md")),
+                    (".cursorrules", root.join(".cursorrules")),
+                    (".nyzhi/", root.join(".nyzhi")),
+                    (".claude/", root.join(".claude")),
+                ] {
+                    if path.exists() {
+                        output.push_str(&format!("  Found: {label}\n"));
+                    }
+                }
+
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
                     content: output,
@@ -1337,6 +1380,8 @@ pub async fn handle_key(
                      Trust mode: {}\n\
                      Output style: {}\n\
                      Thinking: {}\n\
+                     Config source: {}\n\
+                     Rules: {}\n\
                      Session duration: {mins}m {secs}s\n\
                      Token usage:\n\
                        Input:  {} (cached read: {}, cached write: {})\n\
@@ -1349,6 +1394,8 @@ pub async fn handle_key(
                     agent_config.trust.mode,
                     app.output_style,
                     if agent_config.thinking_enabled { "on" } else { "off" },
+                    app.workspace.config_source.label(),
+                    app.workspace.rules_file.as_deref().unwrap_or("none"),
                     usage.total_input_tokens,
                     usage.total_cache_read_tokens,
                     usage.total_cache_creation_tokens,
@@ -1499,7 +1546,8 @@ pub async fn handle_key(
                         "  /commands       List custom commands",
                         "  /hooks          List configured hooks",
                         "  /clear          Clear the session",
-                        "  /compact        Compress conversation history",
+                        "  /compact [hint] Compress conversation history (optional focus hint)",
+                        "  /context        Show context window usage breakdown",
                         "  /sessions [q]   List saved sessions (optionally filter)",
                         "  /resume <id>    Restore a saved session",
                         "  /session delete <id>  Delete a saved session",
@@ -1536,6 +1584,10 @@ pub async fn handle_key(
                         "Context:",
                         "  @path           Attach file or directory contents to your prompt",
                         "                  e.g. explain @src/main.rs or list @src/",
+                        "",
+                        "Config compatibility:",
+                        "  Recognizes AGENTS.md, CLAUDE.md, .cursorrules for project rules",
+                        "  Scans .nyzhi/ and .claude/ for commands, agents, and skills",
                         "",
                         "Input:",
                         "  tab             Auto-complete commands, @paths, file paths",

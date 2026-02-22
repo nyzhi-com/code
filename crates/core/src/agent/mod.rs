@@ -82,6 +82,10 @@ pub enum AgentEvent {
         nickname: String,
         final_message: Option<String>,
     },
+    ContextUpdate {
+        estimated_tokens: usize,
+        context_window: u32,
+    },
     Usage(SessionUsage),
     TurnComplete,
     Error(String),
@@ -169,6 +173,11 @@ impl std::fmt::Debug for AgentEvent {
                 .field("id", id)
                 .field("nickname", nickname)
                 .field("final_message", final_message)
+                .finish(),
+            Self::ContextUpdate { estimated_tokens, context_window } => f
+                .debug_struct("ContextUpdate")
+                .field("estimated_tokens", estimated_tokens)
+                .field("context_window", context_window)
                 .finish(),
             Self::Usage(u) => f.debug_struct("Usage").field("usage", u).finish(),
             Self::TurnComplete => write!(f, "TurnComplete"),
@@ -264,16 +273,29 @@ pub async fn run_turn_with_content(
     session_usage.turn_cache_creation_tokens = 0;
     session_usage.turn_cost_usd = 0.0;
 
+    let microcompact_dir = std::env::temp_dir().join("nyzhi_microcompact").join(&ctx.session_id);
+
     for step in 0..config.max_steps {
         if let Some(mi) = model_info {
             let est = thread.estimated_tokens(&config.system_prompt);
-            let threshold = config.auto_compact_threshold.unwrap_or(0.8);
-            if crate::context::should_compact_at(est, mi.context_window, threshold) {
+            let _ = event_tx.send(AgentEvent::ContextUpdate {
+                estimated_tokens: est,
+                context_window: mi.context_window,
+            });
+
+            // Microcompaction: offload large old tool results to disk
+            crate::context::microcompact(thread.messages_mut(), &microcompact_dir);
+
+            let threshold = config.auto_compact_threshold.unwrap_or(0.85);
+            if crate::context::should_compact_at(est, mi.context_window, threshold)
+                && thread.message_count() > 10
+            {
                 let _ = event_tx.send(AgentEvent::AutoCompacting {
                     estimated_tokens: est,
                     context_window: mi.context_window,
                 });
-                let summary_prompt = crate::context::build_compaction_prompt(thread.messages());
+                let recent_files = crate::context::extract_recent_file_paths(thread.messages(), 3);
+                let summary_prompt = crate::context::build_compaction_prompt(thread.messages(), None);
                 let summary_request = ChatRequest {
                     model: mi.id.to_string(),
                     messages: vec![Message {
@@ -289,7 +311,7 @@ pub async fn run_turn_with_content(
                 };
                 if let Ok(resp) = provider.chat(&summary_request).await {
                     let summary_text = resp.message.content.as_text().to_string();
-                    thread.compact(&summary_text, 4);
+                    thread.compact_with_restore(&summary_text, 4, &recent_files);
                 }
             }
         }

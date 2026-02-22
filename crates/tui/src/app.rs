@@ -130,6 +130,8 @@ pub struct App {
     pub background_tasks: Vec<BackgroundTask>,
     pub background_next_id: usize,
     pub ctrl_f_pending: bool,
+    pub context_used_tokens: usize,
+    pub context_window: u32,
 }
 
 impl App {
@@ -187,6 +189,8 @@ impl App {
             background_tasks: Vec::new(),
             background_next_id: 1,
             ctrl_f_pending: false,
+            context_used_tokens: 0,
+            context_window: 0,
         }
     }
 
@@ -887,6 +891,10 @@ impl App {
                             role: "system".to_string(),
                             content: format!("Agent {nickname} completed: {preview}"),
                         });
+                    }
+                    AgentEvent::ContextUpdate { estimated_tokens, context_window } => {
+                        self.context_used_tokens = estimated_tokens;
+                        self.context_window = context_window;
                     }
                     AgentEvent::Usage(usage) => {
                         self.session_usage = usage;

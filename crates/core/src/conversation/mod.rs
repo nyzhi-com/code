@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use chrono::{DateTime, Utc};
 use nyzhi_provider::{Message, MessageContent, Role};
 use serde::{Deserialize, Serialize};
@@ -46,18 +48,55 @@ impl Thread {
 
     /// Replace older messages with a summary, keeping the most recent `keep_recent` messages.
     pub fn compact(&mut self, summary: &str, keep_recent: usize) {
+        self.compact_with_restore(summary, keep_recent, &[]);
+    }
+
+    /// Compact with post-compaction file restoration.
+    /// After summarizing, re-reads the given files and injects their contents
+    /// plus a continuation instruction so the agent picks up seamlessly.
+    pub fn compact_with_restore(&mut self, summary: &str, keep_recent: usize, restore_files: &[PathBuf]) {
         if self.messages.len() <= keep_recent {
             return;
         }
         let split = self.messages.len() - keep_recent;
         let recent: Vec<Message> = self.messages.drain(split..).collect();
         self.messages.clear();
+
         self.messages.push(Message {
             role: Role::User,
-            content: MessageContent::Text(format!(
-                "[Conversation summary]\n{summary}"
-            )),
+            content: MessageContent::Text(format!("[Conversation summary]\n{summary}")),
         });
+
+        let mut restoration = String::new();
+        for path in restore_files {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                let truncated = if content.len() > 8000 {
+                    format!("{}...[truncated to 8000 chars]", &content[..8000])
+                } else {
+                    content
+                };
+                restoration.push_str(&format!(
+                    "\n--- {} ---\n{}\n",
+                    path.display(),
+                    truncated
+                ));
+            }
+        }
+
+        if !restoration.is_empty() {
+            self.messages.push(Message {
+                role: Role::User,
+                content: MessageContent::Text(format!(
+                    "[Recently accessed files restored after compaction]{restoration}"
+                )),
+            });
+        }
+
+        self.messages.push(Message {
+            role: Role::User,
+            content: MessageContent::Text(context::CONTINUATION_MESSAGE.to_string()),
+        });
+
         self.messages.extend(recent);
     }
 }

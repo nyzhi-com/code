@@ -143,6 +143,28 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         None
     };
 
+    let ctx_span = if app.context_window > 0 {
+        let pct = (app.context_used_tokens as f64 / app.context_window as f64) * 100.0;
+        let color = if pct >= 85.0 {
+            theme.danger
+        } else if pct >= 60.0 {
+            theme.warning
+        } else {
+            theme.success
+        };
+        Some(Span::styled(
+            format!(
+                "ctx:{:.0}% ({}/{})  ",
+                pct,
+                format_tokens(app.context_used_tokens as u64),
+                format_tokens(app.context_window as u64),
+            ),
+            Style::default().fg(color),
+        ))
+    } else {
+        None
+    };
+
     let line = if total <= available {
         let mut spans = vec![
             Span::styled(
@@ -167,6 +189,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         if let Some(bs) = &bg_span {
             spans.push(bs.clone());
         }
+        if let Some(cs) = &ctx_span {
+            spans.push(cs.clone());
+        }
         spans.push(Span::styled(
             format!("{right}  "),
             Style::default().fg(theme.text_tertiary),
@@ -186,6 +211,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         }
         if let Some(bs) = &bg_span {
             spans.push(bs.clone());
+        }
+        if let Some(cs) = &ctx_span {
+            spans.push(cs.clone());
         }
         spans.push(Span::styled(
             format!("{:>width$}  ", right, width = available.saturating_sub(left_len + 4)),
