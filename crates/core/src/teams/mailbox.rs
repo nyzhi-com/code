@@ -20,6 +20,9 @@ pub struct TeamMessage {
 pub enum MessageType {
     Message,
     Broadcast,
+    DirectMessage,
+    Request,
+    Response,
     TaskAssignment,
     ShutdownRequest,
     ShutdownResponse,
@@ -27,6 +30,8 @@ pub enum MessageType {
     PlanApprovalResponse,
     TaskCompleted,
     IdleNotification,
+    ConflictDetected,
+    MergeRequest,
 }
 
 /// The `text` field in TeamMessage can contain a JSON-encoded payload with a `type` field.
@@ -150,6 +155,93 @@ pub fn format_messages_for_injection(messages: &[TeamMessage]) -> String {
         ));
     }
     out
+}
+
+/// Send a direct P2P message between agents (bypasses orchestrator).
+pub fn send_direct(team_name: &str, from: &str, to: &str, text: &str) -> Result<()> {
+    let payload = MessagePayload {
+        msg_type: MessageType::DirectMessage,
+        data: serde_json::json!({ "content": text }),
+    };
+    let msg = TeamMessage::with_payload(from, &payload, None);
+    send_message(team_name, to, msg)
+}
+
+/// Send a request and get a correlation ID back for matching responses.
+pub fn send_request(
+    team_name: &str,
+    from: &str,
+    to: &str,
+    request_text: &str,
+) -> Result<String> {
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let payload = MessagePayload {
+        msg_type: MessageType::Request,
+        data: serde_json::json!({
+            "request_id": request_id,
+            "content": request_text
+        }),
+    };
+    let msg = TeamMessage::with_payload(from, &payload, None);
+    send_message(team_name, to, msg)?;
+    Ok(request_id)
+}
+
+/// Send a response to a previously received request.
+pub fn send_response(
+    team_name: &str,
+    from: &str,
+    to: &str,
+    request_id: &str,
+    response_text: &str,
+) -> Result<()> {
+    let payload = MessagePayload {
+        msg_type: MessageType::Response,
+        data: serde_json::json!({
+            "request_id": request_id,
+            "content": response_text
+        }),
+    };
+    let msg = TeamMessage::with_payload(from, &payload, None);
+    send_message(team_name, to, msg)
+}
+
+/// Notify the team about a file edit conflict.
+pub fn notify_conflict(
+    team_name: &str,
+    from: &str,
+    conflicting_file: &str,
+    agents_involved: &[&str],
+) -> Result<()> {
+    let payload = MessagePayload {
+        msg_type: MessageType::ConflictDetected,
+        data: serde_json::json!({
+            "file": conflicting_file,
+            "agents": agents_involved
+        }),
+    };
+    for agent in agents_involved {
+        if *agent != from {
+            let msg = TeamMessage::with_payload(from, &payload, None);
+            send_message(team_name, agent, msg)?;
+        }
+    }
+    Ok(())
+}
+
+/// List all team members and their inbox status.
+pub fn team_status(team_name: &str) -> Result<Vec<(String, usize)>> {
+    let config = super::config::TeamConfig::load(team_name)?;
+    let mut statuses = Vec::new();
+    for member in &config.members {
+        let inbox_path = team_dir(team_name)
+            .join("inboxes")
+            .join(format!("{}.json", member.name));
+        let messages = load_inbox_raw(&inbox_path)?;
+        let unread = messages.iter().filter(|m| !m.read).count();
+        statuses.push((member.name.clone(), unread));
+    }
+    Ok(statuses)
 }
 
 fn load_inbox_raw(path: &std::path::Path) -> Result<Vec<TeamMessage>> {

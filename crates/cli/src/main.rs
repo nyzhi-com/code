@@ -126,6 +126,18 @@ enum Commands {
         #[arg(long)]
         list_backups: bool,
     },
+    /// Auto-diagnose and fix CI failures. Reads failure logs and runs an agent to fix them.
+    CiFix {
+        /// Path to CI log file (reads from stdin if not provided)
+        #[arg(short, long)]
+        log_file: Option<String>,
+        /// CI format: auto, junit, tap, plain (default: auto)
+        #[arg(long, default_value = "auto")]
+        format: String,
+        /// Auto-commit the fix
+        #[arg(long)]
+        commit: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -848,6 +860,54 @@ async fn main() -> Result<()> {
             app.mcp_manager = mcp_manager.clone();
             app.initial_session = initial_session;
             app.run(provider.clone(), registry, &config).await?;
+        }
+        Some(Commands::CiFix { log_file, format, commit }) => {
+            let ci_log = if let Some(path) = &log_file {
+                std::fs::read_to_string(path)?
+            } else {
+                use std::io::Read;
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)?;
+                buf
+            };
+
+            if ci_log.trim().is_empty() {
+                eprintln!("No CI log content provided. Pass --log-file or pipe via stdin.");
+                std::process::exit(1);
+            }
+
+            let prompt = format!(
+                "CI failure log (format: {format}):\n\n```\n{ci_log}\n```\n\n\
+                 Analyze this CI failure. Identify the root cause, fix the code, and verify \
+                 the fix passes. Be surgical - only change what's needed to make CI green."
+            );
+
+            run_once(
+                &*provider,
+                &prompt,
+                &[],
+                &registry,
+                &workspace,
+                &config,
+                &mcp_summaries,
+                None,
+            )
+            .await?;
+
+            if commit {
+                let output = tokio::process::Command::new("git")
+                    .args(["add", "-A"])
+                    .current_dir(&workspace.project_root)
+                    .output()
+                    .await?;
+                if output.status.success() {
+                    let _ = tokio::process::Command::new("git")
+                        .args(["commit", "-m", "fix: auto-fix CI failure (nyzhi ci-fix)"])
+                        .current_dir(&workspace.project_root)
+                        .output()
+                        .await;
+                }
+            }
         }
         _ => unreachable!(),
     }

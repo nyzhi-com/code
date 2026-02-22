@@ -36,6 +36,22 @@ pub struct ShellConfig {
     pub env: HashMap<String, String>,
     #[serde(default)]
     pub startup_commands: Vec<String>,
+    #[serde(default)]
+    pub sandbox: SandboxSettings,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SandboxSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub allow_network: Vec<String>,
+    #[serde(default)]
+    pub allow_read: Vec<String>,
+    #[serde(default)]
+    pub allow_write: Vec<String>,
+    #[serde(default = "default_true")]
+    pub block_dotfiles: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -355,6 +371,12 @@ pub struct TrustConfig {
     pub deny_tools: Vec<String>,
     #[serde(default)]
     pub deny_paths: Vec<String>,
+    #[serde(default)]
+    pub auto_approve: Vec<String>,
+    #[serde(default)]
+    pub always_ask: Vec<String>,
+    #[serde(default)]
+    pub remember_approvals: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -363,6 +385,7 @@ pub enum TrustMode {
     #[default]
     Off,
     Limited,
+    AutoEdit,
     Full,
 }
 
@@ -371,6 +394,7 @@ impl std::fmt::Display for TrustMode {
         match self {
             TrustMode::Off => write!(f, "off"),
             TrustMode::Limited => write!(f, "limited"),
+            TrustMode::AutoEdit => write!(f, "autoedit"),
             TrustMode::Full => write!(f, "full"),
         }
     }
@@ -382,8 +406,9 @@ impl std::str::FromStr for TrustMode {
         match s.to_lowercase().as_str() {
             "off" => Ok(TrustMode::Off),
             "limited" => Ok(TrustMode::Limited),
+            "autoedit" | "auto_edit" | "auto-edit" => Ok(TrustMode::AutoEdit),
             "full" => Ok(TrustMode::Full),
-            other => Err(format!("unknown trust mode: {other} (use off, limited, or full)")),
+            other => Err(format!("unknown trust mode: {other} (use off, limited, autoedit, or full)")),
         }
     }
 }
@@ -786,6 +811,11 @@ impl Config {
                     project.shell.startup_commands.clone()
                 } else {
                     global.shell.startup_commands.clone()
+                },
+                sandbox: if project.shell.sandbox.enabled {
+                    project.shell.sandbox.clone()
+                } else {
+                    global.shell.sandbox.clone()
                 },
             },
             browser: BrowserConfig {

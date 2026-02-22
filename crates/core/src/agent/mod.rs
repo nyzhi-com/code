@@ -731,6 +731,24 @@ fn should_auto_approve(trust: &TrustConfig, tool_name: &str, args: &serde_json::
                 tool_allowed
             }
         }
+        TrustMode::AutoEdit => {
+            let write_tools = [
+                "write", "edit", "multi_edit", "apply_patch",
+                "delete_file", "move_file", "copy_file", "create_dir",
+            ];
+            let read_tools_auto = trust.allow_tools.is_empty()
+                || trust.allow_tools.iter().any(|t| t == tool_name);
+            if write_tools.contains(&tool_name) && read_tools_auto {
+                true
+            } else {
+                let tool_allowed = trust.allow_tools.is_empty()
+                    || trust.allow_tools.iter().any(|t| t == tool_name);
+                if !tool_allowed {
+                    return false;
+                }
+                false
+            }
+        }
         TrustMode::Off => false,
     }
 }

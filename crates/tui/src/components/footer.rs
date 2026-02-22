@@ -121,6 +121,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             "TRUST:LIMITED  ",
             Style::default().fg(theme.warning).bold(),
         )),
+        nyzhi_config::TrustMode::AutoEdit => Some(Span::styled(
+            "TRUST:AUTOEDIT  ",
+            Style::default().fg(theme.warning).bold(),
+        )),
         nyzhi_config::TrustMode::Off => None,
     };
 

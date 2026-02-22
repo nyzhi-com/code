@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -7,6 +8,92 @@ pub struct ReplayEvent {
     pub timestamp: u64,
     pub event_type: String,
     pub payload: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredReplayEvent {
+    pub timestamp: u64,
+    pub event_type: ReplayEventType,
+    pub data: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ReplayEventType {
+    UserMessage,
+    AssistantMessage,
+    ToolCall { name: String, id: String },
+    ToolResult { name: String, id: String },
+    ApprovalDecision { tool_name: String, approved: bool },
+    Compaction { from_tokens: usize, to_tokens: usize },
+    ThinkingStep,
+    ModeChange { mode: String },
+    CheckpointCreated { id: u32 },
+    CacheHit { tokens: u32 },
+}
+
+pub fn log_structured_event(session_id: &str, event: &StructuredReplayEvent) -> Result<()> {
+    use std::io::Write;
+    let dir = replay_dir();
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{session_id}.structured.jsonl"));
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    let line = serde_json::to_string(event)?;
+    writeln!(file, "{line}")?;
+    Ok(())
+}
+
+pub fn load_structured_replay(session_id: &str) -> Result<Vec<StructuredReplayEvent>> {
+    let path = replay_dir().join(format!("{session_id}.structured.jsonl"));
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let content = std::fs::read_to_string(&path)?;
+    let events: Vec<StructuredReplayEvent> = content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect();
+    Ok(events)
+}
+
+pub fn format_structured_replay(events: &[StructuredReplayEvent]) -> String {
+    if events.is_empty() {
+        return "No structured events found.".to_string();
+    }
+    events
+        .iter()
+        .map(|e| {
+            let type_str = match &e.event_type {
+                ReplayEventType::UserMessage => "USER".to_string(),
+                ReplayEventType::AssistantMessage => "ASSISTANT".to_string(),
+                ReplayEventType::ToolCall { name, id } => format!("TOOL_CALL({name}#{id})"),
+                ReplayEventType::ToolResult { name, id } => format!("TOOL_RESULT({name}#{id})"),
+                ReplayEventType::ApprovalDecision { tool_name, approved } => {
+                    format!("APPROVAL({tool_name}={})", if *approved { "yes" } else { "no" })
+                }
+                ReplayEventType::Compaction { from_tokens, to_tokens } => {
+                    format!("COMPACT({from_tokens}->{to_tokens})")
+                }
+                ReplayEventType::ThinkingStep => "THINK".to_string(),
+                ReplayEventType::ModeChange { mode } => format!("MODE({mode})"),
+                ReplayEventType::CheckpointCreated { id } => format!("CHECKPOINT({id})"),
+                ReplayEventType::CacheHit { tokens } => format!("CACHE_HIT({tokens})"),
+            };
+            let data_preview = {
+                let s = e.data.to_string();
+                if s.len() > 200 {
+                    format!("{}...", &s[..200])
+                } else {
+                    s
+                }
+            };
+            format!("[{}] {}: {}", e.timestamp, type_str, data_preview)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn replay_dir() -> PathBuf {

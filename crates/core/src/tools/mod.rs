@@ -1,31 +1,39 @@
 pub mod permission;
+pub mod apply_patch;
 pub mod bash;
 pub mod batch;
+pub mod browser;
 pub mod change_tracker;
 pub mod close_agent;
 pub mod diff;
-pub mod read;
-pub mod write;
 pub mod edit;
+pub mod filesystem;
+pub mod fuzzy_find;
+pub mod git;
 pub mod glob;
 pub mod grep;
-pub mod git;
-pub mod task;
-pub mod todo;
-pub mod filesystem;
+pub mod instrument;
 pub mod load_skill;
 pub mod lsp;
 pub mod memory;
 pub mod notepad;
+pub mod pr;
+pub mod read;
 pub mod resume_agent;
+pub mod semantic_search;
 pub mod send_input;
 pub mod spawn_agent;
 pub mod tail_file;
+pub mod task;
 pub mod team;
+pub mod think;
 pub mod tool_search;
+pub mod update_plan;
+pub mod todo;
 pub mod verify;
 pub mod wait_tool;
 pub mod web;
+pub mod write;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -232,13 +240,19 @@ pub struct RegistryBundle {
 pub fn default_registry() -> RegistryBundle {
     let todo_store = todo::shared_store();
     let deferred_index = tool_search::shared_deferred_index();
+    let semantic_index = Arc::new(tokio::sync::Mutex::new(crate::index::SemanticIndex::new()));
+    let instrument_store = instrument::shared_store();
     let mut registry = ToolRegistry::new();
+
+    // Core tools
     registry.register(Box::new(bash::BashTool));
     registry.register(Box::new(read::ReadTool));
     registry.register(Box::new(write::WriteTool));
     registry.register(Box::new(edit::EditTool));
     registry.register(Box::new(glob::GlobTool));
     registry.register(Box::new(grep::GrepTool));
+
+    // Git tools
     registry.register(Box::new(git::GitStatusTool));
     registry.register(Box::new(git::GitDiffTool));
     registry.register(Box::new(git::GitLogTool));
@@ -246,8 +260,12 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(git::GitBranchTool));
     registry.register(Box::new(git::GitCommitTool));
     registry.register(Box::new(git::GitCheckoutTool));
+
+    // Task management
     registry.register(Box::new(todo::TodoWriteTool::with_store(todo_store.clone())));
     registry.register(Box::new(todo::TodoReadTool::with_store(todo_store.clone())));
+
+    // Filesystem
     registry.register(Box::new(filesystem::ListDirTool));
     registry.register(Box::new(filesystem::DirectoryTreeTool));
     registry.register(Box::new(filesystem::FileInfoTool));
@@ -255,6 +273,8 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(filesystem::MoveFileTool));
     registry.register(Box::new(filesystem::CopyFileTool));
     registry.register(Box::new(filesystem::CreateDirTool));
+
+    // Code analysis
     registry.register(Box::new(verify::VerifyTool));
     registry.register(Box::new(notepad::NotepadWriteTool));
     registry.register(Box::new(notepad::NotepadReadTool));
@@ -263,13 +283,19 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(lsp::LspGotoDefinitionTool));
     registry.register(Box::new(lsp::LspFindReferencesTool));
     registry.register(Box::new(lsp::LspHoverTool));
+
+    // Web
     registry.register(Box::new(web::WebFetchTool));
     registry.register(Box::new(web::WebSearchTool));
+
+    // Misc
     registry.register(Box::new(tail_file::TailFileTool));
     registry.register(Box::new(load_skill::LoadSkillTool));
     registry.register(Box::new(tool_search::ToolSearchTool::new(deferred_index.clone())));
     registry.register(Box::new(memory::MemoryReadTool));
     registry.register(Box::new(memory::MemoryWriteTool));
+
+    // Teams
     registry.register(Box::new(team::TeamCreateTool));
     registry.register(Box::new(team::TeamDeleteTool));
     registry.register(Box::new(team::SendMessageTool));
@@ -279,6 +305,34 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(team::TeamListTool));
     registry.register(Box::new(team::ReadInboxTool));
     registry.register(Box::new(batch::BatchApplyTool));
+
+    // Phase 1.1: Semantic search & fuzzy find
+    registry.register(Box::new(semantic_search::SemanticSearchTool::new(semantic_index)));
+    registry.register(Box::new(fuzzy_find::FuzzyFindTool));
+
+    // Phase 1.2: Plan-execute mode
+    registry.register(Box::new(update_plan::UpdatePlanTool));
+
+    // Phase 1.3: Think tool
+    registry.register(Box::new(think::ThinkTool));
+
+    // Phase 2.3: Structured patch application
+    registry.register(Box::new(apply_patch::ApplyPatchTool));
+    registry.register(Box::new(apply_patch::MultiEditTool));
+
+    // Phase 3.3: Debug instrumentation
+    registry.register(Box::new(instrument::InstrumentTool::new(instrument_store.clone())));
+    registry.register(Box::new(instrument::RemoveInstrumentationTool::new(instrument_store)));
+
+    // Phase 4.2: Browser automation
+    registry.register(Box::new(browser::BrowserOpenTool));
+    registry.register(Box::new(browser::BrowserScreenshotTool));
+    registry.register(Box::new(browser::BrowserEvaluateTool));
+
+    // Phase 4.3: PR workflow
+    registry.register(Box::new(pr::CreatePrTool));
+    registry.register(Box::new(pr::ReviewPrTool));
+
     // NOTE: SpawnTeammateTool requires Arc<AgentManager> and is registered
     // separately in the TUI/CLI after the manager is created.
     RegistryBundle { registry, todo_store, deferred_index }
