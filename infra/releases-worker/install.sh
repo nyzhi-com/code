@@ -338,7 +338,7 @@ print_success() {
     printf '  \033[1mnyz\033[0m             # Run command\n'
   fi
   printf '\n'
-  printf '  For more information visit \033[4mhttps://nyzhi.com/docs\033[0m\n'
+  printf '  For more information visit \033[4mhttps://code.nyzhi.com/docs\033[0m\n'
   printf '\n'
 }
 
