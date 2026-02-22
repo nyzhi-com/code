@@ -49,6 +49,17 @@ pub fn load_skills(project_root: &Path) -> Result<Vec<Skill>> {
     Ok(skills)
 }
 
+pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
+    if skills.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("\n\n# Skills\n\nThe following skills are loaded from `.nyzhi/skills/`:\n\n");
+    for skill in skills {
+        out.push_str(&format!("## {}\n\n{}\n\n", skill.name, skill.content.trim()));
+    }
+    out
+}
+
 pub fn build_skill_template(name: &str, description: &str, patterns: &[String]) -> String {
     let mut content = format!("# Skill: {name}\n\n");
     content.push_str(&format!("## Description\n{description}\n\n"));

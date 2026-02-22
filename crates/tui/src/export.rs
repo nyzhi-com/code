@@ -51,6 +51,11 @@ pub fn export_session_markdown(items: &[DisplayItem], meta: &ExportMeta) -> Stri
                     }
                 }
             }
+            DisplayItem::Thinking(content) => {
+                out.push_str("<details>\n<summary>Thinking</summary>\n\n");
+                out.push_str(content);
+                out.push_str("\n\n</details>\n\n");
+            }
             DisplayItem::ToolCall {
                 name,
                 args_summary,

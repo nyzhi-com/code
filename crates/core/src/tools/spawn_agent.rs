@@ -107,6 +107,8 @@ impl Tool for SpawnAgentTool {
             retry: nyzhi_config::RetrySettings::default(),
             routing: nyzhi_config::RoutingConfig::default(),
             auto_compact_threshold: None,
+            thinking_enabled: false,
+            thinking_budget: None,
         };
 
         apply_role(&mut agent_config, &role);

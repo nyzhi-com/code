@@ -267,11 +267,22 @@ impl Provider for OpenAIProvider {
             "stream_options": {"include_usage": true},
         });
 
+        let thinking_enabled = request
+            .thinking
+            .as_ref()
+            .map(|t| t.enabled)
+            .unwrap_or(false);
+
         if let Some(max_tokens) = request.max_tokens {
             body["max_tokens"] = json!(max_tokens);
         }
-        if let Some(temp) = request.temperature {
-            body["temperature"] = json!(temp);
+        if !thinking_enabled {
+            if let Some(temp) = request.temperature {
+                body["temperature"] = json!(temp);
+            }
+        }
+        if thinking_enabled {
+            body["reasoning_effort"] = json!("high");
         }
         if !request.tools.is_empty() {
             body["tools"] = json!(self.build_tools(&request.tools));

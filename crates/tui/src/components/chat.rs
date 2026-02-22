@@ -38,6 +38,24 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             DisplayItem::Message { role, content } => {
                 render_message(&mut lines, role, content, theme, &app.highlighter, dark);
             }
+            DisplayItem::Thinking(content) => {
+                let dim = Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+                lines.push(Line::from(Span::styled("  Thinking...", dim)));
+                for line_text in content.lines().take(10) {
+                    let trimmed = if line_text.len() > 120 {
+                        format!("{}...", &line_text[..117])
+                    } else {
+                        line_text.to_string()
+                    };
+                    lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
+                }
+                if content.lines().count() > 10 {
+                    lines.push(Line::from(Span::styled(
+                        format!("  ... ({} more lines)", content.lines().count() - 10),
+                        dim,
+                    )));
+                }
+            }
             DisplayItem::ToolCall {
                 name,
                 args_summary,
@@ -59,6 +77,33 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 for line in &mut lines[line_start..] {
                     *line = highlight_search_in_line(line.clone(), q, hl_style);
                 }
+            }
+        }
+    }
+
+    if !app.thinking_stream.is_empty() && app.current_stream.is_empty() {
+        let dim = Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled("  Thinking...", dim)));
+        let tlines: Vec<&str> = app.thinking_stream.lines().collect();
+        let show = tlines.len().min(6);
+        if show < tlines.len() {
+            for line_text in &tlines[tlines.len() - show..] {
+                let trimmed = if line_text.len() > 120 {
+                    format!("{}...", &line_text[..117])
+                } else {
+                    (*line_text).to_string()
+                };
+                lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
+            }
+        } else {
+            for line_text in &tlines {
+                let trimmed = if line_text.len() > 120 {
+                    format!("{}...", &line_text[..117])
+                } else {
+                    (*line_text).to_string()
+                };
+                lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
             }
         }
     }

@@ -87,7 +87,7 @@ pub async fn run_after_edit_hooks(
             }
         }
         let command = hook.command.replace("{file}", changed_file);
-        results.push(run_hook_command(&command, hook.timeout, cwd).await);
+        results.push(run_hook_command(&command, hook.timeout, cwd, None).await);
     }
     results
 }
@@ -98,23 +98,139 @@ pub async fn run_after_turn_hooks(hooks: &[HookConfig], cwd: &Path) -> Vec<HookR
         if hook.event != HookEvent::AfterTurn {
             continue;
         }
-        results.push(run_hook_command(&hook.command, hook.timeout, cwd).await);
+        results.push(run_hook_command(&hook.command, hook.timeout, cwd, None).await);
     }
     results
 }
 
-async fn run_hook_command(command: &str, timeout_secs: u64, cwd: &Path) -> HookResult {
-    let result = tokio::time::timeout(
-        Duration::from_secs(timeout_secs),
-        Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .current_dir(cwd)
-            .output(),
-    )
-    .await;
+pub async fn run_hooks_for_event(
+    hooks: &[HookConfig],
+    event: HookEvent,
+    context: &serde_json::Value,
+    cwd: &Path,
+) -> Vec<HookResult> {
+    let mut results = Vec::new();
+    for hook in hooks {
+        if hook.event != event {
+            continue;
+        }
+        if let Some(ref tool_name_filter) = hook.tool_name {
+            let ctx_tool = context
+                .get("tool_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !tool_name_filter
+                .split(',')
+                .any(|t| t.trim().eq_ignore_ascii_case(ctx_tool))
+            {
+                continue;
+            }
+        }
+        if let Some(ref pattern) = hook.pattern {
+            let file = context
+                .get("file")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !file.is_empty() && !matches_pattern(pattern, file) {
+                continue;
+            }
+        }
+        let stdin_json = serde_json::to_string(context).unwrap_or_default();
+        results.push(
+            run_hook_command(&hook.command, hook.timeout, cwd, Some(&stdin_json)).await,
+        );
+    }
+    results
+}
 
-    match result {
+/// Returns true if the tool should be blocked (any blocking PreToolUse hook returned non-zero).
+pub async fn run_pre_tool_hooks(
+    hooks: &[HookConfig],
+    tool_name: &str,
+    tool_args: &serde_json::Value,
+    cwd: &Path,
+) -> (Vec<HookResult>, bool) {
+    let context = serde_json::json!({
+        "tool_name": tool_name,
+        "tool_args": tool_args,
+    });
+    let results =
+        run_hooks_for_event(hooks, HookEvent::PreToolUse, &context, cwd).await;
+    let blocked = results.iter().any(|r| {
+        r.exit_code.map(|c| c != 0).unwrap_or(false)
+    }) && hooks
+        .iter()
+        .any(|h| h.event == HookEvent::PreToolUse && h.block);
+    (results, blocked)
+}
+
+pub async fn run_post_tool_hooks(
+    hooks: &[HookConfig],
+    tool_name: &str,
+    tool_args: &serde_json::Value,
+    output: &str,
+    success: bool,
+    cwd: &Path,
+) -> Vec<HookResult> {
+    let event = if success {
+        HookEvent::PostToolUse
+    } else {
+        HookEvent::PostToolUseFailure
+    };
+    let context = serde_json::json!({
+        "tool_name": tool_name,
+        "tool_args": tool_args,
+        "output": output,
+        "success": success,
+    });
+    run_hooks_for_event(hooks, event, &context, cwd).await
+}
+
+async fn run_hook_command(
+    command: &str,
+    timeout_secs: u64,
+    cwd: &Path,
+    stdin_data: Option<&str>,
+) -> HookResult {
+    let mut child = match Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(cwd)
+        .stdin(if stdin_data.is_some() {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        })
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return HookResult {
+                command: command.to_string(),
+                stdout: String::new(),
+                stderr: format!("Failed to spawn hook: {e}"),
+                exit_code: None,
+                timed_out: false,
+            };
+        }
+    };
+
+    if let Some(data) = stdin_data {
+        if let Some(mut stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            let _ = stdin.write_all(data.as_bytes()).await;
+            let _ = stdin.shutdown().await;
+        }
+    }
+
+    match tokio::time::timeout(
+        Duration::from_secs(timeout_secs),
+        child.wait_with_output(),
+    )
+    .await
+    {
         Ok(Ok(output)) => HookResult {
             command: command.to_string(),
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),

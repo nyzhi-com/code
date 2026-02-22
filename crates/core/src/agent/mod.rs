@@ -28,6 +28,7 @@ pub struct SessionUsage {
 
 #[derive(Clone)]
 pub enum AgentEvent {
+    ThinkingDelta(String),
     TextDelta(String),
     ToolCallStart {
         id: String,
@@ -89,6 +90,7 @@ pub enum AgentEvent {
 impl std::fmt::Debug for AgentEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::ThinkingDelta(s) => f.debug_tuple("ThinkingDelta").field(s).finish(),
             Self::TextDelta(s) => f.debug_tuple("TextDelta").field(s).finish(),
             Self::ToolCallStart { id, name } => f
                 .debug_struct("ToolCallStart")
@@ -185,6 +187,8 @@ pub struct AgentConfig {
     pub retry: nyzhi_config::RetrySettings,
     pub routing: nyzhi_config::RoutingConfig,
     pub auto_compact_threshold: Option<f64>,
+    pub thinking_enabled: bool,
+    pub thinking_budget: Option<u32>,
 }
 
 impl Default for AgentConfig {
@@ -198,6 +202,8 @@ impl Default for AgentConfig {
             retry: nyzhi_config::RetrySettings::default(),
             routing: nyzhi_config::RoutingConfig::default(),
             auto_compact_threshold: None,
+            thinking_enabled: false,
+            thinking_budget: None,
         }
     }
 }
@@ -279,6 +285,7 @@ pub async fn run_turn_with_content(
                     temperature: Some(0.0),
                     system: None,
                     stream: false,
+                    thinking: None,
                 };
                 if let Ok(resp) = provider.chat(&summary_request).await {
                     let summary_text = resp.message.content.as_text().to_string();
@@ -291,6 +298,15 @@ pub async fn run_turn_with_content(
             .map(|m| m.id.to_string())
             .unwrap_or_default();
 
+        let thinking = if config.thinking_enabled {
+            Some(nyzhi_provider::ThinkingConfig {
+                enabled: true,
+                budget_tokens: config.thinking_budget,
+            })
+        } else {
+            None
+        };
+
         let request = ChatRequest {
             model: model_id.clone(),
             messages: thread.messages().to_vec(),
@@ -299,6 +315,7 @@ pub async fn run_turn_with_content(
             temperature: None,
             system: Some(config.system_prompt.clone()),
             stream: true,
+            thinking,
         };
 
         let mut stream_attempt = 0u32;
@@ -351,6 +368,9 @@ pub async fn run_turn_with_content(
                 acc.process(&event);
 
                 match &event {
+                    StreamEvent::ThinkingDelta(text) => {
+                        let _ = event_tx.send(AgentEvent::ThinkingDelta(text.clone()));
+                    }
                     StreamEvent::TextDelta(text) => {
                         let _ = event_tx.send(AgentEvent::TextDelta(text.clone()));
                     }

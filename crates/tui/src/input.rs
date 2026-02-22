@@ -147,6 +147,7 @@ pub async fn handle_key(
                         temperature: Some(0.0),
                         system: None,
                         stream: false,
+                        thinking: None,
                     };
                     match provider.chat(&summary_request).await {
                         Ok(resp) => {
@@ -1251,6 +1252,56 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/think" || input.starts_with("/think ") {
+                let arg = input.strip_prefix("/think").unwrap().trim();
+                match arg {
+                    "on" | "" => {
+                        agent_config.thinking_enabled = true;
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "Extended thinking enabled (budget: {} tokens)",
+                                agent_config.thinking_budget.unwrap_or(10_000)
+                            ),
+                        });
+                    }
+                    "off" => {
+                        agent_config.thinking_enabled = false;
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Extended thinking disabled".to_string(),
+                        });
+                    }
+                    other => {
+                        if let Some(rest) = other.strip_prefix("budget ") {
+                            if let Ok(b) = rest.trim().parse::<u32>() {
+                                agent_config.thinking_budget = Some(b);
+                                agent_config.thinking_enabled = true;
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!(
+                                        "Extended thinking enabled with budget: {b} tokens"
+                                    ),
+                                });
+                            } else {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Usage: /think budget <number>".to_string(),
+                                });
+                            }
+                        } else {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: "Usage: /think [on|off|budget <N>]".to_string(),
+                            });
+                        }
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/help" {
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
@@ -1282,6 +1333,7 @@ pub async fn handle_key(
                         "  /changes        List all file changes in this session",
                         "  /export [path]  Export conversation as markdown",
                         "  /search <q>     Search session (Ctrl+N/P next/prev, Esc clear)",
+                        "  /think          Toggle extended thinking (on/off/budget N)",
                         "  /bg             List background tasks",
                         "  /bg kill <id>   Cancel a background task",
                         "  /notify         Show notification settings",
@@ -1395,6 +1447,13 @@ pub async fn handle_key(
             };
             if input.is_empty() {
                 return;
+            }
+
+            let (flags, cleaned_input) = nyzhi_core::keywords::detect_keywords(&input);
+            let input = if flags.any() { cleaned_input } else { input };
+
+            if flags.think {
+                agent_config.thinking_enabled = true;
             }
 
             app.last_prompt = Some(input.clone());

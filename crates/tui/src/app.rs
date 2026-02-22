@@ -32,6 +32,7 @@ pub enum DisplayItem {
         role: String,
         content: String,
     },
+    Thinking(String),
     ToolCall {
         name: String,
         args_summary: String,
@@ -88,6 +89,7 @@ pub struct App {
     pub cursor_pos: usize,
     pub items: Vec<DisplayItem>,
     pub current_stream: String,
+    pub thinking_stream: String,
     pub should_quit: bool,
     pub provider_name: String,
     pub model_name: String,
@@ -140,6 +142,7 @@ impl App {
             cursor_pos: 0,
             items: Vec::new(),
             current_stream: String::new(),
+            thinking_stream: String::new(),
             should_quit: false,
             provider_name: provider_name.to_string(),
             model_name: model_name.to_string(),
@@ -189,6 +192,7 @@ impl App {
         for (i, item) in self.items.iter().enumerate() {
             let text = match item {
                 DisplayItem::Message { content, .. } => content.to_lowercase(),
+                DisplayItem::Thinking(content) => content.to_lowercase(),
                 DisplayItem::ToolCall {
                     args_summary,
                     output,
@@ -314,12 +318,17 @@ impl App {
             .map(|i| provider.supported_models()[i].supports_vision)
             .unwrap_or(false);
 
+        let skills = nyzhi_core::skills::load_skills(&self.workspace.project_root)
+            .unwrap_or_default();
+        let skills_text = nyzhi_core::skills::format_skills_for_prompt(&skills);
+
         let mut agent_config = AgentConfig {
-            system_prompt: nyzhi_core::prompt::build_system_prompt_with_vision(
+            system_prompt: nyzhi_core::prompt::build_system_prompt_with_skills(
                 Some(&self.workspace),
                 config.agent.custom_instructions.as_deref(),
                 &mcp_tool_summaries,
                 supports_vision,
+                &skills_text,
             ),
             max_steps: config.agent.max_steps.unwrap_or(100),
             max_tokens: config.agent.max_tokens,
@@ -437,6 +446,7 @@ impl App {
                             if !self.current_stream.is_empty() {
                                 self.current_stream.clear();
                             }
+                            self.thinking_stream.clear();
                             self.stream_start = None;
                             self.stream_token_count = 0;
                             self.turn_start = None;
@@ -669,6 +679,12 @@ impl App {
                     continue;
                 }
                 match agent_event {
+                    AgentEvent::ThinkingDelta(text) => {
+                        if self.turn_start.is_none() {
+                            self.turn_start = Some(std::time::Instant::now());
+                        }
+                        self.thinking_stream.push_str(&text);
+                    }
                     AgentEvent::TextDelta(text) => {
                         if self.turn_start.is_none() {
                             self.turn_start = Some(std::time::Instant::now());
@@ -683,6 +699,11 @@ impl App {
                     AgentEvent::ToolCallStart { name, .. } => {
                         if self.turn_start.is_none() {
                             self.turn_start = Some(std::time::Instant::now());
+                        }
+                        if !self.thinking_stream.is_empty() {
+                            self.items.push(DisplayItem::Thinking(
+                                std::mem::take(&mut self.thinking_stream),
+                            ));
                         }
                         if !self.current_stream.is_empty() {
                             self.items.push(DisplayItem::Message {
@@ -859,6 +880,11 @@ impl App {
                         self.session_usage = usage;
                     }
                     AgentEvent::TurnComplete => {
+                        if !self.thinking_stream.is_empty() {
+                            self.items.push(DisplayItem::Thinking(
+                                std::mem::take(&mut self.thinking_stream),
+                            ));
+                        }
                         if !self.current_stream.is_empty() {
                             self.items.push(DisplayItem::Message {
                                 role: "assistant".to_string(),

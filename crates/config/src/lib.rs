@@ -175,6 +175,10 @@ pub struct HookConfig {
     pub command: String,
     #[serde(default)]
     pub pattern: Option<String>,
+    #[serde(default)]
+    pub tool_name: Option<String>,
+    #[serde(default)]
+    pub block: bool,
     #[serde(default = "default_hook_timeout")]
     pub timeout: u64,
 }
@@ -182,6 +186,13 @@ pub struct HookConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HookEvent {
+    SessionStart,
+    UserPromptSubmit,
+    PreToolUse,
+    PostToolUse,
+    PostToolUseFailure,
+    PermissionRequest,
+    Notification,
     AfterEdit,
     AfterTurn,
 }
@@ -189,6 +200,13 @@ pub enum HookEvent {
 impl std::fmt::Display for HookEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            HookEvent::SessionStart => write!(f, "session_start"),
+            HookEvent::UserPromptSubmit => write!(f, "user_prompt_submit"),
+            HookEvent::PreToolUse => write!(f, "pre_tool_use"),
+            HookEvent::PostToolUse => write!(f, "post_tool_use"),
+            HookEvent::PostToolUseFailure => write!(f, "post_tool_use_failure"),
+            HookEvent::PermissionRequest => write!(f, "permission_request"),
+            HookEvent::Notification => write!(f, "notification"),
             HookEvent::AfterEdit => write!(f, "after_edit"),
             HookEvent::AfterTurn => write!(f, "after_turn"),
         }

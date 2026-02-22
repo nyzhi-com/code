@@ -44,6 +44,12 @@ fn default_tier() -> ModelTier {
     ModelTier::Medium
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ThinkingConfig {
+    pub enabled: bool,
+    pub budget_tokens: Option<u32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ChatRequest {
     pub model: String,
@@ -53,6 +59,7 @@ pub struct ChatRequest {
     pub temperature: Option<f32>,
     pub system: Option<String>,
     pub stream: bool,
+    pub thinking: Option<ThinkingConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,6 +170,7 @@ pub struct Usage {
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
     TextDelta(String),
+    ThinkingDelta(String),
     ReasoningSummary(String),
     ToolCallStart {
         index: u32,

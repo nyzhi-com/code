@@ -260,12 +260,37 @@ impl Provider for AnthropicProvider {
             &request.model
         };
 
+        let thinking_enabled = request
+            .thinking
+            .as_ref()
+            .map(|t| t.enabled)
+            .unwrap_or(false);
+
+        let max_tokens = if thinking_enabled {
+            request.max_tokens.unwrap_or(16_384).max(8192)
+        } else {
+            request.max_tokens.unwrap_or(4096)
+        };
+
         let mut body = json!({
             "model": model,
             "messages": self.build_messages(request),
-            "max_tokens": request.max_tokens.unwrap_or(4096),
+            "max_tokens": max_tokens,
             "stream": true,
         });
+
+        if thinking_enabled {
+            let budget = request
+                .thinking
+                .as_ref()
+                .and_then(|t| t.budget_tokens)
+                .unwrap_or(10_000);
+            body["thinking"] = json!({
+                "type": "enabled",
+                "budget_tokens": budget
+            });
+            body.as_object_mut().unwrap().remove("temperature");
+        }
 
         if let Some(system) = &request.system {
             body["system"] = json!([{
@@ -274,8 +299,10 @@ impl Provider for AnthropicProvider {
                 "cache_control": {"type": "ephemeral"}
             }]);
         }
-        if let Some(temp) = request.temperature {
-            body["temperature"] = json!(temp);
+        if !thinking_enabled {
+            if let Some(temp) = request.temperature {
+                body["temperature"] = json!(temp);
+            }
         }
         if !request.tools.is_empty() {
             body["tools"] = json!(self.build_tools(&request.tools));
@@ -340,7 +367,11 @@ impl Provider for AnthropicProvider {
                         }
                         "content_block_delta" => {
                             let delta = &data["delta"];
-                            if delta["type"] == "text_delta" {
+                            if delta["type"] == "thinking_delta" {
+                                vec![Ok(StreamEvent::ThinkingDelta(
+                                    delta["thinking"].as_str().unwrap_or("").to_string(),
+                                ))]
+                            } else if delta["type"] == "text_delta" {
                                 vec![Ok(StreamEvent::TextDelta(
                                     delta["text"].as_str().unwrap_or("").to_string(),
                                 ))]

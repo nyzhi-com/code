@@ -94,6 +94,8 @@ impl Tool for TaskTool {
             retry: nyzhi_config::RetrySettings::default(),
             routing: nyzhi_config::RoutingConfig::default(),
             auto_compact_threshold: None,
+            thinking_enabled: false,
+            thinking_budget: None,
         };
 
         let mut child_thread = Thread::new();

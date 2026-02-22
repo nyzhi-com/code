@@ -8,6 +8,7 @@ pub struct TurnFlags {
     pub tdd: bool,
     pub eco: bool,
     pub review: bool,
+    pub think: bool,
 }
 
 impl TurnFlags {
@@ -19,11 +20,12 @@ impl TurnFlags {
         if self.tdd { labels.push("tdd"); }
         if self.eco { labels.push("eco"); }
         if self.review { labels.push("review"); }
+        if self.think { labels.push("think"); }
         labels
     }
 
     pub fn any(&self) -> bool {
-        self.plan || self.persist || self.parallel || self.tdd || self.eco || self.review
+        self.plan || self.persist || self.parallel || self.tdd || self.eco || self.review || self.think
     }
 }
 
@@ -39,6 +41,7 @@ pub fn detect_keywords(prompt: &str) -> (TurnFlags, String) {
         ("tdd:", |f| f.tdd = true),
         ("eco:", |f| f.eco = true),
         ("review:", |f| f.review = true),
+        ("think:", |f| f.think = true),
     ];
 
     let mut found: HashSet<&str> = HashSet::new();

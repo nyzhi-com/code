@@ -287,12 +287,30 @@ impl Provider for GeminiProvider {
             body["tools"] = self.build_tools(&request.tools);
         }
 
+        let thinking_enabled = request
+            .thinking
+            .as_ref()
+            .map(|t| t.enabled)
+            .unwrap_or(false);
+
         let mut config = json!({});
         if let Some(max_tokens) = request.max_tokens {
             config["maxOutputTokens"] = json!(max_tokens);
         }
-        if let Some(temp) = request.temperature {
-            config["temperature"] = json!(temp);
+        if !thinking_enabled {
+            if let Some(temp) = request.temperature {
+                config["temperature"] = json!(temp);
+            }
+        }
+        if thinking_enabled {
+            let budget = request
+                .thinking
+                .as_ref()
+                .and_then(|t| t.budget_tokens)
+                .unwrap_or(8192);
+            config["thinkingConfig"] = json!({
+                "thinkingBudget": budget
+            });
         }
         if !config.as_object().unwrap().is_empty() {
             body["generationConfig"] = config;
@@ -342,6 +360,12 @@ impl Provider for GeminiProvider {
                         data["candidates"][0]["content"]["parts"].as_array()
                     {
                         for part in parts {
+                            if part.get("thought").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                if let Some(text) = part["text"].as_str() {
+                                    evts.push(Ok(StreamEvent::ThinkingDelta(text.to_string())));
+                                    continue;
+                                }
+                            }
                             if let Some(text) = part["text"].as_str() {
                                 evts.push(Ok(StreamEvent::TextDelta(text.to_string())));
                             }

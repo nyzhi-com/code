@@ -23,7 +23,7 @@ pub fn build_system_prompt_with_mcp(
     custom_instructions: Option<&str>,
     mcp_tools: &[McpToolSummary],
 ) -> String {
-    build_full_system_prompt(workspace, custom_instructions, mcp_tools, false)
+    build_full_system_prompt(workspace, custom_instructions, mcp_tools, false, "")
 }
 
 pub fn build_system_prompt_with_vision(
@@ -32,7 +32,17 @@ pub fn build_system_prompt_with_vision(
     mcp_tools: &[McpToolSummary],
     supports_vision: bool,
 ) -> String {
-    build_full_system_prompt(workspace, custom_instructions, mcp_tools, supports_vision)
+    build_full_system_prompt(workspace, custom_instructions, mcp_tools, supports_vision, "")
+}
+
+pub fn build_system_prompt_with_skills(
+    workspace: Option<&WorkspaceContext>,
+    custom_instructions: Option<&str>,
+    mcp_tools: &[McpToolSummary],
+    supports_vision: bool,
+    skills_text: &str,
+) -> String {
+    build_full_system_prompt(workspace, custom_instructions, mcp_tools, supports_vision, skills_text)
 }
 
 fn build_full_system_prompt(
@@ -40,6 +50,7 @@ fn build_full_system_prompt(
     custom_instructions: Option<&str>,
     mcp_tools: &[McpToolSummary],
     supports_vision: bool,
+    skills_text: &str,
 ) -> String {
     let cwd = std::env::current_dir()
         .map(|p| p.display().to_string())
@@ -212,6 +223,10 @@ Each role has specialized instructions and tool access:
                 "\n\n# Custom Instructions\n{instructions}"
             ));
         }
+    }
+
+    if !skills_text.is_empty() {
+        prompt.push_str(skills_text);
     }
 
     prompt

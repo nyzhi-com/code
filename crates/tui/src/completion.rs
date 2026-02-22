@@ -35,6 +35,7 @@ const SLASH_COMMANDS: &[&str] = &[
     "/session rename",
     "/sessions",
     "/theme",
+    "/think",
     "/trust",
     "/undo",
     "/undo all",
