@@ -45,8 +45,21 @@ Updates are checked automatically every 4 hours. Every update backs up the curre
 ## Quick Start
 
 ```bash
-export OPENAI_API_KEY="sk-..."     # or: nyz login openai
 nyz                                # launch the TUI
+```
+
+First run walks you through connecting a provider. Or connect one directly:
+
+```bash
+nyz login openai                   # OAuth — opens your browser
+nyz login anthropic                # Anthropic PKCE
+nyz login gemini                   # Google PKCE
+```
+
+Then just work:
+
+```bash
+nyz                                # interactive TUI
 nyz run "explain this codebase"    # one-shot, no TUI
 nyz --continue                     # pick up where you left off
 ```

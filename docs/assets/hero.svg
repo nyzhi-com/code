@@ -1,24 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 320">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 200">
   <defs>
-    <linearGradient id="shimmer" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#C49A6C" stop-opacity="0"/>
-      <stop offset="40%" stop-color="#C49A6C" stop-opacity="0.06"/>
-      <stop offset="60%" stop-color="#C49A6C" stop-opacity="0.06"/>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#C49A6C" stop-opacity="0.07"/>
       <stop offset="100%" stop-color="#C49A6C" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="accent-line" x1="0" y1="0" x2="1" y2="0">
+    </radialGradient>
+    <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#C49A6C" stop-opacity="0"/>
-      <stop offset="20%" stop-color="#C49A6C" stop-opacity="0.5"/>
-      <stop offset="80%" stop-color="#C49A6C" stop-opacity="0.5"/>
+      <stop offset="30%" stop-color="#C49A6C" stop-opacity="0.4"/>
+      <stop offset="70%" stop-color="#C49A6C" stop-opacity="0.4"/>
       <stop offset="100%" stop-color="#C49A6C" stop-opacity="0"/>
     </linearGradient>
   </defs>
 
-  <rect width="900" height="320" fill="#000000"/>
-  <rect width="900" height="320" fill="url(#shimmer)"/>
+  <rect width="840" height="200" rx="12" fill="#000000"/>
+  <ellipse cx="420" cy="80" rx="300" ry="120" fill="url(#glow)"/>
 
   <!-- Triskelion mark -->
-  <g transform="translate(450,120) scale(0.32)" fill="#FAFAFA">
+  <g transform="translate(420,72) scale(0.28)" fill="#FAFAFA">
     <circle r="26"/>
     <g stroke="#FAFAFA" stroke-width="16" fill="none" stroke-linecap="round">
       <path d="M 0,0 C 8,-42 58,-85 22,-155"/>
@@ -30,56 +28,48 @@
     <circle cx="22" cy="-155" r="21" transform="rotate(240)"/>
   </g>
 
-  <!-- Dot-matrix "nyzhi" wordmark -->
-  <g transform="translate(0,0)" fill="#FAFAFA">
-    <!-- n -->
-    <circle cx="316" cy="196" r="3.2"/><circle cx="348" cy="196" r="3.2"/>
-    <circle cx="316" cy="204" r="3.2"/><circle cx="324" cy="204" r="3.2"/><circle cx="348" cy="204" r="3.2"/>
-    <circle cx="316" cy="212" r="3.2"/><circle cx="324" cy="212" r="3.2"/><circle cx="348" cy="212" r="3.2"/>
-    <circle cx="316" cy="220" r="3.2"/><circle cx="332" cy="220" r="3.2"/><circle cx="348" cy="220" r="3.2"/>
-    <circle cx="316" cy="228" r="3.2"/><circle cx="340" cy="228" r="3.2"/><circle cx="348" cy="228" r="3.2"/>
-    <circle cx="316" cy="236" r="3.2"/><circle cx="340" cy="236" r="3.2"/><circle cx="348" cy="236" r="3.2"/>
-    <circle cx="316" cy="244" r="3.2"/><circle cx="348" cy="244" r="3.2"/>
-    <!-- y -->
-    <circle cx="358" cy="196" r="3.2"/><circle cx="390" cy="196" r="3.2"/>
-    <circle cx="358" cy="204" r="3.2"/><circle cx="390" cy="204" r="3.2"/>
-    <circle cx="366" cy="212" r="3.2"/><circle cx="382" cy="212" r="3.2"/>
-    <circle cx="374" cy="220" r="3.2"/>
-    <circle cx="374" cy="228" r="3.2"/>
-    <circle cx="374" cy="236" r="3.2"/>
-    <circle cx="374" cy="244" r="3.2"/>
-    <!-- z -->
-    <circle cx="400" cy="196" r="3.2"/><circle cx="408" cy="196" r="3.2"/><circle cx="416" cy="196" r="3.2"/><circle cx="424" cy="196" r="3.2"/><circle cx="432" cy="196" r="3.2"/>
-    <circle cx="432" cy="204" r="3.2"/>
-    <circle cx="424" cy="212" r="3.2"/>
-    <circle cx="416" cy="220" r="3.2"/>
-    <circle cx="408" cy="228" r="3.2"/>
-    <circle cx="400" cy="236" r="3.2"/>
-    <circle cx="400" cy="244" r="3.2"/><circle cx="408" cy="244" r="3.2"/><circle cx="416" cy="244" r="3.2"/><circle cx="424" cy="244" r="3.2"/><circle cx="432" cy="244" r="3.2"/>
-    <!-- h -->
-    <circle cx="442" cy="196" r="3.2"/><circle cx="474" cy="196" r="3.2"/>
-    <circle cx="442" cy="204" r="3.2"/><circle cx="474" cy="204" r="3.2"/>
-    <circle cx="442" cy="212" r="3.2"/><circle cx="474" cy="212" r="3.2"/>
-    <circle cx="442" cy="220" r="3.2"/><circle cx="450" cy="220" r="3.2"/><circle cx="458" cy="220" r="3.2"/><circle cx="466" cy="220" r="3.2"/><circle cx="474" cy="220" r="3.2"/>
-    <circle cx="442" cy="228" r="3.2"/><circle cx="474" cy="228" r="3.2"/>
-    <circle cx="442" cy="236" r="3.2"/><circle cx="474" cy="236" r="3.2"/>
-    <circle cx="442" cy="244" r="3.2"/><circle cx="474" cy="244" r="3.2"/>
-    <!-- i -->
-    <circle cx="484" cy="196" r="3.2"/><circle cx="492" cy="196" r="3.2"/><circle cx="500" cy="196" r="3.2"/>
-    <circle cx="492" cy="204" r="3.2"/>
-    <circle cx="492" cy="212" r="3.2"/>
-    <circle cx="492" cy="220" r="3.2"/>
-    <circle cx="492" cy="228" r="3.2"/>
-    <circle cx="492" cy="236" r="3.2"/>
-    <circle cx="484" cy="244" r="3.2"/><circle cx="492" cy="244" r="3.2"/><circle cx="500" cy="244" r="3.2"/>
+  <!-- copper rule -->
+  <rect x="220" y="130" width="400" height="1" fill="url(#rule)"/>
+
+  <!-- Dot-matrix "nyzhi" - properly centered at x=420, grid=8px, r=3 -->
+  <!-- Total wordmark width: 5 letters. n=32, y=32, z=32, h=32, i=16 + 4 gaps of 8 = 176. Start at x=420-88=332 -->
+  <g fill="#FAFAFA">
+    <!-- n: cols at 332,340,348,356,364 (5 cols, 8px grid), rows at 145,153,161,169,177 (5 rows) -->
+    <circle cx="332" cy="148" r="3"/><circle cx="364" cy="148" r="3"/>
+    <circle cx="332" cy="156" r="3"/><circle cx="340" cy="156" r="3"/><circle cx="364" cy="156" r="3"/>
+    <circle cx="332" cy="164" r="3"/><circle cx="348" cy="164" r="3"/><circle cx="364" cy="164" r="3"/>
+    <circle cx="332" cy="172" r="3"/><circle cx="356" cy="172" r="3"/><circle cx="364" cy="172" r="3"/>
+    <circle cx="332" cy="180" r="3"/><circle cx="364" cy="180" r="3"/>
+
+    <!-- y: start at 332+40=372, cols 372,380,388,396,404 -->
+    <circle cx="372" cy="148" r="3"/><circle cx="404" cy="148" r="3"/>
+    <circle cx="380" cy="156" r="3"/><circle cx="396" cy="156" r="3"/>
+    <circle cx="388" cy="164" r="3"/>
+    <circle cx="388" cy="172" r="3"/>
+    <circle cx="388" cy="180" r="3"/>
+
+    <!-- z: start at 372+40=412, cols 412,420,428,436,444 -->
+    <circle cx="412" cy="148" r="3"/><circle cx="420" cy="148" r="3"/><circle cx="428" cy="148" r="3"/><circle cx="436" cy="148" r="3"/><circle cx="444" cy="148" r="3"/>
+    <circle cx="436" cy="156" r="3"/>
+    <circle cx="428" cy="164" r="3"/>
+    <circle cx="420" cy="172" r="3"/>
+    <circle cx="412" cy="180" r="3"/><circle cx="420" cy="180" r="3"/><circle cx="428" cy="180" r="3"/><circle cx="436" cy="180" r="3"/><circle cx="444" cy="180" r="3"/>
+
+    <!-- h: start at 412+40=452, cols 452,460,468,476,484 -->
+    <circle cx="452" cy="148" r="3"/><circle cx="484" cy="148" r="3"/>
+    <circle cx="452" cy="156" r="3"/><circle cx="484" cy="156" r="3"/>
+    <circle cx="452" cy="164" r="3"/><circle cx="460" cy="164" r="3"/><circle cx="468" cy="164" r="3"/><circle cx="476" cy="164" r="3"/><circle cx="484" cy="164" r="3"/>
+    <circle cx="452" cy="172" r="3"/><circle cx="484" cy="172" r="3"/>
+    <circle cx="452" cy="180" r="3"/><circle cx="484" cy="180" r="3"/>
+
+    <!-- i: start at 452+40=492, cols 492,500,508 (3 cols, narrower) -->
+    <circle cx="492" cy="148" r="3"/><circle cx="500" cy="148" r="3"/><circle cx="508" cy="148" r="3"/>
+    <circle cx="500" cy="156" r="3"/>
+    <circle cx="500" cy="164" r="3"/>
+    <circle cx="500" cy="172" r="3"/>
+    <circle cx="492" cy="180" r="3"/><circle cx="500" cy="180" r="3"/><circle cx="508" cy="180" r="3"/>
   </g>
 
-  <!-- copper accent line -->
-  <rect x="200" y="262" width="500" height="1" fill="url(#accent-line)"/>
-
-  <!-- tagline -->
-  <text x="450" y="286" text-anchor="middle" fill="#A1A1AA" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="400" letter-spacing="0.08em">AI CODING AGENT FOR THE TERMINAL</text>
-
-  <!-- border -->
-  <rect x="0.5" y="0.5" width="899" height="319" rx="8" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+  <!-- subtle border -->
+  <rect x="0.5" y="0.5" width="839" height="199" rx="12" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
 </svg>
