@@ -14,9 +14,17 @@
 #
 set -eu
 
+# ---------------------------------------------------------------------------
+# Entrypoint guard: the entire script is wrapped in main() so that partial
+# downloads (truncated curl) cannot execute an incomplete script.
+# main is called at the very last line — if the download is cut short,
+# the function definition is incomplete and the shell errors harmlessly.
+# ---------------------------------------------------------------------------
+
 RELEASE_URL="${NYZHI_RELEASE_URL:-https://get.nyzhi.com}"
 NYZHI_HOME="${NYZHI_HOME:-$HOME/.nyzhi}"
 INSTALL_DIR="${NYZHI_HOME}/bin"
+BACKUP_PATH=""
 
 main() {
   check_deps
@@ -38,11 +46,14 @@ check_deps() {
       err "Required command not found: $cmd"
     fi
   done
-  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
-    warn "Neither sha256sum nor shasum found — skipping checksum verification"
-    SKIP_CHECKSUM=1
+
+  # Checksum verification is mandatory — refuse to install without it
+  if command -v sha256sum >/dev/null 2>&1; then
+    SHA_CMD="sha256sum"
+  elif command -v shasum >/dev/null 2>&1; then
+    SHA_CMD="shasum -a 256"
   else
-    SKIP_CHECKSUM=0
+    err "Neither sha256sum nor shasum found. Cannot verify download integrity."
   fi
 }
 
@@ -73,6 +84,22 @@ fetch_version_info() {
   if [ -z "$VERSION" ]; then
     err "Could not determine latest version"
   fi
+  # Validate version looks like semver (digits and dots only)
+  case "$VERSION" in
+    *[!0-9.]*) err "Version contains unexpected characters: $VERSION" ;;
+  esac
+
+  if [ -z "$CHECKSUM" ]; then
+    err "No checksum available for ${OS}-${ARCH}. Cannot verify download."
+  fi
+  # Validate checksum is 64 hex characters
+  case "$CHECKSUM" in
+    *[!0-9a-f]*) err "Checksum contains non-hex characters" ;;
+  esac
+  if [ "${#CHECKSUM}" -ne 64 ]; then
+    err "Checksum has wrong length (expected 64 hex chars, got ${#CHECKSUM})"
+  fi
+
   info "Latest version: v${VERSION}"
 }
 
@@ -105,20 +132,11 @@ download_binary() {
 }
 
 verify_checksum() {
-  if [ "$SKIP_CHECKSUM" = "1" ] || [ -z "$CHECKSUM" ]; then
-    warn "Skipping checksum verification"
-    return
-  fi
-
-  info "Verifying checksum..."
-  if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL="$(sha256sum "$TARBALL" | cut -d' ' -f1)"
-  else
-    ACTUAL="$(shasum -a 256 "$TARBALL" | cut -d' ' -f1)"
-  fi
+  info "Verifying SHA-256 checksum..."
+  ACTUAL="$($SHA_CMD "$TARBALL" | cut -d' ' -f1)"
 
   if [ "$ACTUAL" != "$CHECKSUM" ]; then
-    err "Checksum mismatch!\n  Expected: ${CHECKSUM}\n  Actual:   ${ACTUAL}"
+    err "Checksum verification FAILED!\n  Expected: ${CHECKSUM}\n  Actual:   ${ACTUAL}\n  The download may be corrupt or tampered with."
   fi
   info "Checksum verified"
 }
@@ -141,7 +159,7 @@ backup_existing() {
   info "Backed up existing binary to ${BACKUP_PATH}"
 
   # Keep only the 3 newest backups
-  BACKUP_COUNT="$(ls -1 "$BACKUP_DIR" | wc -l | tr -d ' ')"
+  BACKUP_COUNT="$(ls -1 "$BACKUP_DIR" 2>/dev/null | wc -l | tr -d ' ')"
   if [ "$BACKUP_COUNT" -gt 3 ]; then
     ls -1t "$BACKUP_DIR" | tail -n +"4" | while read -r OLD; do
       rm -f "${BACKUP_DIR}/${OLD}"
@@ -175,18 +193,17 @@ verify_install() {
   INSTALLED_VERSION="$("$NEW_BIN" --version 2>/dev/null || true)"
   if [ -z "$INSTALLED_VERSION" ]; then
     warn "Could not verify new binary (--version failed)"
-    # Attempt rollback if we have a backup
-    if [ -n "${BACKUP_PATH:-}" ] && [ -f "${BACKUP_PATH:-}" ]; then
+    if [ -n "${BACKUP_PATH}" ] && [ -f "${BACKUP_PATH}" ]; then
       warn "Rolling back to previous version..."
       cp "$BACKUP_PATH" "$NEW_BIN"
       chmod +x "$NEW_BIN"
-      err "New binary is broken. Rolled back to previous version.\n  Broken binary download may be corrupt — try again later."
+      err "New binary is broken. Rolled back to previous version."
     fi
   else
     info "Verified: ${INSTALLED_VERSION}"
   fi
 
-  # Verify user data was not touched
+  # Confirm user data was not touched
   CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nyzhi"
   DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/nyzhi"
 
@@ -259,6 +276,8 @@ print_success() {
 }
 
 parse_json_field() {
+  # Minimal JSON field extractor — no jq dependency.
+  # FIELD is restricted to [a-zA-Z0-9_-] by the callers above.
   FIELD="$1"
   sed -n 's/.*"'"$FIELD"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
 }
@@ -267,4 +286,8 @@ info() { printf '  \033[1;34m→\033[0m %s\n' "$*"; }
 warn() { printf '  \033[1;33m⚠\033[0m %s\n' "$*"; }
 err()  { printf '  \033[1;31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 
+# The call to main MUST be the very last line of the script.
+# If the download is truncated before this point, the shell will
+# see an incomplete function definition and exit with a syntax error
+# instead of executing partial commands.
 main "$@"

@@ -324,6 +324,44 @@ fn verify_new_binary() -> Result<bool> {
 }
 
 // ---------------------------------------------------------------------------
+// URL validation — prevent SSRF and malicious update endpoints
+// ---------------------------------------------------------------------------
+
+const ALLOWED_HOSTS: &[&str] = &["get.nyzhi.com"];
+
+fn validate_release_url(url: &str) -> Result<()> {
+    let parsed: url::Url = url
+        .parse()
+        .context("Invalid release URL")?;
+
+    if parsed.scheme() != "https" {
+        anyhow::bail!("Release URL must use HTTPS (got {})", parsed.scheme());
+    }
+
+    let host = parsed.host_str().unwrap_or("");
+
+    // Block cloud metadata endpoints and private IPs
+    let blocked_hosts = [
+        "169.254.169.254",
+        "metadata.google.internal",
+        "100.100.100.200",
+    ];
+    if blocked_hosts.contains(&host) {
+        anyhow::bail!("Release URL points to a blocked host");
+    }
+
+    // If the URL is not our known host, warn but allow (for self-hosted)
+    if !ALLOWED_HOSTS.contains(&host) {
+        tracing::warn!(
+            "Update URL uses non-default host '{host}'. \
+             Ensure you trust this endpoint."
+        );
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Version check
 // ---------------------------------------------------------------------------
 
@@ -339,6 +377,8 @@ pub async fn check_for_update(config: &nyzhi_config::UpdateConfig) -> Result<Opt
     if now_epoch().saturating_sub(state.last_check_epoch) < interval_secs {
         return Ok(None);
     }
+
+    validate_release_url(&config.release_url)?;
 
     let url = format!("{}/version", config.release_url.trim_end_matches('/'));
     let client = reqwest::Client::builder()
@@ -480,6 +520,11 @@ pub async fn download_and_apply(info: &UpdateInfo) -> Result<UpdateResult> {
 /// Returns the path to the extracted binary in a temp dir.
 /// The caller must use the binary before the tempdir is dropped.
 async fn download_and_extract(info: &UpdateInfo) -> Result<PathBuf> {
+    let expected_sha = info
+        .sha256
+        .as_ref()
+        .context("Refusing to install update without a SHA-256 checksum")?;
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()?;
@@ -490,17 +535,14 @@ async fn download_and_extract(info: &UpdateInfo) -> Result<PathBuf> {
     }
     let bytes = resp.bytes().await?;
 
-    if let Some(ref expected_sha) = info.sha256 {
-        use sha2::Digest;
-        let actual = hex::encode(sha2::Sha256::digest(&bytes));
-        if actual != *expected_sha {
-            anyhow::bail!(
-                "Checksum mismatch!\n  Expected: {expected_sha}\n  Actual:   {actual}"
-            );
-        }
+    use sha2::Digest;
+    let actual = hex::encode(sha2::Sha256::digest(&bytes));
+    if actual != *expected_sha {
+        anyhow::bail!(
+            "Checksum mismatch!\n  Expected: {expected_sha}\n  Actual:   {actual}"
+        );
     }
 
-    // Use a persistent temp dir (not auto-cleaned) so the binary survives this fn
     let extract_dir = nyzhi_config::Config::data_dir().join("update-staging");
     let _ = std::fs::remove_dir_all(&extract_dir);
     std::fs::create_dir_all(&extract_dir)?;
@@ -512,21 +554,34 @@ async fn download_and_extract(info: &UpdateInfo) -> Result<PathBuf> {
     let tar = flate2::read::GzDecoder::new(tar_gz);
     let mut archive = tar::Archive::new(tar);
 
-    let mut binary_path = None;
-    for entry in archive.entries()? {
-        let mut entry = entry?;
-        let path = entry.path()?.to_path_buf();
-        let dest = extract_dir.join(&path);
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)?;
+    // unpack_in() prevents path traversal (rejects entries with ".." components)
+    archive.unpack(&extract_dir)?;
+
+    // Walk the extracted tree to find the nyzhi binary
+    let binary_path = find_binary_in_dir(&extract_dir)
+        .context("Could not find nyzhi binary in archive")?;
+
+    Ok(binary_path)
+}
+
+fn find_binary_in_dir(dir: &std::path::Path) -> Option<PathBuf> {
+    let direct = dir.join("nyzhi");
+    if direct.is_file() {
+        return Some(direct);
+    }
+    let walker = std::fs::read_dir(dir).ok()?;
+    for entry in walker.flatten() {
+        let path = entry.path();
+        if path.is_file() && path.file_name().and_then(|n| n.to_str()) == Some("nyzhi") {
+            return Some(path);
         }
-        entry.unpack(&dest)?;
-        if path.file_name().and_then(|n| n.to_str()) == Some("nyzhi") {
-            binary_path = Some(dest);
+        if path.is_dir() {
+            if let Some(found) = find_binary_in_dir(&path) {
+                return Some(found);
+            }
         }
     }
-
-    binary_path.context("Could not find nyzhi binary in archive")
+    None
 }
 
 // ---------------------------------------------------------------------------

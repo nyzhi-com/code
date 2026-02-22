@@ -2,13 +2,26 @@ interface Env {
   RELEASES: R2Bucket;
 }
 
+type ValidOS = (typeof VALID_OS)[number];
+type ValidArch = (typeof VALID_ARCH)[number];
+
 const VALID_OS = ["darwin", "linux"] as const;
 const VALID_ARCH = ["x86_64", "aarch64"] as const;
+
+const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$/;
 
 const CORS_HEADERS: HeadersInit = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
+
+function isValidOS(s: string): s is ValidOS {
+  return (VALID_OS as readonly string[]).includes(s);
+}
+
+function isValidArch(s: string): s is ValidArch {
+  return (VALID_ARCH as readonly string[]).includes(s);
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -77,15 +90,25 @@ async function serveDownload(
   arch: string,
   version: string | null,
 ): Promise<Response> {
-  if (!VALID_OS.includes(os as any)) {
-    return json({ error: `Unsupported OS: ${os}. Valid: ${VALID_OS.join(", ")}` }, 400);
+  if (!isValidOS(os)) {
+    return json(
+      { error: `Unsupported OS. Valid options: ${VALID_OS.join(", ")}` },
+      400,
+    );
   }
-  if (!VALID_ARCH.includes(arch as any)) {
-    return json({ error: `Unsupported arch: ${arch}. Valid: ${VALID_ARCH.join(", ")}` }, 400);
+  if (!isValidArch(arch)) {
+    return json(
+      { error: `Unsupported architecture. Valid options: ${VALID_ARCH.join(", ")}` },
+      400,
+    );
   }
 
   let targetVersion = version;
-  if (!targetVersion) {
+  if (targetVersion) {
+    if (!SEMVER_RE.test(targetVersion)) {
+      return json({ error: "Invalid version format" }, 400);
+    }
+  } else {
     const latestObj = await env.RELEASES.get("releases/latest.json");
     if (!latestObj) {
       return json({ error: "No releases published yet" }, 503);
@@ -97,7 +120,7 @@ async function serveDownload(
   const key = `releases/v${targetVersion}/nyzhi-${os}-${arch}.tar.gz`;
   const obj = await env.RELEASES.get(key);
   if (!obj) {
-    return json({ error: `Release not found: ${key}` }, 404);
+    return json({ error: "Release not found" }, 404);
   }
 
   return new Response(obj.body, {

@@ -804,11 +804,9 @@ impl Config {
                 } else {
                     global.update.check_interval_hours
                 },
-                release_url: if project.update.release_url != default_release_url() {
-                    project.update.release_url.clone()
-                } else {
-                    global.update.release_url.clone()
-                },
+                // release_url is ONLY settable from global config — never from project config.
+                // Prevents a malicious repo from redirecting updates to an attacker server.
+                release_url: global.update.release_url.clone(),
             },
         }
     }
