@@ -107,7 +107,7 @@ jobs:
           generate_release_notes: true
 
       - name: Install wrangler
-        run: npm install -g wrangler@3.99.0
+        run: npm install -g wrangler@4
 
       - name: Validate checksums
         run: |
@@ -132,7 +132,7 @@ jobs:
             if [ -f "$TARBALL" ]; then
               echo "Uploading $NAME..."
               wrangler r2 object put "nyzhi-releases/releases/v${VERSION}/${NAME}.tar.gz" \
-                --file "$TARBALL"
+                --file "$TARBALL" --remote
             fi
           done
 
@@ -162,7 +162,7 @@ jobs:
           EOF
 
           wrangler r2 object put "nyzhi-releases/releases/latest.json" \
-            --file latest.json
+            --file latest.json --remote
 
       - name: Upload install script to R2
         env:
@@ -170,4 +170,4 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           wrangler r2 object put "nyzhi-releases/install.sh" \
-            --file infra/releases-worker/install.sh
+            --file infra/releases-worker/install.sh --remote
