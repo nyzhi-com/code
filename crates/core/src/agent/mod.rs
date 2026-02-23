@@ -86,6 +86,12 @@ pub enum AgentEvent {
         estimated_tokens: usize,
         context_window: u32,
     },
+    UserQuestion {
+        question: String,
+        options: Vec<(String, String)>,
+        allow_custom: bool,
+        respond: std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<String>>>>,
+    },
     Usage(SessionUsage),
     TurnComplete,
     Error(String),
@@ -178,6 +184,12 @@ impl std::fmt::Debug for AgentEvent {
                 .debug_struct("ContextUpdate")
                 .field("estimated_tokens", estimated_tokens)
                 .field("context_window", context_window)
+                .finish(),
+            Self::UserQuestion { question, options, allow_custom, .. } => f
+                .debug_struct("UserQuestion")
+                .field("question", question)
+                .field("options_count", &options.len())
+                .field("allow_custom", allow_custom)
                 .finish(),
             Self::Usage(u) => f.debug_struct("Usage").field("usage", u).finish(),
             Self::TurnComplete => write!(f, "TurnComplete"),

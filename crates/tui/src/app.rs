@@ -25,6 +25,7 @@ pub enum AppMode {
     Input,
     Streaming,
     AwaitingApproval,
+    AwaitingUserQuestion,
 }
 
 #[derive(Debug, Clone)]
@@ -156,6 +157,8 @@ pub struct App {
     oauth_rx: Option<tokio::sync::oneshot::Receiver<(String, Result<nyzhi_auth::token_store::StoredToken>)>>,
     oauth_msg_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
     pub pending_provider_reload: Option<String>,
+    pub pending_user_question:
+        Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<String>>>>>,
 }
 
 impl App {
@@ -224,6 +227,7 @@ impl App {
             oauth_rx: None,
             oauth_msg_rx: None,
             pending_provider_reload: None,
+            pending_user_question: None,
         }
     }
 
@@ -546,7 +550,7 @@ impl App {
                     } else if self.text_prompt.is_some() {
                         self.handle_text_prompt_key(key, config).await;
                     } else if self.selector.is_some() {
-                        self.handle_selector_key(key, &mut model_info_idx, &mut agent_config);
+                        self.handle_selector_key(key, &mut model_info_idx, &mut agent_config).await;
                     } else if key.code == KeyCode::Char('c')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
@@ -1158,6 +1162,33 @@ impl App {
                             content: format!("Agent {nickname} completed: {preview}"),
                         });
                     }
+                    AgentEvent::UserQuestion {
+                        question,
+                        options,
+                        allow_custom,
+                        respond,
+                    } => {
+                        use crate::components::selector::{SelectorItem, SelectorState, SelectorKind as SK};
+
+                        let mut items: Vec<SelectorItem> = options
+                            .iter()
+                            .map(|(val, label)| SelectorItem::entry(label, val))
+                            .collect();
+
+                        if allow_custom {
+                            items.push(SelectorItem::entry("Custom...", "__custom__"));
+                        }
+
+                        let sel = SelectorState::new(SK::UserQuestion, &question, items, "");
+                        self.selector = Some(sel);
+                        self.pending_user_question = Some(respond);
+                        self.mode = AppMode::AwaitingUserQuestion;
+
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Agent asks: {}", question),
+                        });
+                    }
                     AgentEvent::ContextUpdate { estimated_tokens, context_window } => {
                         self.context_used_tokens = estimated_tokens;
                         self.context_window = context_window;
@@ -1314,7 +1345,7 @@ impl App {
         }
     }
 
-    fn handle_selector_key(&mut self, key: crossterm::event::KeyEvent, model_info_idx: &mut Option<usize>, agent_config: &mut AgentConfig) {
+    async fn handle_selector_key(&mut self, key: crossterm::event::KeyEvent, model_info_idx: &mut Option<usize>, agent_config: &mut AgentConfig) {
         use crate::components::selector::{SelectorAction, SelectorKind};
         use crate::theme::{Accent, ThemePreset};
 
@@ -1487,11 +1518,45 @@ impl App {
                             }
                         }
                     }
+                    SelectorKind::UserQuestion => {
+                        if value == "__custom__" {
+                            let custom_text = self.selector.as_ref()
+                                .map(|s| s.search.trim().to_string())
+                                .unwrap_or_default();
+                            self.selector = None;
+                            if !custom_text.is_empty() {
+                                self.respond_user_question(custom_text).await;
+                            } else {
+                                self.open_user_question_custom_input();
+                            }
+                            return;
+                        }
+                        self.selector = None;
+                        self.respond_user_question(value).await;
+                        return;
+                    }
                 }
                 self.selector = None;
             }
             SelectorAction::Cancel => {
+                let was_user_question = self.selector.as_ref()
+                    .map(|s| s.kind == SelectorKind::UserQuestion)
+                    .unwrap_or(false);
                 self.selector = None;
+                if was_user_question {
+                    self.respond_user_question("__cancelled__".to_string()).await;
+                }
+            }
+            SelectorAction::Tab => {
+                let kind = self.selector.as_ref().map(|s| s.kind);
+                if kind == Some(SelectorKind::Model) {
+                    let is_thinking = self.selector.as_ref()
+                        .and_then(|s| s.context_value.as_deref())
+                        == Some("thinking");
+                    if !is_thinking {
+                        self.handle_model_tab(model_info_idx);
+                    }
+                }
             }
             SelectorAction::None => {}
         }
@@ -1519,14 +1584,23 @@ impl App {
                         self.text_prompt = None;
                         self.handle_exa_setup(value).await;
                     }
+                    TextPromptKind::UserQuestionCustom => {
+                        self.text_prompt = None;
+                        self.respond_user_question(value).await;
+                    }
                 }
             }
             TextPromptAction::Cancel => {
+                let kind = self.text_prompt.as_ref().map(|p| p.kind);
                 self.text_prompt = None;
-                self.items.push(DisplayItem::Message {
-                    role: "system".to_string(),
-                    content: "Cancelled".to_string(),
-                });
+                if kind == Some(TextPromptKind::UserQuestionCustom) {
+                    self.respond_user_question("__cancelled__".to_string()).await;
+                } else {
+                    self.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Cancelled".to_string(),
+                    });
+                }
             }
             TextPromptAction::None => {}
         }
@@ -1650,7 +1724,16 @@ impl App {
                 .unwrap_or(provider_id);
             items.push(SelectorItem::header(&format!("{} ({})", display_name, status)));
             for m in models {
-                let thinking_badge = if m.has_thinking() { " [thinking]" } else { "" };
+                let thinking_badge = if m.has_thinking() {
+                    if m.id == self.model_name && *provider_id == self.provider_name {
+                        let level = self.thinking_level.as_deref().unwrap_or("off");
+                        format!(" [{}]", level)
+                    } else {
+                        " [thinking]".to_string()
+                    }
+                } else {
+                    String::new()
+                };
                 let label = format!(
                     "{:<24} {:>4}  {:>5}{}",
                     m.name,
@@ -1992,6 +2075,60 @@ impl App {
             }
         }
         self.mode = AppMode::Streaming;
+    }
+
+    async fn respond_user_question(&mut self, answer: String) {
+        if let Some(respond) = self.pending_user_question.take() {
+            let mut guard = respond.lock().await;
+            if let Some(sender) = guard.take() {
+                let _ = sender.send(answer.clone());
+            }
+        }
+        if answer == "__cancelled__" {
+            self.items.push(DisplayItem::Message {
+                role: "system".to_string(),
+                content: "Dismissed question.".to_string(),
+            });
+        } else {
+            self.items.push(DisplayItem::Message {
+                role: "system".to_string(),
+                content: format!("Answered: {}", answer),
+            });
+        }
+        self.mode = AppMode::Streaming;
+    }
+
+    fn open_user_question_custom_input(&mut self) {
+        use crate::components::text_prompt::{TextPromptKind, TextPromptState};
+        self.text_prompt = Some(TextPromptState::new(
+            TextPromptKind::UserQuestionCustom,
+            "Custom Answer",
+            &["Type your response to the agent's question."],
+            "Your answer...",
+            false,
+        ));
+    }
+
+    fn handle_model_tab(&mut self, _model_info_idx: &mut Option<usize>) {
+        let cursor_model = self.selector.as_ref()
+            .and_then(|s| s.items.get(s.cursor))
+            .map(|item| item.value.clone())
+            .unwrap_or_default();
+
+        let registry = nyzhi_provider::ModelRegistry::new();
+        let found = registry.find_any(&cursor_model);
+        let model_info = found.map(|(_, m)| m);
+
+        if model_info.map(|m| m.has_thinking()).unwrap_or(false) {
+            let mi = model_info.cloned();
+            self.selector = None;
+            self.open_thinking_selector(mi.as_ref());
+        } else {
+            self.items.push(DisplayItem::Message {
+                role: "system".to_string(),
+                content: "This model does not support thinking levels.".to_string(),
+            });
+        }
     }
 
     fn open_external_editor(

@@ -242,6 +242,7 @@ NO TODOS ON MULTI-STEP WORK = INCOMPLETE WORK.
 - `tail_file`: Read last N lines. Useful for logs and large outputs.
 - `load_skill`: Load domain-specific guidance by skill name.
 - `tool_search`: Search for available tools by capability (MCP or deferred tools).
+- `ask_user`: Present a multiple-choice question to the user. Use when you need a decision, preference, or clarification that cannot be resolved by reading the codebase. Params: `question` (string), `options` (array of {value, label}, 2-6 items), `allow_custom` (bool, default true). Returns the selected value. Do NOT use this for yes/no questions that can be inferred from context.
 
 Prefer structured tools over bash: `git_status` over `git status`, `list_dir` over `ls`, `directory_tree` over `find`.
 File changes via `edit`/`write` are tracked and undoable via `/undo`.

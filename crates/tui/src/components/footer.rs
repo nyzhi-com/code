@@ -29,6 +29,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let left = match app.mode {
         AppMode::Streaming => "esc cancel",
         AppMode::AwaitingApproval => "y approve  n deny",
+        AppMode::AwaitingUserQuestion => "select an option",
         AppMode::Input => "^K cmds  Tab thinking",
     };
 

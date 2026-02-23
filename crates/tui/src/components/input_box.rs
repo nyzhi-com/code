@@ -69,6 +69,16 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
                 inner,
             );
         }
+        AppMode::AwaitingUserQuestion => {
+            let content = Line::from(vec![
+                Span::styled("? ", Style::default().fg(theme.accent).bold()),
+                Span::styled("select an option above", Style::default().fg(theme.text_secondary)),
+            ]);
+            frame.render_widget(
+                Paragraph::new(content).style(Style::default().bg(theme.bg_page)),
+                inner,
+            );
+        }
         AppMode::Input => {
             if let Some(search) = &app.history_search {
                 render_history_search(frame, inner, app, theme, search);

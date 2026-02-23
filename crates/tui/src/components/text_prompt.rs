@@ -7,6 +7,7 @@ use crate::theme::Theme;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextPromptKind {
     ExaApiKey,
+    UserQuestionCustom,
 }
 
 #[derive(Debug, Clone)]
@@ -155,7 +156,11 @@ pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
     // Label
     if y_offset < inner.height {
         let label_area = Rect::new(inner.x, inner.y + y_offset, inner.width, 1);
-        let label = Paragraph::new("API Key:")
+        let label_text = match state.kind {
+            TextPromptKind::UserQuestionCustom => "Your answer:",
+            _ => "API Key:",
+        };
+        let label = Paragraph::new(label_text)
             .style(Style::default().fg(theme.text_primary));
         frame.render_widget(label, label_area);
         y_offset += 1;

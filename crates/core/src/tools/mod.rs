@@ -1,5 +1,6 @@
 pub mod permission;
 pub mod apply_patch;
+pub mod ask_user;
 pub mod bash;
 pub mod batch;
 pub mod browser;
@@ -315,6 +316,9 @@ pub fn default_registry() -> RegistryBundle {
 
     // Phase 1.3: Think tool
     registry.register(Box::new(think::ThinkTool));
+
+    // Interactive user question
+    registry.register(Box::new(ask_user::AskUserTool));
 
     // Phase 2.3: Structured patch application
     registry.register(Box::new(apply_patch::ApplyPatchTool));

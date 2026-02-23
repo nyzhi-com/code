@@ -40,6 +40,7 @@ pub enum SelectorKind {
     Trust,
     Session,
     CustomModelInput,
+    UserQuestion,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +58,7 @@ pub enum SelectorAction {
     None,
     Select(String),
     Cancel,
+    Tab,
 }
 
 impl SelectorState {
@@ -162,6 +164,7 @@ impl SelectorState {
                     SelectorAction::Cancel
                 }
             }
+            KeyCode::Tab => SelectorAction::Tab,
             KeyCode::Esc => SelectorAction::Cancel,
             KeyCode::Backspace => {
                 self.search.pop();
@@ -171,7 +174,7 @@ impl SelectorState {
                 }
                 SelectorAction::None
             }
-            KeyCode::Char(c) if matches!(self.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput | SelectorKind::Command | SelectorKind::Session | SelectorKind::Model | SelectorKind::CustomModelInput) => {
+            KeyCode::Char(c) if matches!(self.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput | SelectorKind::Command | SelectorKind::Session | SelectorKind::Model | SelectorKind::CustomModelInput | SelectorKind::UserQuestion) => {
                 self.search.push(c);
                 let filtered = self.filtered_indices();
                 if let Some(&first) = filtered.iter().find(|&&i| !self.items[i].is_header) {
@@ -189,11 +192,11 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
     let filtered = selector.filtered_indices();
 
     let item_count = filtered.len() as u16;
-    let has_search = matches!(selector.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput | SelectorKind::Command | SelectorKind::Session | SelectorKind::Model | SelectorKind::CustomModelInput);
+    let has_search = matches!(selector.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput | SelectorKind::Command | SelectorKind::Session | SelectorKind::Model | SelectorKind::CustomModelInput | SelectorKind::UserQuestion);
     let search_rows = if has_search { 2 } else { 0 };
     let popup_h = (item_count + 4 + search_rows).min(area.height.saturating_sub(4));
     let base_w = match selector.kind {
-        SelectorKind::Command | SelectorKind::Model => 60u16,
+        SelectorKind::Command | SelectorKind::Model | SelectorKind::UserQuestion => 60u16,
         _ => 50u16,
     };
     let popup_w = base_w.min(area.width.saturating_sub(8));
@@ -212,8 +215,26 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         .title_alignment(Alignment::Center)
         .style(Style::default().bg(theme.bg_elevated));
 
-    let esc_hint = Span::styled(" esc ", Style::default().fg(theme.text_disabled));
-    let block = block.title_bottom(Line::from(esc_hint).alignment(Alignment::Right));
+    let footer_spans: Vec<Span> = match selector.kind {
+        SelectorKind::Model if selector.context_value.as_deref() != Some("thinking") => {
+            vec![
+                Span::styled(" tab", Style::default().fg(theme.accent)),
+                Span::styled(": thinking  ", Style::default().fg(theme.text_disabled)),
+                Span::styled("esc ", Style::default().fg(theme.text_disabled)),
+            ]
+        }
+        SelectorKind::UserQuestion => {
+            vec![
+                Span::styled(" enter", Style::default().fg(theme.accent)),
+                Span::styled(": select  ", Style::default().fg(theme.text_disabled)),
+                Span::styled("esc ", Style::default().fg(theme.text_disabled)),
+            ]
+        }
+        _ => {
+            vec![Span::styled(" esc ", Style::default().fg(theme.text_disabled))]
+        }
+    };
+    let block = block.title_bottom(Line::from(footer_spans).alignment(Alignment::Right));
 
     let inner = block.inner(popup_area);
     frame.render_widget(Clear, popup_area);
@@ -229,6 +250,7 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
                 SelectorKind::Command => "Type to filter commands...",
                 SelectorKind::CustomModelInput => "e.g. anthropic/claude-sonnet-4",
                 SelectorKind::Model => "Filter models...",
+                SelectorKind::UserQuestion => "Type custom answer...",
                 _ => "Search...",
             };
             Span::styled(placeholder, Style::default().fg(theme.text_disabled))
