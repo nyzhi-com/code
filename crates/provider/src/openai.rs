@@ -485,6 +485,7 @@ impl OpenAIProvider {
             "model": model,
             "input": self.build_messages_no_system(request),
             "instructions": request.system.as_deref().unwrap_or("You are a helpful assistant."),
+            "store": false,
         });
         if !request.tools.is_empty() {
             body["tools"] = json!(self.build_tools_responses(&request.tools));
@@ -552,6 +553,7 @@ impl OpenAIProvider {
             "input": self.build_messages_no_system(request),
             "instructions": request.system.as_deref().unwrap_or("You are a helpful assistant."),
             "stream": true,
+            "store": false,
         });
         if !request.tools.is_empty() {
             body["tools"] = json!(self.build_tools_responses(&request.tools));
