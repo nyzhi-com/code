@@ -484,9 +484,11 @@ impl OpenAIProvider {
         let mut body = json!({
             "model": model,
             "input": self.build_messages_no_system(request),
-            "instructions": request.system.as_deref().unwrap_or("You are a helpful assistant."),
             "store": false,
         });
+        if let Some(ref sys) = request.system {
+            body["instructions"] = json!(sys);
+        }
         if !request.tools.is_empty() {
             body["tools"] = json!(self.build_tools_responses(&request.tools));
         }
@@ -551,10 +553,12 @@ impl OpenAIProvider {
         let mut body = json!({
             "model": model,
             "input": self.build_messages_no_system(request),
-            "instructions": request.system.as_deref().unwrap_or("You are a helpful assistant."),
             "stream": true,
             "store": false,
         });
+        if let Some(ref sys) = request.system {
+            body["instructions"] = json!(sys);
+        }
         if !request.tools.is_empty() {
             body["tools"] = json!(self.build_tools_responses(&request.tools));
         }
