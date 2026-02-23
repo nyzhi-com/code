@@ -1,228 +1,138 @@
 # Providers
 
-Nyzhi abstracts LLM access behind the `Provider` trait. Each provider implements streaming chat completions with tool use, and optionally supports thinking/reasoning modes.
+`nyzhi-provider` exposes a common `Provider` trait and routes concrete providers by `api_style`.
 
----
-
-## Provider Trait
-
-Every provider implements:
+## Provider interface
 
 ```rust
-trait Provider {
+#[async_trait]
+pub trait Provider: Send + Sync {
     fn name(&self) -> &str;
-    fn supported_models(&self) -> Vec<ModelInfo>;
-    fn model_for_tier(&self, tier: ModelTier) -> Option<String>;
-    async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
-    async fn chat_stream(&self, request: ChatRequest) -> Result<BoxStream<StreamEvent>>;
+    fn supported_models(&self) -> &[ModelInfo];
+    fn model_for_tier(&self, tier: ModelTier) -> Option<&ModelInfo>;
+    async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse>;
+    async fn chat_stream(
+        &self,
+        request: &ChatRequest,
+    ) -> Result<BoxStream<'static, Result<StreamEvent>>>;
 }
 ```
 
----
+## API style mapping
 
-## OpenAI
+Provider selection is resolved from config in this order:
 
-**API style**: `openai` (Bearer token auth)
+1. `[provider.<id>].api_style` override
+2. Built-in provider definition
+3. Fallback to `openai`
 
-**Default models**:
+Supported styles:
 
-| Model | Context Window | Tier | Thinking |
-|-------|---------------|------|----------|
-| GPT-5.3 Codex | 1,048,576 | High | ReasoningEffort |
-| GPT-5.2 Codex | 1,048,576 | High | ReasoningEffort |
-| GPT-5.2 | 1,048,576 | High | ReasoningEffort |
-| o3 | 200,000 | High | ReasoningEffort |
-| o4-mini | 200,000 | Medium | ReasoningEffort |
+- `openai` -> `OpenAIProvider`
+- `anthropic` -> `AnthropicProvider`
+- `gemini` -> `GeminiProvider`
+- `cursor` -> `CursorProvider`
+- `claude-sdk` -> `ClaudeSDKProvider` (feature-gated stub)
+- `codex` -> `CodexProvider` (stub; not fully integrated)
 
-**Auth**: API key (`OPENAI_API_KEY`) or OAuth device code flow.
+## OpenAI provider
 
-**Thinking support**: `reasoning_effort` parameter (low/medium/high). For `o3` and `o4-mini` models, thinking is enabled via OpenAI's reasoning effort API.
+Default model: `gpt-5.3-codex`
 
-**Streaming**: SSE with text deltas, tool call deltas, and usage events.
+| id | name | context | max output | tier | thinking |
+|---|---|---:|---:|---|---|
+| `gpt-5.3-codex` | GPT-5.3 Codex | 400,000 | 128,000 | high | reasoning effort |
+| `gpt-5.2-codex` | GPT-5.2 Codex | 272,000 | 100,000 | high | reasoning effort |
+| `gpt-5.2` | GPT-5.2 | 272,000 | 100,000 | high | reasoning effort |
 
-**Prompt caching**: Automatic (OpenAI caches internally). Cache read/creation tokens are tracked in usage.
+Notes:
 
----
+- Uses OpenAI Chat Completions API by default.
+- If the credential looks like a JWT (`starts_with("ey")`) and base URL is default, provider switches to Codex subscription endpoint (`https://chatgpt.com/backend-api/codex`) and uses the Responses API.
+- When base URL contains `openrouter.ai`, it adds `HTTP-Referer` and `X-Title` headers.
+- Kimi models sent through the OpenAI-compatible path get special `thinking` payload behavior.
 
-## Anthropic
+## Anthropic provider
 
-**API style**: `anthropic` (`x-api-key` header auth)
+Default model: `claude-sonnet-4-6-20260217`
 
-**Default models**:
+| id | name | context | max output | tier | thinking |
+|---|---|---:|---:|---|---|
+| `claude-opus-4-6-20260205` | Claude Opus 4.6 | 1,000,000 | 128,000 | high | adaptive effort |
+| `claude-sonnet-4-6-20260217` | Claude Sonnet 4.6 | 1,000,000 | 16,384 | medium | adaptive effort |
+| `claude-haiku-4-5-20251022` | Claude Haiku 4.5 | 200,000 | 8,192 | low | none |
 
-| Model | Context Window | Tier | Thinking |
-|-------|---------------|------|----------|
-| Claude Opus 4.6 | 200,000 | High | AdaptiveEffort |
-| Claude Sonnet 4.6 | 200,000 | Medium | AdaptiveEffort |
-| Claude Haiku 4.5 | 200,000 | Low | None |
+Notes:
 
-**Auth**: API key (`ANTHROPIC_API_KEY`) or OAuth PKCE flow.
+- Sends `x-api-key` and `anthropic-version: 2023-06-01`.
+- System prompt is emitted via Anthropic `system` field with ephemeral cache control.
+- Stream parser supports text deltas, thinking deltas, tool call start/delta, and usage events.
 
-**Thinking support**: Adaptive effort via `thinking.budget_tokens`. The system prompt and the last tool result are marked with `cache_control: { type: "ephemeral" }` for prompt caching.
+## Gemini provider
 
-**Streaming**: SSE with content_block_start/delta/stop events. Handles thinking blocks (type: "thinking") separately from text blocks.
+Default model: `gemini-3-flash`
 
-**Special handling**: System messages are extracted from the message array and sent as a separate `system` parameter (Anthropic API requirement).
+| id | name | context | max output | tier | thinking |
+|---|---|---:|---:|---|---|
+| `gemini-3.1-pro-preview` | Gemini 3.1 Pro | 1,048,576 | 65,536 | high | thinking levels |
+| `gemini-3-flash` | Gemini 3 Flash | 1,048,576 | 65,536 | low | thinking levels |
+| `gemini-3-pro-preview` | Gemini 3 Pro | 1,048,576 | 65,536 | high | thinking levels |
+| `gemini-2.5-flash` | Gemini 2.5 Flash | 1,048,576 | 65,536 | low | budget tokens |
 
----
+Notes:
 
-## Gemini
+- Supports API key mode (`?key=` URL parameter) and bearer mode (`Authorization` header).
+- Uses `generateContent` / `streamGenerateContent` with `alt=sse`.
+- Thinking in streaming mode is sent through `generationConfig.thinkingConfig.thinkingBudget`.
 
-**API style**: `gemini`
+## Cursor provider
 
-**Default models**:
+Uses Cursor credentials (`access_token` + `machine_id`) and calls `https://api2.cursor.sh/v1/chat/completions`.
 
-| Model | Context Window | Tier | Thinking |
-|-------|---------------|------|----------|
-| Gemini 3.1 Pro | 1,048,576 | High | BudgetTokens |
-| Gemini 3 Flash | 1,048,576 | Low | BudgetTokens |
-| Gemini 3 Pro | 1,048,576 | High | BudgetTokens |
-| Gemini 2.5 Flash | 1,048,576 | Medium | BudgetTokens |
+Bundled models include Claude, GPT, and Gemini aliases plus `auto`.
 
-**Auth**: API key (`GEMINI_API_KEY`) as a query parameter, or OAuth Bearer token (Google PKCE flow).
+| id | context | max output | tier |
+|---|---:|---:|---|
+| `claude-4-sonnet` | 200,000 | 64,000 | high |
+| `claude-4.5-sonnet-thinking` | 200,000 | 64,000 | high |
+| `claude-4.5-opus-high` | 200,000 | 64,000 | high |
+| `claude-4.5-opus-high-thinking` | 200,000 | 64,000 | high |
+| `gpt-5.3-codex` | 400,000 | 128,000 | high |
+| `gpt-5.2` | 272,000 | 100,000 | medium |
+| `gpt-4o` | 128,000 | 16,384 | medium |
+| `gemini-3-pro` | 1,048,576 | 65,536 | high |
+| `gemini-3-flash` | 1,048,576 | 65,536 | low |
+| `auto` | 200,000 | 64,000 | medium |
 
-**Thinking support**: `thinkingConfig.thinkingBudget` parameter for models that support extended thinking.
+## ModelRegistry defaults
 
-**Streaming**: SSE with `generateContent` streaming response format. Content parts include both text and function calls.
+`ModelRegistry::new()` includes models for:
 
-**Dual auth mode**: `GeminiAuthMode::ApiKey(key)` appends `?key=...` to the URL. `GeminiAuthMode::Bearer(token)` uses the `Authorization` header.
+- `openai`
+- `anthropic`
+- `gemini`
+- `deepseek`
+- `groq`
+- `kimi` and `kimi-coding`
+- `minimax` and `minimax-coding`
+- `glm` and `glm-coding`
+- `cursor`
+- `together`
+- `ollama`
+- `openrouter` (empty list by default)
 
----
+## Thinking support types
 
-## OpenRouter
+`ModelInfo.thinking` may contain:
 
-**API style**: `openai`
+- `ReasoningEffort` (OpenAI-style effort levels)
+- `AdaptiveEffort` (Anthropic adaptive thinking)
+- `BudgetTokens` (token-budget style)
+- `ThinkingLevel` (named levels such as minimal/low/medium/high)
 
-Use OpenRouter to access any model available on their platform:
+The UI converts provider-specific knobs into a unified `/thinking` experience.
 
-```toml
-[provider]
-default = "openrouter"
+## Stubs / partial integrations
 
-[provider.openrouter]
-model = "anthropic/claude-sonnet-4-20250514"
-# api_key via OPENROUTER_API_KEY env var
-```
-
----
-
-## DeepSeek
-
-**API style**: `openai`
-
-```toml
-[provider.deepseek]
-model = "deepseek-chat"
-```
-
----
-
-## Groq
-
-**API style**: `openai`
-
-```toml
-[provider.groq]
-model = "llama-3.3-70b-versatile"
-```
-
----
-
-## Kimi (Moonshot)
-
-**API style**: `openai`
-
-Kimi models support thinking via a special `thinking` field in the request (not `reasoning_effort`). Nyzhi detects Kimi models by name prefix and adjusts the thinking parameter format.
-
----
-
-## MiniMax and GLM
-
-**API style**: `openai`
-
-Standard OpenAI-compatible endpoints.
-
----
-
-## Custom Providers
-
-Any OpenAI-compatible API can be added:
-
-```toml
-[provider.my-local-llm]
-base_url = "http://localhost:8080/v1"
-api_key = "not-needed"
-api_style = "openai"
-env_var = "MY_LLM_KEY"
-```
-
-The `api_style` determines which provider implementation is used:
-
-| api_style | Implementation | Auth Header |
-|-----------|---------------|-------------|
-| `openai` | `OpenAIProvider` | `Authorization: Bearer <key>` |
-| `anthropic` | `AnthropicProvider` | `x-api-key: <key>` |
-| `gemini` | `GeminiProvider` | Query param or Bearer |
-
----
-
-## Thinking and Reasoning
-
-Different providers use different thinking mechanisms:
-
-| Type | Provider | Parameter |
-|------|----------|-----------|
-| `ReasoningEffort` | OpenAI (o3, o4-mini, GPT-5.x) | `reasoning_effort: "low"/"medium"/"high"` |
-| `AdaptiveEffort` | Anthropic (Claude Opus/Sonnet) | `thinking.budget_tokens: N` |
-| `BudgetTokens` | Gemini | `thinkingConfig.thinkingBudget: N` |
-| `ThinkingLevel` | Kimi | `thinking: true` |
-
-Thinking can be configured in the agent:
-
-```toml
-[agent]
-# thinking_enabled = true
-# thinking_budget = 10000
-# reasoning_effort = "medium"
-```
-
----
-
-## Model Registry
-
-The `ModelRegistry` aggregates models from all configured providers:
-
-- `models_for(provider)` -- list models for a specific provider
-- `all_models()` -- list all available models
-- `find(model_id)` -- find a model by exact ID
-- `find_any(model_id)` -- find across all providers
-- `providers()` -- list provider names with models
-
-### Model Info
-
-Each model carries metadata:
-
-```rust
-struct ModelInfo {
-    id: String,              // e.g., "gpt-5.2-codex"
-    name: String,            // e.g., "GPT-5.2 Codex"
-    provider: String,        // e.g., "openai"
-    context_window: usize,   // e.g., 1048576
-    max_output_tokens: usize,
-    input_price_per_m: f64,  // USD per million tokens
-    output_price_per_m: f64,
-    tier: ModelTier,         // Low, Medium, High
-    thinking: Option<ThinkingSupport>,
-}
-```
-
----
-
-## Stub Providers
-
-Two providers exist as stubs for future integration:
-
-- **Claude SDK** (`claude-sdk`): Placeholder for Claude Agent SDK integration. Returns an error instructing to install Claude Code CLI.
-- **Codex** (`codex`): Placeholder for OpenAI Codex CLI integration. Checks for the `codex` binary on PATH.
-
-Neither is usable in the current release.
+- `claude-sdk`: requires `claude-sdk` feature and external CLI; returns informative error when unavailable.
+- `codex`: verifies `codex` binary exists, but runtime MCP integration is not complete; recommends OpenAI provider with Codex models.

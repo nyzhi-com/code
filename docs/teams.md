@@ -161,7 +161,7 @@ The following tools are available for team operations:
 | `team_create` | Create a new team with members |
 | `team_delete` | Delete a team |
 | `team_list` | List all teams |
-| `send_message` | Send a message to a teammate |
+| `send_team_message` | Send a message to a teammate |
 | `read_inbox` | Read unread messages |
 | `task_create` | Create a task on the board |
 | `task_update` | Update task status, owner, etc. |

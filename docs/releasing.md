@@ -1,152 +1,71 @@
 # Releasing
 
-Releases are automated via GitHub Actions. Push a version tag to trigger the full pipeline: build, checksum, publish to GitHub Releases, and upload to Cloudflare R2.
+Release automation is defined in `.raccoon.toml` (not GitHub Actions workflow files).
 
----
+## Pipeline source of truth
 
-## Release Process
+Two pipelines are configured:
 
-### 1. Tag the Release
+- `check` on `push:master` and `pull_request`
+- `release` on `tag:v*`
+
+### Check pipeline
+
+Runs:
+
+1. `cargo fmt --all -- --check`
+2. `cargo clippy --all-targets --all-features -- -D warnings`
+3. `cargo test --all`
+
+### Release pipeline
+
+`Build and publish release` step runs shell script that:
+
+1. derives `VERSION` from `RACCOON_REF`
+2. builds with `cargo zigbuild --release -p nyzhi` for:
+   - `x86_64-unknown-linux-gnu`
+   - `aarch64-unknown-linux-gnu`
+   - `x86_64-apple-darwin`
+   - `aarch64-apple-darwin`
+3. packages `nyz` binary into:
+   - `nyzhi-linux-x86_64.tar.gz`
+   - `nyzhi-linux-aarch64.tar.gz`
+   - `nyzhi-darwin-x86_64.tar.gz`
+   - `nyzhi-darwin-aarch64.tar.gz`
+4. writes `<name>.sha256` via `sha256sum`
+5. uploads artifacts by POSTing to:
+   - `$RACCOON_CALLBACK/api/jobs/$RACCOON_JOB_ID/artifact`
+   - with bearer `$RACCOON_TOKEN`
+
+## Tagging a release
 
 ```bash
-git tag v0.2.1
-git push origin v0.2.1
+git tag v1.1.3
+git push origin v1.1.3
 ```
 
-The `v*` tag pattern triggers the release workflow.
+`tag:v*` triggers the release pipeline.
 
-### 2. Build (Automated)
+## Version source
 
-The workflow builds for four targets in parallel:
-
-| Target | OS | Architecture | Runner |
-|--------|----|-------------|--------|
-| `x86_64-unknown-linux-gnu` | Linux | x86_64 | ubuntu-latest |
-| `aarch64-unknown-linux-gnu` | Linux | ARM64 | ubuntu-latest (cross) |
-| `x86_64-apple-darwin` | macOS | x86_64 | macos-latest |
-| `aarch64-apple-darwin` | macOS | ARM64 | macos-latest |
-
-Linux ARM64 uses [cross](https://github.com/cross-rs/cross) for cross-compilation.
-
-### 3. Package
-
-Each build produces:
-
-- `nyzhi-<platform>-<arch>.tar.gz` -- compressed tarball containing the `nyz` binary
-- `nyzhi-<platform>-<arch>.sha256` -- SHA256 checksum file
-
-### 4. Publish
-
-The publish job:
-
-1. Downloads all build artifacts
-2. Validates all checksums (must be 64-character hex strings)
-3. Creates a GitHub Release with auto-generated release notes
-4. Uploads tarballs and checksums to the release
-
-### 5. Upload to R2
-
-Tarballs are uploaded to Cloudflare R2 for the install script:
-
-```
-nyzhi-releases/releases/v<version>/nyzhi-<platform>-<arch>.tar.gz
-```
-
-### 6. Update latest.json
-
-A `latest.json` manifest is uploaded to R2:
-
-```json
-{
-  "version": "0.2.1",
-  "date": "2025-02-22T12:00:00Z",
-  "sha256": {
-    "darwin-aarch64": "<hash>",
-    "darwin-x86_64": "<hash>",
-    "linux-x86_64": "<hash>",
-    "linux-aarch64": "<hash>"
-  }
-}
-```
-
-This is what `nyz update` and the install script check to determine the latest version and verify downloads.
-
-### 7. Upload Install Script
-
-The install script (`infra/releases-worker/install.sh`) is uploaded to R2 so that `curl -fsSL https://get.nyzhi.com | sh` always gets the latest version.
-
----
-
-## Required Secrets
-
-Configure these in your GitHub repository settings:
-
-| Secret | Purpose |
-|--------|---------|
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API token with R2 write access |
-| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
-
----
-
-## Workflow File
-
-The release workflow is at `.github/workflows/release.yml`. Key characteristics:
-
-- **Pinned actions**: All GitHub Actions are pinned to specific commit SHAs for supply-chain security.
-- **Checksum validation**: Checksums are validated after download and before upload to R2.
-- **Stable toolchain**: Uses `dtolnay/rust-toolchain` with the stable channel.
-
----
-
-## Version Bumping
-
-The version is defined in the workspace `Cargo.toml`:
+Workspace version lives in `Cargo.toml`:
 
 ```toml
 [workspace.package]
-version = "0.2.1"
+version = "1.1.2"
 ```
 
-To release a new version:
+## Updater contract (consumer side)
 
-1. Update the version in `Cargo.toml`
-2. Run `cargo check` to update `Cargo.lock`
-3. Commit: `git commit -am "release: v0.2.2"`
-4. Tag: `git tag v0.2.2`
-5. Push: `git push origin main v0.2.2`
+`nyz update` expects release service endpoints:
 
----
+- `GET <release_url>/version`
+- `GET <release_url>/download/<os>/<arch>?version=<semver>`
 
-## Install Script
+Where `<os>/<arch>` maps to keys such as `darwin/aarch64`, `darwin/x86_64`, `linux/x86_64`, `linux/aarch64`, and checksum data returned by `/version`.
 
-The install script at `infra/releases-worker/install.sh` handles:
+## Operational notes
 
-- Platform detection (Linux/macOS, x86_64/ARM64)
-- Version checking (skips if already up to date)
-- Download with progress bar
-- SHA256 verification
-- Backup of existing binary
-- Atomic installation
-- Post-install verification (runs `nyz --version`, rolls back on failure)
-- PATH setup (zsh, bash, fish)
-- Uninstall support (`--uninstall` flag)
-
-The script is wrapped in a `main()` function so that partial downloads (truncated curl) cannot execute incomplete code.
-
----
-
-## R2 Bucket Structure
-
-```
-nyzhi-releases/
-  install.sh                              # install script
-  releases/
-    latest.json                           # version manifest
-    v0.2.1/
-      nyzhi-darwin-aarch64.tar.gz
-      nyzhi-darwin-x86_64.tar.gz
-      nyzhi-linux-x86_64.tar.gz
-      nyzhi-linux-aarch64.tar.gz
-    v0.2.0/
-      ...
-```
+- Ensure CI environment has `cargo-zigbuild` and zig toolchain availability.
+- Release artifacts are generated under `target/<triple>/release/` and local packaging outputs; these are build artifacts, not source-of-truth.
+- Docs about release infra should be updated from `.raccoon.toml` first when behavior changes.

@@ -1,118 +1,116 @@
 # Authentication
 
-Nyzhi supports two authentication methods: **API keys** (environment variables or config) and **OAuth** (browser-based login). Multiple accounts per provider are supported with automatic rate-limit rotation.
+`nyzhi-auth` supports API keys, OAuth tokens, token refresh, and multi-account rotation.
 
----
+## Credential resolution order
 
-## Credential Resolution Order
+### Synchronous path (`resolve_credential`)
 
-When Nyzhi needs credentials for a provider, it checks these sources in order:
+1. Config key (`[provider.<id>].api_key`)
+2. Environment variable (derived from provider definition)
+3. Token store (`auth.json`)
+   - if token has refresh token and is **not expired**, use bearer token
+   - if token has no refresh token, treat as API key
+4. Error with provider/env hint
 
-1. **Config API key** -- `api_key` field in `[provider.<name>]` section of config.toml
-2. **Environment variable** -- provider-specific env var (e.g., `OPENAI_API_KEY`)
-3. **Token store** -- stored OAuth/API tokens in `auth.json`
-   - If using async resolution: refresh expired tokens first
-   - If using sync resolution: use non-expired bearer tokens only
-4. **Error** -- if none found, return `AuthError::NoCredential` with a hint about the expected env var and whether OAuth is available
+### Async path (`resolve_credential_async`)
 
----
+1. Config key
+2. Environment variable
+3. `refresh_if_needed(provider)` (refreshes expired OAuth token when possible)
+4. Token store fallback
+5. Error with provider/env hint
 
-## API Keys
-
-The simplest way to authenticate. Set the provider's environment variable:
+## API key auth
 
 ```bash
-export OPENAI_API_KEY="sk-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-export GEMINI_API_KEY="AI..."
+export OPENAI_API_KEY="..."
+export ANTHROPIC_API_KEY="..."
+export GEMINI_API_KEY="..."
 ```
 
-Or store it in config:
+Or store inline:
 
 ```toml
 [provider.openai]
-api_key = "sk-..."
+api_key = "..."
 ```
 
-Or store it in the token store:
+## OAuth flows
 
-```bash
-nyz login openai
-# Choose "API Key" when prompted, then paste your key
-```
+Implemented OAuth entrypoints:
 
-### Environment Variable Names
+- `openai` (PKCE)
+- `gemini` / `google` (PKCE)
+- `anthropic` (PKCE)
+- `chatgpt` (delegates to OpenAI login and relabels provider)
+- `cursor` (local Cursor credential extraction)
 
-Each built-in provider has a default env var. Custom providers can specify their own via `env_var` in config:
+### OpenAI PKCE
 
-| Provider | Env Var |
-|----------|---------|
-| openai | `OPENAI_API_KEY` |
-| anthropic | `ANTHROPIC_API_KEY` |
-| gemini | `GEMINI_API_KEY` |
-| openrouter | `OPENROUTER_API_KEY` |
-| deepseek | `DEEPSEEK_API_KEY` |
-| groq | `GROQ_API_KEY` |
-| kimi | `KIMI_API_KEY` |
-| minimax | `MINIMAX_API_KEY` |
-| glm | `GLM_API_KEY` |
+- authorize URL: `https://auth.openai.com/oauth/authorize`
+- token URL: `https://auth.openai.com/oauth/token`
+- fixed redirect: `http://localhost:1455/auth/callback`
+- scope: `openid profile email offline_access`
 
----
+### Google/Gemini PKCE
 
-## OAuth Login
+- authorize URL: `https://accounts.google.com/o/oauth2/v2/auth`
+- token URL: `https://oauth2.googleapis.com/token`
+- redirect: random local port (`127.0.0.1:<port>/oauth2callback`)
+- scopes include:
+  - `openid`
+  - `email`
+  - `cloud-platform`
+  - `generative-language`
+  - `cloudaicompanion`
 
-For providers that support it, OAuth gives you a bearer token without needing a raw API key.
+### Anthropic PKCE
 
-```bash
-nyz login gemini      # Google PKCE flow
-nyz login openai      # OpenAI device code flow
-nyz login anthropic   # Anthropic PKCE flow
-nyz login chatgpt     # ChatGPT device code flow (for Codex)
-```
+- authorize URL: `https://console.anthropic.com/oauth/authorize`
+- token URL: `https://console.anthropic.com/oauth/token`
+- redirect: random local port (`127.0.0.1:<port>/oauth2callback`)
+- scope: `user:inference`
 
-### Google / Gemini (PKCE)
+### ChatGPT
 
-1. Nyzhi starts a local HTTP server on a random port.
-2. Opens your browser to Google's OAuth consent screen.
-3. After you grant access, Google redirects to the local server with an authorization code.
-4. Nyzhi exchanges the code for access and refresh tokens using PKCE.
-5. Tokens are stored in `auth.json` with a label like `account-1`.
+`chatgpt::login()` reuses OpenAI login and stores the token under provider id `chatgpt`.
 
-Scope: `https://www.googleapis.com/auth/generative-language.retriever`
+### Cursor
 
-### OpenAI (Device Code)
+Cursor auth is not browser OAuth in nyzhi:
 
-1. Nyzhi requests a device code from OpenAI's device authorization endpoint.
-2. Prints a verification URL and user code for you to enter in your browser.
-3. Polls until you complete authorization.
-4. Exchanges the device code for access and refresh tokens.
-5. Tokens are stored for provider `"openai"`.
+- reads Cursor SQLite state DB (`state.vscdb`) from OS-specific Cursor global storage path
+- extracts:
+  - `cursorAuth/accessToken`
+  - `cursorAuth/cachedSignUpType` (machine id)
+- stores combined value as `access_token:::machine_id`
 
-### Anthropic (PKCE)
+## CLI login behavior
 
-Same PKCE flow as Google, with Anthropic's OAuth endpoints.
+`nyz login`:
 
-Scope: `user:inference`
+- prompts for provider when omitted
+- attempts OAuth if the provider definition says `supports_oauth = true`
+- on OAuth failure (or non-OAuth provider), falls back to API key prompt
 
-### ChatGPT (Device Code)
+## Token storage
 
-Same device code flow as OpenAI, stored under provider `"chatgpt"`. Used for ChatGPT Plus/Pro access (Codex-style).
+Auth data is persisted at:
 
----
+- `<data_local_dir>/nyzhi/auth.json`
 
-## Token Storage
-
-Tokens are stored in `~/.local/share/nyzhi/auth.json`. The format supports multiple accounts per provider:
+Schema supports multiple accounts per provider:
 
 ```json
 {
   "openai": [
     {
-      "label": "account-1",
+      "label": "account-2",
       "token": {
         "access_token": "...",
         "refresh_token": "...",
-        "expires_at": "2025-03-01T00:00:00Z",
+        "expires_at": 1760000000,
         "provider": "openai"
       },
       "active": true,
@@ -122,83 +120,55 @@ Tokens are stored in `~/.local/share/nyzhi/auth.json`. The format supports multi
 }
 ```
 
-### Legacy Migration
+Legacy keyring migration still exists (`migrate_from_keyring()`).
 
-Nyzhi previously stored tokens in the OS keyring. On first run, `migrate_from_keyring()` moves any existing keyring tokens to `auth.json`.
+## Refresh behavior
 
----
+Expired check uses a 60-second buffer:
 
-## Multi-Account Support
+- expired when `now >= expires_at - 60`
 
-You can store multiple accounts per provider:
+Refresh providers:
 
-```bash
-nyz login openai    # stores as first account
-nyz login openai    # stores as second account (with label)
-```
+- `gemini` / `google`
+- `openai` / `chatgpt`
+- `anthropic`
 
-### Rate-Limit Rotation
+If refresh succeeds, token is overwritten in store.
 
-When a provider returns HTTP 429 (rate limited):
+## Multi-account rotation on 429
 
-1. The current account is marked `rate_limited_until` for the specified wait period.
-2. Nyzhi switches to the next non-rate-limited account.
-3. If all accounts are rate-limited, it falls back to exponential backoff.
+`handle_rate_limit(provider)` can rotate to next account:
 
-This happens automatically -- you only see a brief `Retrying...` message.
+- marks active account as rate-limited for `wait_seconds`
+- activates next available non-rate-limited account
+- if none available, restores first account active and returns `None`
 
-### Account Management
+## Auth status
 
-```bash
-nyz whoami                    # show auth status for all providers
-nyz logout <provider>         # remove all tokens for a provider
-```
+`nyz whoami` status values:
 
----
+- `env`
+- `connected`
+- `not connected`
 
-## Token Refresh
+For providers with multiple accounts, CLI prints account labels, active marker, and rate-limit marker.
 
-OAuth tokens expire. Nyzhi refreshes them automatically:
+## Provider env vars
 
-- **Google**: Uses the refresh token to get a new access token from Google's token endpoint.
-- **OpenAI**: Uses the refresh token with OpenAI's token endpoint.
-- **Anthropic**: Uses the refresh token with Anthropic's token endpoint.
-
-A token is considered expired when `expires_at - 60 seconds <= now` (60-second buffer to avoid edge cases).
-
-Refresh only happens in async code paths (the TUI and `nyz run`). The sync `resolve_credential()` path (used in some CLI commands) skips refresh and uses the stored token as-is.
-
----
-
-## Auth Status
-
-Check your authentication status:
-
-```bash
-nyz whoami
-```
-
-Output shows each provider's status:
-
-- `env` -- using an API key from environment variable
-- `connected` -- using a stored OAuth token
-- `not connected` -- no credentials found
-
-Inside the TUI, `/login` shows the same information.
-
----
-
-## Plugin Auth (Experimental)
-
-The `AuthPlugin` trait exists for custom auth providers, with a `AuthPluginRegistry` for registration. This is currently unused but designed for future extension:
-
-```rust
-trait AuthPlugin {
-    fn provider_id(&self) -> &str;
-    fn provider_name(&self) -> &str;
-    fn auth_methods(&self) -> Vec<AuthMethod>;
-    fn authorize(&self, method: &AuthMethod) -> Result<AuthorizationResult>;
-    fn callback(&self, code: &str, state: &str) -> Result<StoredToken>;
-    fn refresh(&self, token: &StoredToken) -> Result<StoredToken>;
-}
-```
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
+- `CURSOR_API_KEY`
+- `OPENROUTER_API_KEY`
+- `GROQ_API_KEY`
+- `TOGETHER_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `OLLAMA_API_KEY`
+- `MOONSHOT_API_KEY`
+- `KIMI_CODING_API_KEY`
+- `MINIMAX_API_KEY`
+- `MINIMAX_CODING_API_KEY`
+- `ZHIPU_API_KEY`
+- `ZHIPU_CODING_API_KEY`
+- `CODEX_API_KEY`

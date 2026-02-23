@@ -1,322 +1,274 @@
 # Configuration
 
-Nyzhi loads configuration from three layers, merged in order (later values override earlier):
+This page documents the current `nyzhi-config` schema and what the CLI actually loads today.
 
-1. **Global**: `~/.config/nyzhi/config.toml`
-2. **Project**: `.nyzhi/config.toml` (in your project root)
-3. **Local**: `.nyzhi/config.local.toml` (same directory, intended for gitignored overrides)
+## File locations
 
-All sections are optional. Nyzhi works with no config file at all -- just set an API key via environment variable.
+- Global config: `~/.config/nyzhi/config.toml`
+- Project config: `<project_root>/.nyzhi/config.toml`
+- Local helper path exists in code: `<project_root>/.nyzhi/config.local.toml`
 
----
+### What is loaded now
 
-## Provider
+- `nyz` currently loads global config, then merges project config **if** `.nyzhi/config.toml` exists.
+- `config.local.toml` has a loader in `nyzhi-config`, but is not currently wired in CLI startup.
+
+## Top-level sections
 
 ```toml
 [provider]
-default = "openai"             # which provider to use by default
-```
-
-### Per-Provider Settings
-
-```toml
-[provider.openai]
-model = "gpt-5.2-codex"       # default model for this provider
-# api_key = "sk-..."          # inline API key (env var preferred)
-# base_url = "https://..."    # custom endpoint
-
-[provider.anthropic]
-model = "claude-sonnet-4-20250514"
-
-[provider.gemini]
-model = "gemini-2.5-flash"
-```
-
-### Custom Providers
-
-Any OpenAI-compatible endpoint can be added:
-
-```toml
-[provider.my-llm]
-base_url = "https://api.example.com/v1"
-api_key = "..."
-api_style = "openai"          # openai, anthropic, or gemini
-env_var = "MY_LLM_API_KEY"   # environment variable name for API key
-```
-
-### Built-In Provider Definitions
-
-Nyzhi ships with definitions for: `openai`, `anthropic`, `gemini`, `openrouter`, `deepseek`, `groq`, `kimi`, `minimax`, `glm`. Each defines a default `base_url`, `env_var`, and `api_style`.
-
----
-
-## Models
-
-```toml
 [models]
-max_tokens = 16384             # max output tokens per response
-# temperature = 0.7            # sampling temperature (provider default if unset)
+[tui]
+[agent]
+[mcp]
+[external_notify]
+[shell]
+[browser]
+[memory]
+[update]
 ```
 
----
+All sections are optional.
 
-## TUI
+## Defaults (source values)
+
+- `provider.default = "openai"`
+- `models.max_tokens = 4096`
+- `models.temperature = null`
+- `tui.theme = "dark"` (maps to `nyzhi-dark`)
+- `tui.accent = "copper"`
+- `tui.markdown = true`
+- `tui.streaming = true`
+- `tui.notify.bell = true`
+- `tui.notify.desktop = false`
+- `tui.notify.min_duration_ms = 5000`
+- `agent.retry.max_retries = 3`
+- `agent.retry.initial_backoff_ms = 1000`
+- `agent.retry.max_backoff_ms = 30000`
+- `agent.agents.max_threads = 4`
+- `agent.agents.max_depth = 2`
+- `update.enabled = true`
+- `update.check_interval_hours = 4`
+- `update.release_url = "https://get.nyzhi.com"`
+
+## Provider config
+
+```toml
+[provider]
+default = "openai"
+
+[provider.openai]
+model = "gpt-5.3-codex"
+# api_key = "..."
+# base_url = "https://api.openai.com/v1"
+# api_style = "openai"
+# max_tokens = 4096
+# temperature = 0.2
+```
+
+`[provider.<id>]` fields:
+
+- `api_key`
+- `base_url`
+- `model`
+- `api_style`
+- `max_tokens`
+- `temperature`
+
+### Built-in providers
+
+| id | env var | api_style | oauth | default base URL |
+|---|---|---|---|---|
+| `openai` | `OPENAI_API_KEY` | `openai` | yes | `https://api.openai.com/v1` |
+| `anthropic` | `ANTHROPIC_API_KEY` | `anthropic` | yes | `https://api.anthropic.com/v1` |
+| `gemini` | `GEMINI_API_KEY` | `gemini` | yes | `https://generativelanguage.googleapis.com/v1beta` |
+| `cursor` | `CURSOR_API_KEY` | `cursor` | yes | `https://api2.cursor.sh` |
+| `openrouter` | `OPENROUTER_API_KEY` | `openai` | no | `https://openrouter.ai/api/v1` |
+| `claude-sdk` | `ANTHROPIC_API_KEY` | `claude-sdk` | no | *(empty)* |
+| `codex` | `CODEX_API_KEY` | `codex` | yes | *(empty)* |
+| `groq` | `GROQ_API_KEY` | `openai` | no | `https://api.groq.com/openai/v1` |
+| `together` | `TOGETHER_API_KEY` | `openai` | no | `https://api.together.xyz/v1` |
+| `deepseek` | `DEEPSEEK_API_KEY` | `openai` | no | `https://api.deepseek.com/v1` |
+| `ollama` | `OLLAMA_API_KEY` | `openai` | no | `http://localhost:11434/v1` |
+| `kimi` | `MOONSHOT_API_KEY` | `openai` | no | `https://api.moonshot.ai/v1` |
+| `kimi-coding` | `KIMI_CODING_API_KEY` | `anthropic` | no | `https://api.kimi.com/coding` |
+| `minimax` | `MINIMAX_API_KEY` | `openai` | no | `https://api.minimax.io/v1` |
+| `minimax-coding` | `MINIMAX_CODING_API_KEY` | `anthropic` | no | `https://api.minimax.io/anthropic` |
+| `glm` | `ZHIPU_API_KEY` | `openai` | no | `https://api.z.ai/api/paas/v4` |
+| `glm-coding` | `ZHIPU_CODING_API_KEY` | `openai` | no | `https://api.z.ai/api/coding/paas/v4` |
+
+## TUI config
 
 ```toml
 [tui]
-theme = "nyzhi-dark"           # theme preset name
-accent = "copper"              # accent color name
-# output_style = "streaming"   # streaming or block
-```
+theme = "dark"
+accent = "copper"
+markdown = true
+streaming = true
+output_style = "normal" # normal | verbose | minimal | structured
 
-### Theme Presets
-
-`nyzhi-dark`, `nyzhi-light`, `tokyonight`, `catppuccin-mocha`, `dracula`, `solarized-dark`, `solarized-light`, `gruvbox-dark`
-
-### Accent Colors
-
-`copper`, `blue`, `orange`, `emerald`, `violet`, `rose`, `amber`, `cyan`, `red`, `pink`, `teal`, `indigo`, `lime`, `monochrome`
-
-### Color Overrides
-
-Override any theme slot with a hex color:
-
-```toml
-[tui.colors]
-bg_page = "#1a1b26"
-bg_surface = "#1f2335"
-bg_elevated = "#24283b"
-bg_sunken = "#16161e"
-text_primary = "#c0caf5"
-text_secondary = "#a9b1d6"
-text_tertiary = "#565f89"
-text_disabled = "#3b4261"
-border_default = "#292e42"
-border_strong = "#3b4261"
-accent = "#7aa2f7"
-accent_muted = "#3d59a1"
-success = "#9ece6a"
-danger = "#f7768e"
-warning = "#e0af68"
-info = "#7aa2f7"
-```
-
-### Notifications
-
-```toml
 [tui.notify]
-bell = true                    # terminal bell on turn complete (default: true)
-desktop = false                # desktop notification via notify-rust (default: false)
-min_duration_ms = 5000         # only notify if turn took longer than this (default: 5000)
+bell = true
+desktop = false
+min_duration_ms = 5000
+
+[tui.colors]
+bg_page = "#000000"
+accent = "#c49a6c"
 ```
 
----
+Theme names accepted: `dark`, `light`, `nyzhi-dark`, `nyzhi-light`, `tokyonight`, `catppuccin-mocha`, `dracula`, `solarized-dark`, `solarized-light`, `gruvbox-dark`.
 
-## Update
+Accent names: `copper`, `blue`, `orange`, `emerald`, `violet`, `rose`, `amber`, `cyan`, `red`, `pink`, `teal`, `indigo`, `lime`, `monochrome`.
 
-```toml
-[update]
-enabled = true                 # check for updates on TUI start (default: true)
-check_interval_hours = 4       # minimum hours between checks (default: 4)
-release_url = "https://get.nyzhi.com"  # override for self-hosted releases
-```
-
----
-
-## Agent
+## Agent config
 
 ```toml
 [agent]
-max_steps = 100                # max tool-call iterations per turn (default: 100)
-custom_instructions = ""       # appended to system prompt
-auto_compact_threshold = 0.8   # auto-compact at this fraction of context window (default: 0.8)
-enforce_todos = false           # keep running until all todos complete
-auto_simplify = false           # simplify code after each turn
-```
+max_steps = 100
+max_tokens = 8192
+custom_instructions = "..."
+auto_compact_threshold = 0.85
+compact_instructions = "..."
+enforce_todos = false
+auto_simplify = false
 
-### Trust
-
-Controls tool approval behavior:
-
-```toml
 [agent.trust]
-mode = "off"                   # off | limited | full
-allow_tools = ["edit", "write"]  # tools auto-approved in limited mode
-allow_paths = ["src/", "tests/"] # paths auto-approved in limited mode
-```
+mode = "limited" # off | limited | autoedit | full
+allow_tools = ["edit", "write"]
+allow_paths = ["src/"]
+deny_tools = []
+deny_paths = []
+auto_approve = []
+always_ask = []
+remember_approvals = false
 
-| Mode | Behavior |
-|------|----------|
-| `off` | Every write/execute tool requires explicit approval. |
-| `limited` | Tools in `allow_tools` for files in `allow_paths` are auto-approved. All others require approval. |
-| `full` | All tools are auto-approved. |
-
-### Retry
-
-```toml
 [agent.retry]
-max_retries = 3                # max retry attempts for 429/5xx (default: 3)
-initial_backoff_ms = 1000      # initial backoff duration (default: 1000)
-max_backoff_ms = 30000         # max backoff cap (default: 30000)
-```
+max_retries = 3
+initial_backoff_ms = 1000
+max_backoff_ms = 30000
 
-### Routing
-
-Auto-select model tier based on prompt complexity:
-
-```toml
 [agent.routing]
-enabled = false                # enable auto-routing (default: false)
-low_keywords = ["typo", "rename", "format"]    # additional low-tier keywords
-high_keywords = ["architect", "design", "security"]  # additional high-tier keywords
+enabled = false
+low_keywords = []
+high_keywords = []
+
+[agent.verify]
+checks = [{ kind = "test", command = "cargo test -q" }]
 ```
 
-When enabled, prompts are classified into `Low`, `Medium`, or `High` tiers based on keyword analysis and prompt length. The provider then selects the appropriate model.
+### Trust modes
 
-### Hooks
+- `off`: approval required for sensitive tools.
+- `limited`: read-only tools auto-run; write/exec tools still gated unless allow-lists match.
+- `autoedit`: auto-approves file-editing tools (`write`, `edit`, `multi_edit`, `apply_patch`, `delete_file`, `move_file`, `copy_file`, `create_dir`).
+- `full`: auto-approves all tools (except denied via deny-lists).
 
-```toml
-[[agent.hooks]]
-event = "after_edit"           # when to run
-command = "cargo fmt -- {file}" # shell command ({file} replaced with changed path)
-pattern = "*.rs"               # only for matching files (optional)
-timeout = 30                   # seconds (default: 30)
-# block = false                # if true, blocks the tool on non-zero exit
+### Hook events (exact names)
 
-[[agent.hooks]]
-event = "after_turn"
-command = "cargo clippy --all -- -D warnings"
-timeout = 60
-```
+- `session_start`
+- `user_prompt_submit`
+- `pre_tool_use`
+- `post_tool_use`
+- `post_tool_use_failure`
+- `permission_request`
+- `notification`
+- `after_edit`
+- `after_turn`
+- `subagent_start`
+- `subagent_end`
+- `compact_context`
+- `worktree_create`
+- `worktree_remove`
+- `config_change`
+- `teammate_idle`
+- `task_completed`
 
-#### Hook Events
+See [hooks.md](hooks.md) for event payload behavior.
 
-| Event | Trigger | Context |
-|-------|---------|---------|
-| `after_edit` | After any file-modifying tool | `{file}` placeholder available |
-| `after_turn` | After each complete agent turn | No file context |
-| `pre_tool` | Before a tool executes | `tool_name` filter available |
-| `post_tool` | After a tool succeeds | `tool_name` filter available |
-| `post_tool_failure` | After a tool fails | `tool_name` filter available |
-| `teammate_idle` | When a teammate has no work | Team context |
-| `task_completed` | When a team task completes | Task context |
-
-See [hooks.md](hooks.md) for full details.
-
-### Commands
-
-```toml
-[[agent.commands]]
-name = "test"
-prompt = "Write comprehensive tests for $ARGUMENTS"
-description = "Generate tests for a module"
-```
-
-See [commands.md](commands.md) for full details.
-
----
-
-## MCP
-
-### In config.toml
+## MCP config
 
 ```toml
 [mcp.servers.filesystem]
 command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
+args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
 
-[mcp.servers.remote-api]
+[mcp.servers.remote]
 url = "https://mcp.example.com"
-headers = { Authorization = "Bearer token" }
+headers = { Authorization = "Bearer ..." }
 ```
 
-### In .mcp.json (project root)
+`.mcp.json` is also loaded (Claude/Codex format). On name collisions, `.mcp.json` entries win at runtime because they are merged last.
 
-Compatible with Claude Code and Codex format:
+## External notify
 
-```json
-{
-  "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
-    },
-    "remote": {
-      "url": "https://mcp.example.com",
-      "headers": {
-        "Authorization": "Bearer token"
-      }
-    }
-  }
-}
+```toml
+[external_notify]
+webhook_url = "https://example.com/hook"
+telegram_bot_token = "..."
+telegram_chat_id = "..."
+discord_webhook_url = "..."
+slack_webhook_url = "..."
 ```
 
-See [mcp.md](mcp.md) for full details.
-
----
-
-## Shell
+## Shell, browser, memory, update
 
 ```toml
 [shell]
-# default_shell = "/bin/bash"
-# timeout = 120
-```
+path = "/bin/zsh"
+startup_commands = ["echo ready"]
+env = { FOO = "bar" }
 
-## Browser
+[shell.sandbox]
+enabled = false
+allow_network = []
+allow_read = []
+allow_write = []
+block_dotfiles = true
 
-```toml
 [browser]
-# headless = true
-```
+enabled = false
+executable_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+headless = true
 
-## Memory
-
-```toml
 [memory]
-# enabled = true
+auto_memory = false
+
+[update]
+enabled = true
+check_interval_hours = 4
+release_url = "https://get.nyzhi.com"
 ```
 
----
+## Merge caveats
 
-## External Notifications
+Current merge behavior is field-specific, not a universal "project always overrides global" rule:
 
-```toml
-[notify]
-# webhook = { url = "https://hooks.example.com/nyzhi" }
-# telegram = { bot_token = "123:ABC", chat_id = "-100123" }
-# discord = { webhook_url = "https://discord.com/api/webhooks/..." }
-# slack = { webhook_url = "https://hooks.slack.com/services/..." }
-```
+- Provider/model/mcp/agent/shell settings merge field-by-field.
+- `tui` currently comes from global config in merge logic.
+- `update.release_url` is global-only by design (project config cannot override it).
+- `browser.enabled` is merged with logical OR, while `browser.headless` is logical AND.
 
----
+## Environment variables
 
-## Environment Variables
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
+- `CURSOR_API_KEY`
+- `OPENROUTER_API_KEY`
+- `GROQ_API_KEY`
+- `TOGETHER_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `OLLAMA_API_KEY`
+- `MOONSHOT_API_KEY`
+- `KIMI_CODING_API_KEY`
+- `MINIMAX_API_KEY`
+- `MINIMAX_CODING_API_KEY`
+- `ZHIPU_API_KEY`
+- `ZHIPU_CODING_API_KEY`
+- `CODEX_API_KEY`
 
-| Variable | Purpose | Used by |
-|----------|---------|---------|
-| `OPENAI_API_KEY` | OpenAI API key | provider |
-| `ANTHROPIC_API_KEY` | Anthropic API key | provider |
-| `GEMINI_API_KEY` | Google Gemini API key | provider |
-| `OPENROUTER_API_KEY` | OpenRouter API key | provider |
-| `DEEPSEEK_API_KEY` | DeepSeek API key | provider |
-| `GROQ_API_KEY` | Groq API key | provider |
-| `KIMI_API_KEY` | Moonshot/Kimi API key | provider |
-| `MINIMAX_API_KEY` | MiniMax API key | provider |
-| `GLM_API_KEY` | ChatGLM API key | provider |
-| `NYZHI_HOME` | Override install directory (default: `~/.nyzhi`) | installer, updater |
-| `EDITOR` / `VISUAL` | Editor for `/editor` command | TUI |
-| `RUST_LOG` | Log level filter (e.g., `nyzhi=debug`) | tracing |
+## Boundary notes
 
----
-
-## Config Loading Order
-
-1. Load global config from `~/.config/nyzhi/config.toml`.
-2. Detect project root (walk up from CWD looking for `.nyzhi/`, `.claude/`, or `.git/`).
-3. Load project config from `<project_root>/.nyzhi/config.toml`.
-4. Load local config from `<project_root>/.nyzhi/config.local.toml`.
-5. Merge: project overrides global, local overrides project.
-6. CLI flags override everything.
-
-Config directories are created automatically on first run via `Config::ensure_dirs()`.
+- `target/`, `node_modules/`, and `.git/` are runtime/build VCS artifacts, not configuration authority.
+- Product behavior should be documented from maintained source (`crates/*`, `Cargo.toml`, `.raccoon.toml`, and docs), not generated outputs.

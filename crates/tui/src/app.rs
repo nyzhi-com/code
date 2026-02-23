@@ -169,6 +169,7 @@ pub struct App {
     pub todo_progress: Option<(usize, usize, usize)>,
     pub todo_panel: Option<crate::components::todo_panel::TodoPanelState>,
     pub message_queue: VecDeque<TurnRequest>,
+    pub model_cache: nyzhi_provider::ModelCacheHandle,
 }
 
 impl App {
@@ -247,6 +248,7 @@ impl App {
             todo_progress: None,
             todo_panel: None,
             message_queue: VecDeque::new(),
+            model_cache: nyzhi_provider::ModelCache::handle(),
         }
     }
 
@@ -322,6 +324,16 @@ impl App {
             &self.workspace.project_root,
             &config.agent.commands,
         );
+
+        {
+            let cache = self.model_cache.clone();
+            tokio::spawn(async move {
+                let registry = nyzhi_provider::ModelRegistry::new();
+                for pid in registry.providers() {
+                    let _ = nyzhi_provider::refresh_provider_models(pid, &cache).await;
+                }
+            });
+        }
 
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
@@ -815,6 +827,13 @@ impl App {
             }
 
             if let Some(reload_provider_id) = self.pending_provider_reload.take() {
+                {
+                    let cache = self.model_cache.clone();
+                    let pid = reload_provider_id.clone();
+                    tokio::spawn(async move {
+                        let _ = nyzhi_provider::refresh_provider_models(&pid, &cache).await;
+                    });
+                }
                 match nyzhi_provider::create_provider_async(&reload_provider_id, config).await {
                     Ok(new_prov) => {
                         let new_prov: std::sync::Arc<dyn Provider> = new_prov.into();
@@ -2025,16 +2044,20 @@ impl App {
 
         let registry = nyzhi_provider::ModelRegistry::new();
         let mut all_providers = registry.providers();
-        let priority = ["openai", "anthropic", "gemini", "openrouter", "deepseek", "groq", "together", "ollama"];
+        let priority = [
+            "openai", "anthropic", "gemini", "cursor", "openrouter",
+            "deepseek", "groq", "together", "ollama",
+        ];
         all_providers.sort_by_key(|p| {
             priority.iter().position(|&x| x == *p).unwrap_or(priority.len())
         });
         let mut items = Vec::new();
 
-        let supports_custom = ["openrouter", "ollama", "together"];
+        let cache = &self.model_cache;
+
         for provider_id in &all_providers {
-            let models = registry.models_for(provider_id);
-            if models.is_empty() && !supports_custom.contains(provider_id) {
+            let models = nyzhi_provider::cached_or_hardcoded(provider_id, cache);
+            if models.is_empty() {
                 continue;
             }
             let status = nyzhi_auth::auth_status(provider_id);
@@ -2042,7 +2065,7 @@ impl App {
                 .map(|d| d.name)
                 .unwrap_or(provider_id);
             items.push(SelectorItem::header(&format!("{} ({})", display_name, status)));
-            for m in models {
+            for m in &models {
                 let thinking_badge = if m.has_thinking() {
                     if m.id == self.model_name && *provider_id == self.provider_name {
                         let level = self.thinking_level.as_deref().unwrap_or("off");
@@ -2063,11 +2086,9 @@ impl App {
                 let value = format!("{}/{}", provider_id, m.id);
                 items.push(SelectorItem::entry(&label, &value));
             }
-            if supports_custom.contains(provider_id) {
-                let label = format!("{:<24} enter model ID", "Custom model...");
-                let value = format!("__custom__/{}", provider_id);
-                items.push(SelectorItem::entry(&label, &value));
-            }
+            let label = format!("{:<24} enter model ID", "Custom model...");
+            let value = format!("__custom__/{}", provider_id);
+            items.push(SelectorItem::entry(&label, &value));
         }
 
         let current = format!("{}/{}", self.provider_name, self.model_name);

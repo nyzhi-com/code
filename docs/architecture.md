@@ -1,231 +1,98 @@
 # Architecture
 
-Nyzhi is a Rust workspace with six crates. Each crate has a single responsibility; dependencies flow downward from the binary to leaf crates with no cycles.
+Nyzhi is a Rust workspace with six crates and a single CLI binary (`nyz`).
 
----
+## Crate graph
 
-## Crate Dependency Graph
-
-```
-                        ┌──────────────┐
-                        │  nyzhi (cli) │
-                        │   bin: nyz   │
-                        └──────┬───────┘
-                               │
-             ┌─────────────────┼─────────────────┐
-             │                 │                 │
-             ▼                 ▼                 ▼
-       ┌───────────┐    ┌───────────┐    ┌─────────────┐
-       │ nyzhi-tui │    │ nyzhi-core│    │nyzhi-provider│
-       └─────┬─────┘    └─────┬─────┘    └──────┬──────┘
-             │                │                  │
-             │         ┌──────┴──────┐           │
-             │         │             │           │
-             ▼         ▼             ▼           ▼
-       ┌───────────┐  ┌─────────────┐     ┌───────────┐
-       │ nyzhi-auth│  │nyzhi-provider│     │ nyzhi-auth│
-       └─────┬─────┘  └──────┬──────┘     └─────┬─────┘
-             │               │                   │
-             ▼               ▼                   ▼
-       ┌─────────────────────────────────────────────┐
-       │              nyzhi-config                   │
-       └─────────────────────────────────────────────┘
+```text
+                      nyzhi (crates/cli)
+                     /        |        \
+             nyzhi-tui   nyzhi-core   nyzhi-provider
+                   |         /   \            |
+                nyzhi-auth          nyzhi-config
 ```
 
-### Crate Summary
+## Crate responsibilities
 
-| Crate | Package | Role |
-|-------|---------|------|
-| `crates/cli` | `nyzhi` | Binary entry point (`nyz`). CLI parsing via clap, command dispatch, MCP server setup, tool registry assembly. |
-| `crates/core` | `nyzhi-core` | Agent loop, 50+ tool implementations, session management, workspace detection, MCP client, planning, teams, hooks, skills, verification, analytics, and more. |
-| `crates/provider` | `nyzhi-provider` | LLM provider abstraction. Implements the `Provider` trait for OpenAI, Anthropic, and Gemini with SSE streaming, thinking/reasoning support, and a model registry. |
-| `crates/tui` | `nyzhi-tui` | Terminal UI. ratatui-based app loop with theming, syntax highlighting, tab completion, input history, session export, and component rendering. |
-| `crates/auth` | `nyzhi-auth` | Authentication. OAuth2 PKCE and device-code flows, API key resolution, token storage in `auth.json`, multi-account support with rate-limit rotation. |
-| `crates/config` | `nyzhi-config` | Configuration. TOML loading and merging across global, project, and local config files. Defines all config types and built-in provider definitions. |
+- `crates/cli` (`nyzhi`): clap parsing, command routing, provider/mcp bootstrap, non-interactive runs.
+- `crates/core` (`nyzhi-core`): agent loop, tools, sessions, workspace detection, teams, hooks, MCP manager, updater, verification, routing, planning.
+- `crates/provider` (`nyzhi-provider`): provider trait + concrete provider implementations + model registry.
+- `crates/tui` (`nyzhi-tui`): event loop, rendering, selectors, completion, key handling, slash command UX.
+- `crates/auth` (`nyzhi-auth`): API key + OAuth resolution, token store, refresh/rotation.
+- `crates/config` (`nyzhi-config`): config schema/defaults/merge + built-in provider metadata.
 
----
+## Workspace and project detection
 
-## nyzhi-core Module Map
+`workspace::detect_workspace()`:
 
-The core crate contains 39 modules covering all agent logic:
+- walks upward until `.nyzhi/`, `.claude/`, or `.git` is found
+- infers project type (`rust`, `node`, `python`, `go`, unknown)
+- loads project rules from:
+  - `AGENTS.md`
+  - `.nyzhi/rules.md`
+  - `.nyzhi/instructions.md`
+  - `CLAUDE.md`
+  - `.cursorrules`
 
-### Agent Loop
+## Runtime flow (interactive)
 
-| Module | Purpose |
-|--------|---------|
-| `agent` | Main agent turn loop. Streams LLM responses, executes tool calls, handles approval, retries, auto-compaction, and team context injection. |
-| `agent_files` | File context management for agent turns. |
-| `agent_manager` | Manages multiple concurrent agent instances (sub-agents, teammates). |
-| `agent_roles` | Role definitions for agent specialization (worker, explorer, planner, reviewer, etc.). |
+1. Parse CLI and load config.
+2. Detect workspace root/rules.
+3. Build tool registry (`default_registry`).
+4. Create provider from selected provider id + auth resolution.
+5. Merge MCP server config and connect available servers.
+6. Enter TUI loop:
+   - collect input / slash commands
+   - dispatch `agent::run_turn(...)`
+   - stream model events
+   - execute tool calls
+   - save session / update UI / notifications
 
-### Conversation and Sessions
+## Agent turn loop essentials
 
-| Module | Purpose |
-|--------|---------|
-| `conversation` | `Thread` type for message sequences. |
-| `session` | Session persistence (save, load, list, delete, rename, search) in JSON format. |
-| `replay` | Event-level session replay. |
-| `streaming` | Stream accumulation for SSE responses. |
+`agent::run_turn_with_content(...)` does:
 
-### Workspace and Context
+1. append user message to thread
+2. build visible tool definitions (all, read-only for plan mode, or role-filtered)
+3. iterate up to `max_steps`
+4. call provider streaming API
+5. parse text/thinking/tool events
+6. execute tools with trust and approval checks
+7. retry transient provider failures using retry settings
+8. track usage/cost and emit events
+9. finalize when model stops issuing tool calls
 
-| Module | Purpose |
-|--------|---------|
-| `workspace` | Project root detection, project type classification (Rust/Node/Python/Go), rules loading (`AGENTS.md`, `.nyzhi/rules.md`, etc.), and `.nyzhi/` scaffolding. |
-| `worktree` | Git worktree management for team isolation. |
-| `context` | Token estimation and context window management. |
-| `context_files` | `@file` mention extraction and resolution. |
-| `prompt` | System prompt construction with environment, tools, rules, skills, and MCP summaries. |
+## Tool system
 
-### Tools
+- `ToolRegistry` holds all tools.
+- tools default to `ReadOnly` permission unless overridden to `NeedsApproval`.
+- supports deferred tool expansion:
+  - deferred tools omitted from initial tool schema payload
+  - discoverable via `tool_search`
+  - marked expanded after first use
 
-| Module | Purpose |
-|--------|---------|
-| `tools` | Tool trait, `ToolRegistry`, `ToolContext`, and `ToolResult`. Deferred tool loading and role-based filtering. |
-| `tools/bash` | Shell command execution with live output streaming. |
-| `tools/read`, `write`, `edit` | File read, write, and edit operations. |
-| `tools/glob`, `grep` | File pattern matching and content search. |
-| `tools/git` | Git status, diff, log, show, branch, commit, checkout. |
-| `tools/filesystem` | list_dir, directory_tree, file_info, delete, move, copy, create_dir. |
-| `tools/verify` | Build/test/lint execution with structured evidence. |
-| `tools/lsp` | LSP diagnostics, goto definition, find references, hover, AST search. |
-| `tools/web` | web_fetch and web_search. |
-| `tools/browser` | Browser automation (open, screenshot, evaluate). |
-| `tools/pr` | PR creation and review via `gh`. |
-| `tools/task` | Sub-agent delegation. |
-| `tools/todo` | Todo list management. |
-| `tools/notepad` | Notepad read/write. |
-| `tools/memory` | Persistent memory read/write. |
-| `tools/team` | Team creation, messaging, task management. |
-| `tools/semantic_search` | Semantic code search. |
-| `tools/fuzzy_find` | Fuzzy file finder. |
-| `tools/apply_patch`, `batch` | Structured patch application and batch operations. |
-| `tools/instrument` | Debug instrumentation injection/removal. |
-| `tools/think` | Explicit thinking/reasoning tool. |
-| `tools/update_plan` | Plan update tool. |
-| `tools/load_skill` | Lazy skill loading. |
-| `tools/tool_search` | Deferred tool discovery. |
-| `tools/tail_file` | File tail for log monitoring. |
+## MCP integration
 
-### Features
+- MCP servers connect via stdio or streamable HTTP (`rmcp`).
+- discovered tools are wrapped and registered under `mcp__<server>__<tool>`.
+- if many MCP tools are present, they can be deferred and indexed to `.nyzhi/context/tools/mcp-index.md`.
 
-| Module | Purpose |
-|--------|---------|
-| `mcp` | MCP server management (stdio/HTTP), tool adaptation, hot-connect. |
-| `planning` | Planner/critic loop with persistent plans in `.nyzhi/plans/`. |
-| `autopilot` | 5-phase autonomous execution (expansion, planning, execution, QA, validation). |
-| `teams` | Team configuration, task board with file-locking, mailbox messaging system. |
-| `commands` | Custom slash command loading from `.nyzhi/commands/` and config. |
-| `hooks` | After-edit, after-turn, pre/post-tool hook execution with pattern matching. |
-| `skills` | Skill persistence, templates, and lazy loading. |
-| `verify` | Auto-detection of build/test/lint checks per project type. |
-| `routing` | Prompt complexity classification and model tier selection. |
-| `analytics` | Token usage and cost tracking in JSONL format. |
-| `memory` | Project-scoped and user-scoped persistent memory. |
-| `notify` | External notifications (webhook, Telegram, Discord, Slack). |
-| `updater` | Self-update with SHA256 verification, backup, rollback, integrity manifests. |
-| `plugins` | Plugin manifest and loader. |
-| `deepinit` | AGENTS.md generation from project analysis. |
-| `diagnostics` | System diagnostic info collection. |
-| `sandbox` | Sandboxed execution environment. |
-| `index` | Semantic indexing for code search. |
-| `keywords` | Keyword extraction from prompts. |
-| `judging` | Quality assessment. |
-| `checkpoint` | Checkpoint management. |
-| `persistence` | General persistence utilities. |
+## Update architecture
 
----
+`core::updater` performs:
 
-## Data Flow
+1. version check against release endpoint
+2. checksum-gated download
+3. backup + atomic self-replace
+4. post-flight binary check (`--version`)
+5. rollback on failure
+6. integrity checks for user data paths/token presence
 
-### Interactive Mode (TUI)
+## Boundary notes
 
-```
-User Input
-    │
-    ▼
-nyzhi (cli) ── parse CLI args ── load config ── detect workspace
-    │
-    ▼
-nyzhi-tui::App::run()
-    │
-    ├─ Build ToolRegistry (50+ tools + MCP tools)
-    ├─ Create Provider (resolve credentials via nyzhi-auth)
-    ├─ Start MCP servers (nyzhi-core::mcp)
-    │
-    ▼
-Event Loop
-    │
-    ├─ User types message
-    │   │
-    │   ▼
-    │   nyzhi-core::agent::run_turn()
-    │       │
-    │       ├─ Build system prompt (workspace, rules, tools, skills)
-    │       ├─ Check context window, auto-compact if needed
-    │       ├─ Provider::chat_stream() ── HTTP/SSE to LLM API
-    │       │   │
-    │       │   ├─ ThinkingDelta events ── displayed in TUI
-    │       │   ├─ TextDelta events ── displayed in TUI
-    │       │   └─ ToolCall events ── execute tools
-    │       │       │
-    │       │       ├─ ReadOnly tools: execute in parallel
-    │       │       ├─ NeedsApproval tools: prompt user
-    │       │       └─ Results fed back for next LLM turn
-    │       │
-    │       ├─ Retry on 429/5xx (exponential backoff)
-    │       ├─ Run hooks (after_edit, after_turn)
-    │       └─ Log analytics (token counts, cost)
-    │
-    ├─ Auto-save session
-    └─ Render updated UI
-```
+For docs and behavior verification:
 
-### Non-Interactive Mode (`nyz run`)
+- authoritative: maintained source code and config (`crates/*`, `Cargo.toml`, `.raccoon.toml`, docs)
+- non-authoritative artifacts: `target/`, `node_modules/`, `.git/` internals
 
-Same flow but skips the TUI event loop. Output streams directly to stdout. Trust mode defaults apply for tool approval.
-
----
-
-## Tool Registry Design
-
-The tool registry uses a deferred loading pattern to keep initial prompt size small:
-
-1. **Core tools** are registered normally and their full schemas are sent to the LLM in every request.
-2. **Deferred tools** are registered but only indexed (name + description). They are not included in the ChatRequest tool definitions.
-3. When the LLM needs a deferred tool, it calls `tool_search` to discover it by name/description.
-4. On first use, the deferred tool is **expanded** -- its full schema is included in subsequent requests.
-
-This keeps the prompt under budget while still making 50+ tools available.
-
-### Permission Model
-
-Each tool declares a `ToolPermission`:
-
-| Level | Behavior |
-|-------|----------|
-| `ReadOnly` | Always auto-approved. Can run in parallel with other read-only tools. |
-| `NeedsApproval` | Requires user confirmation (or auto-approved in `full` trust mode, or if matching `allow_tools`/`allow_paths` in `limited` mode). |
-
----
-
-## Agent Turn Lifecycle
-
-A single agent turn (`run_turn`) follows this sequence:
-
-1. Push user message onto the conversation thread.
-2. Build tool definitions (filtered by role if applicable).
-3. For up to `max_steps` iterations:
-   a. Inject unread teammate messages (if in a team).
-   b. Micro-compact the thread if any individual message is oversized.
-   c. If context usage exceeds `auto_compact_threshold` (default 85%), run full auto-compaction: summarize history, keep recent messages.
-   d. Build `ChatRequest` with thinking config.
-   e. Stream response via `Provider::chat_stream()`.
-   f. On retryable error (429, 5xx): exponential backoff, try rate-limit account rotation.
-   g. Execute tool calls: read-only in parallel, others sequentially.
-   h. For `NeedsApproval` tools: emit `ApprovalRequest`, wait for user response.
-   i. Offload large tool results to context files.
-   j. Accumulate token usage, emit `Usage` event.
-4. If the LLM stops calling tools (no tool_use in response), the turn is complete.
-5. Run after-turn hooks.
-6. Emit `TurnComplete`.
+Generated outputs are important operationally (build products, dependency trees, git metadata) but are not the product-spec source.

@@ -1,12 +1,8 @@
 # Hooks
 
-Hooks let you run commands automatically in response to agent actions. Use them to enforce formatting, run linters, execute tests, or perform any automated check after the agent modifies files.
+Hooks execute automation around agent events (formatting, checks, policy gates, teammate feedback).
 
----
-
-## Configuration
-
-Hooks are defined in `config.toml` as an array:
+## Config schema
 
 ```toml
 [[agent.hooks]]
@@ -14,124 +10,107 @@ event = "after_edit"
 command = "cargo fmt -- {file}"
 pattern = "*.rs"
 timeout = 30
-
-[[agent.hooks]]
-event = "after_turn"
-command = "cargo clippy --all -- -D warnings"
-timeout = 60
+block = false
+tool_name = "write,edit"
+hook_type = "command" # command | prompt | agent
 ```
 
----
+Fields come from `HookConfig`:
 
-## Hook Events
+- `event`
+- `command`
+- `hook_type`
+- `prompt`
+- `instructions`
+- `tools`
+- `model`
+- `pattern`
+- `tool_name`
+- `block`
+- `timeout`
 
-| Event | Trigger | Available Context |
-|-------|---------|-------------------|
-| `after_edit` | After any file-modifying tool (write, edit, multi_edit, apply_patch) | `{file}` -- the changed file path |
-| `after_turn` | After each complete agent turn | None |
-| `pre_tool` | Before a tool executes | `tool_name` filter |
-| `post_tool` | After a tool succeeds | `tool_name` filter |
-| `post_tool_failure` | After a tool fails | `tool_name` filter |
-| `teammate_idle` | When a teammate reports no work | Team context |
-| `task_completed` | When a team task is marked complete | Task context |
+## Event names (exact)
 
----
+- `session_start`
+- `user_prompt_submit`
+- `pre_tool_use`
+- `post_tool_use`
+- `post_tool_use_failure`
+- `permission_request`
+- `notification`
+- `after_edit`
+- `after_turn`
+- `subagent_start`
+- `subagent_end`
+- `compact_context`
+- `worktree_create`
+- `worktree_remove`
+- `config_change`
+- `teammate_idle`
+- `task_completed`
 
-## Hook Properties
+## Built-in execution paths
 
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `event` | string | yes | When to trigger (see table above) |
-| `command` | string | yes | Shell command to execute |
-| `pattern` | string | no | File pattern filter (for `after_edit`) |
-| `timeout` | integer | no | Timeout in seconds (default: 30) |
-| `block` | boolean | no | If true, non-zero exit blocks the triggering action |
-| `tool_name` | string | no | Filter by tool name (for pre/post_tool events) |
+Primary runtime helpers in `core/hooks.rs`:
 
----
+- `run_after_edit_hooks(...)`
+- `run_after_turn_hooks(...)`
+- `run_pre_tool_hooks(...)`
+- `run_post_tool_hooks(...)`
+- `run_teammate_idle_hooks(...)`
+- `run_task_completed_hooks(...)`
 
-## Placeholders
+## Pattern behavior
 
-The `{file}` placeholder in the command string is replaced with the path of the changed file. Only available for `after_edit` hooks.
+`pattern` matching supports:
 
-```toml
-[[agent.hooks]]
-event = "after_edit"
-command = "prettier --write {file}"
-pattern = "*.ts,*.tsx"
-```
+- extension style: `*.rs`
+- comma lists: `*.ts,*.tsx`
+- substring path checks: `src/`
 
----
+## Placeholder behavior
 
-## Pattern Matching
+`after_edit` hooks replace `{file}` in command with changed file path.
 
-The `pattern` field filters which files trigger the hook. Patterns support:
+## Tool filters
 
-- **Extension matching**: `*.rs`, `*.ts`, `*.py`
-- **Path substring**: `src/api/` matches any file containing that substring
-- **Multiple patterns**: Comma-separated, e.g., `*.ts,*.tsx,*.js`
+`tool_name` supports comma-separated values and matches against `context.tool_name`.
 
-If no pattern is specified, the hook runs for all file changes.
+## Blocking semantics
 
----
+`block = true` is honored for pre-tool hooks:
 
-## Blocking Hooks
+- non-zero hook result can block tool execution
 
-When `block = true`, a non-zero exit code from the hook prevents the triggering tool from completing. This is useful for pre-tool validation:
+## Hook types
 
-```toml
-[[agent.hooks]]
-event = "pre_tool"
-tool_name = "git_commit"
-command = "cargo test"
-block = true
-timeout = 120
-```
+- `command`: real shell command (`sh -c`), timeout, optional JSON stdin context
+- `prompt`: placeholder behavior currently returns static success-like result
+- `agent`: placeholder behavior currently returns static JSON `{"safe": true, ...}`
 
-This prevents commits if tests fail.
+`command` is the practical production path today.
 
----
+## Team hook special code
 
-## Hook Results
+For `teammate_idle` and `task_completed` handlers:
 
-Each hook execution produces a result with:
+- exit code `2` is treated as rejection/feedback signal
+- feedback is taken from hook `stderr`
 
-- `command` -- the executed command
-- `stdout` -- standard output
-- `stderr` -- standard error
-- `exit_code` -- process exit code
-- `timed_out` -- whether the hook exceeded its timeout
+## Result object
 
-Results are reported back to the agent so it can react to failures.
+Every run returns:
 
----
-
-## Special Exit Codes
-
-For team hooks (`teammate_idle`, `task_completed`):
-
-- **Exit code 0** -- success, continue normally
-- **Exit code 2** -- rejection with feedback. The hook's stdout is returned as feedback to the agent, which may adjust its approach.
-
----
-
-## Hook Types
-
-Three hook execution types exist (currently only `command` is configurable):
-
-| Type | Description |
-|------|-------------|
-| **Command** | Runs a shell command via `sh -c`. Supports timeout, stdin (JSON context). |
-| **Prompt** | Evaluates a prompt with context (placeholder, returns YES). |
-| **Agent** | Delegates to an agent for evaluation (placeholder, returns safe). |
-
-Prompt and Agent types are reserved for future use.
-
----
+- `command`
+- `stdout`
+- `stderr`
+- `exit_code`
+- `timed_out`
+- `hook_type`
 
 ## Examples
 
-### Format Rust files after edit
+### Format Rust files after edits
 
 ```toml
 [[agent.hooks]]
@@ -141,48 +120,22 @@ pattern = "*.rs"
 timeout = 30
 ```
 
-### Run clippy after each turn
+### Gate commits with tests
 
 ```toml
 [[agent.hooks]]
-event = "after_turn"
-command = "cargo clippy --all -- -D warnings"
-timeout = 60
-```
-
-### Lint TypeScript on save
-
-```toml
-[[agent.hooks]]
-event = "after_edit"
-command = "eslint --fix {file}"
-pattern = "*.ts,*.tsx"
-timeout = 15
-```
-
-### Run tests before commits
-
-```toml
-[[agent.hooks]]
-event = "pre_tool"
+event = "pre_tool_use"
 tool_name = "git_commit"
-command = "npm test"
+command = "cargo test -q"
 block = true
 timeout = 120
 ```
 
-### Format Python files
+### Run lint after each turn
 
 ```toml
 [[agent.hooks]]
-event = "after_edit"
-command = "black {file}"
-pattern = "*.py"
-timeout = 15
+event = "after_turn"
+command = "cargo clippy --all-targets --all-features -- -D warnings"
+timeout = 120
 ```
-
----
-
-## Viewing Hooks
-
-In the TUI, use `/hooks` to see all configured hooks and their settings.

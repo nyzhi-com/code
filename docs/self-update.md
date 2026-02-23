@@ -1,163 +1,110 @@
-# Self-Update
+# Self-update
 
-Nyzhi includes a built-in update system. It checks for new versions, downloads them with SHA256 verification, creates backups, and can roll back if something goes wrong.
+`core::updater` provides built-in version checking, download, checksum validation, backup, replace, and rollback.
 
----
-
-## Update Commands
+## Commands
 
 ```bash
-nyz update                   # check and apply if available
-nyz update --force           # ignore throttle, check now
-nyz update --list-backups    # list available rollback points
-nyz update --rollback latest # rollback to previous version
-nyz update --rollback <path> # rollback to a specific backup
-```
-
----
-
-## Automatic Checks
-
-When the TUI starts, Nyzhi checks for updates in the background if:
-
-- `[update] enabled = true` (default)
-- At least `check_interval_hours` have passed since the last check (default: 4)
-- The current version hasn't been explicitly skipped
-
-If an update is available, a banner appears in the TUI:
-
-- **`[u]`** -- Apply the update now
-- **`[s]`** -- Skip for this session
-- **`[i]`** -- Ignore this version permanently
-
----
-
-## Update Flow
-
-When an update is applied, the following steps execute in order:
-
-### 1. Integrity Snapshot
-
-Before changing anything, Nyzhi captures a snapshot of the current state:
-
-- Hash of the config directory
-- Keyring state
-- Data directory presence
-
-This snapshot is used for post-update verification.
-
-### 2. Backup
-
-The current binary is copied to `~/.nyzhi/backups/nyz-v<version>-<timestamp>`. The last 3 backups are kept; older ones are pruned.
-
-### 3. Download
-
-The new binary is downloaded from the release URL (default: `https://get.nyzhi.com`). The download URL is validated to prevent redirects to untrusted hosts.
-
-### 4. SHA256 Verification
-
-The downloaded file's SHA256 hash is compared against the expected hash from `latest.json`. If they don't match, the update is aborted.
-
-### 5. Atomic Replacement
-
-The binary is replaced using `self-replace`, which handles the OS-specific details of replacing a running executable:
-
-- On Unix: rename + write
-- On Windows: self-delete scheduling
-
-### 6. Post-Flight Check
-
-The new binary is executed with `--version` to verify it runs correctly. If it fails to produce output:
-
-- The backup is restored automatically
-- An error is reported
-
-### 7. Integrity Verification
-
-The integrity snapshot from step 1 is re-checked. If anything changed unexpectedly (config, keyring, data), the update is rolled back as a precaution.
-
----
-
-## Rollback
-
-If an update causes problems, roll back to a previous version:
-
-```bash
-# Rollback to the most recent backup
-nyz update --rollback latest
-
-# List available backups
+nyz update
+nyz update --force
 nyz update --list-backups
-
-# Rollback to a specific backup
-nyz update --rollback ~/.nyzhi/backups/nyz-v0.2.0-1705312800
+nyz update --rollback latest
+nyz update --rollback <backup-path>
 ```
 
-Backups are stored newest-first in `~/.nyzhi/backups/`.
-
----
-
-## Version Skipping
-
-If you don't want a specific version:
-
-```
-[i] Ignore this version
-```
-
-The skipped version is recorded and won't trigger the update banner again. Future versions will still be offered.
-
----
-
-## Startup Health Check
-
-On each launch, `startup_health_check()` runs:
-
-- Verifies the integrity of the current binary
-- Checks for signs of failed updates
-- Reports any issues
-
----
-
-## Configuration
+## Config
 
 ```toml
 [update]
-enabled = true                 # enable update checks (default: true)
-check_interval_hours = 4       # minimum hours between checks (default: 4)
-release_url = "https://get.nyzhi.com"  # release endpoint
+enabled = true
+check_interval_hours = 4
+release_url = "https://get.nyzhi.com"
 ```
 
-### Self-Hosted Releases
+`release_url` in effective runtime config is global-controlled in merge logic.
 
-For air-gapped or enterprise environments, point to your own release server:
+## Version check behavior
 
-```toml
-[update]
-release_url = "https://releases.internal.example.com"
+`check_for_update()`:
+
+- respects `enabled`
+- enforces throttle using `update-check.json` (`last_check_epoch`)
+- validates release URL scheme/host policy
+- fetches `GET <release_url>/version`
+- compares semver against current build version
+- respects skipped version state
+
+`check_for_update_force()` clears throttle/skips and rechecks immediately.
+
+## Expected release API contract
+
+### Version endpoint
+
+`GET <release_url>/version` returns JSON like:
+
+```json
+{
+  "version": "1.1.3",
+  "date": "2026-02-22T12:00:00Z",
+  "changelog": "optional",
+  "sha256": {
+    "darwin-aarch64": "...",
+    "darwin-x86_64": "...",
+    "linux-x86_64": "...",
+    "linux-aarch64": "..."
+  }
+}
 ```
 
-The server must serve a `latest.json` at `/releases/latest.json` and tarballs at `/releases/v<version>/nyzhi-<platform>-<arch>.tar.gz`.
+### Download endpoint
 
----
+Updater constructs:
 
-## Security
+- `GET <release_url>/download/<os>/<arch>?version=<version>`
 
-- **Host validation**: Release URLs are checked against a trusted host list. Private IPs and localhost are blocked.
-- **SHA256 required**: Downloads are never installed without hash verification.
-- **Atomic replacement**: The old binary is never deleted until the new one is verified.
-- **Automatic rollback**: If the new binary fails its post-flight check, the previous version is restored.
-- **Integrity manifests**: Config and data directories are checked before and after updates.
+where `<os>/<arch>` is derived from current platform.
 
----
+## Apply flow
 
-## Data Safety
+`download_and_apply()` pipeline:
 
-Updates only touch `~/.nyzhi/bin/nyz` (the binary). The following are never modified:
+1. snapshot integrity manifest
+2. backup current executable
+3. download archive and verify SHA-256
+4. extract `nyz` from tarball to staging dir
+5. atomically self-replace executable (`self_replace`)
+6. run new binary with `--version` as post-flight check
+7. rollback from backup if post-flight fails
+8. re-run integrity checks and report warnings
 
-| Path | Content |
-|------|---------|
-| `~/.config/nyzhi/` | User configuration |
-| `~/.local/share/nyzhi/` | Sessions, history, analytics, tokens |
-| `.nyzhi/` | Project-level config and rules |
-| OS keyring | OAuth tokens |
+## Backup/rollback details
+
+- backups stored under `<data_dir>/backups`
+- file naming: `nyz-v<version>-<timestamp>`
+- keeps newest 3 backups
+- `rollback(path)` uses `self_replace` to restore
+
+## Integrity manifest checks
+
+Manifest includes:
+
+- config file hash
+- existence of config/data directories
+- keyring token presence snapshot for known providers
+
+Warnings are produced if these invariants change after update.
+
+## Startup health check
+
+`startup_health_check()` reads the most recent manifest and surfaces recent integrity warnings (within 5 minutes).
+
+## Security controls
+
+- release URL must be HTTPS
+- blocks known metadata/internal hosts (`169.254.169.254`, `metadata.google.internal`, `100.100.100.200`)
+- allows non-default hosts with warning (self-host use case)
+- checksum is mandatory; update is refused without expected SHA-256
+
+## Data safety boundary
+
+Update pipeline is intended to replace the binary and keep user/project state intact. Generated staging/build artifacts are temporary and not authority for runtime behavior.

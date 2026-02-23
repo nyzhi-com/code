@@ -6,11 +6,14 @@ pub mod gemini;
 pub mod claude_sdk;
 pub mod codex;
 pub mod cursor;
+pub mod list_models;
+pub mod model_cache;
 
 mod error;
 mod sse;
 
 pub use error::ProviderError;
+pub use model_cache::{ModelCache, ModelCacheHandle};
 pub use types::*;
 
 use std::collections::HashMap;
@@ -84,10 +87,22 @@ pub fn create_provider(
             )))
         }
         "claude-sdk" => {
-            Ok(Box::new(claude_sdk::ClaudeSDKProvider::from_config(config)?))
+            let cred = nyzhi_auth::resolve_credential(name, entry.and_then(|e| e.api_key.as_deref()))
+                .or_else(|_| nyzhi_auth::resolve_credential("anthropic", config.provider.entry("anthropic").and_then(|e| e.api_key.as_deref())))?;
+            let base_url = entry.and_then(|e| e.base_url.clone())
+                .or_else(|| config.provider.entry("anthropic").and_then(|e| e.base_url.clone()));
+            Ok(Box::new(claude_sdk::ClaudeSDKProvider::new(
+                cred.header_value(), base_url, entry.and_then(|e| e.model.clone()),
+            )))
         }
         "codex" => {
-            Ok(Box::new(codex::CodexProvider::from_config(config)?))
+            let cred = nyzhi_auth::resolve_credential(name, entry.and_then(|e| e.api_key.as_deref()))
+                .or_else(|_| nyzhi_auth::resolve_credential("openai", config.provider.entry("openai").and_then(|e| e.api_key.as_deref())))?;
+            let base_url = entry.and_then(|e| e.base_url.clone())
+                .or_else(|| config.provider.entry("openai").and_then(|e| e.base_url.clone()));
+            Ok(Box::new(codex::CodexProvider::new(
+                cred.header_value(), base_url, entry.and_then(|e| e.model.clone()),
+            )))
         }
         "cursor" => {
             let cred = nyzhi_auth::resolve_credential(name, entry.and_then(|e| e.api_key.as_deref()))?;
@@ -110,10 +125,28 @@ pub async fn create_provider_async(
 
     match style.as_str() {
         "claude-sdk" => {
-            return Ok(Box::new(claude_sdk::ClaudeSDKProvider::from_config(config)?));
+            let cred = nyzhi_auth::resolve_credential_async(name, entry.and_then(|e| e.api_key.as_deref())).await
+                .or_else(|_| {
+                    let ae = config.provider.entry("anthropic");
+                    futures::executor::block_on(nyzhi_auth::resolve_credential_async("anthropic", ae.and_then(|e| e.api_key.as_deref())))
+                })?;
+            let base_url = entry.and_then(|e| e.base_url.clone())
+                .or_else(|| config.provider.entry("anthropic").and_then(|e| e.base_url.clone()));
+            return Ok(Box::new(claude_sdk::ClaudeSDKProvider::new(
+                cred.header_value(), base_url, entry.and_then(|e| e.model.clone()),
+            )));
         }
         "codex" => {
-            return Ok(Box::new(codex::CodexProvider::from_config(config)?));
+            let cred = nyzhi_auth::resolve_credential_async(name, entry.and_then(|e| e.api_key.as_deref())).await
+                .or_else(|_| {
+                    let oe = config.provider.entry("openai");
+                    futures::executor::block_on(nyzhi_auth::resolve_credential_async("openai", oe.and_then(|e| e.api_key.as_deref())))
+                })?;
+            let base_url = entry.and_then(|e| e.base_url.clone())
+                .or_else(|| config.provider.entry("openai").and_then(|e| e.base_url.clone()));
+            return Ok(Box::new(codex::CodexProvider::new(
+                cred.header_value(), base_url, entry.and_then(|e| e.model.clone()),
+            )));
         }
         "cursor" => {
             let cred = nyzhi_auth::resolve_credential_async(
@@ -213,6 +246,61 @@ impl Default for ModelRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Fetch models for a provider, using cache + API + hardcoded fallback.
+/// Updates the cache on success.
+pub async fn refresh_provider_models(
+    provider_id: &str,
+    cache: &ModelCacheHandle,
+) -> Vec<ModelInfo> {
+    let registry = ModelRegistry::new();
+    let hardcoded = registry.models_for(provider_id).to_vec();
+
+    let (base_url, api_key) = resolve_provider_creds(provider_id);
+
+    match list_models::fetch_models(provider_id, &base_url, api_key.as_deref()).await {
+        Ok(fetched) if !fetched.is_empty() => {
+            let merged = list_models::merge_models(fetched, &hardcoded);
+            if let Ok(mut c) = cache.lock() {
+                c.set(provider_id, merged.clone());
+            }
+            merged
+        }
+        _ => {
+            if let Ok(mut c) = cache.lock() {
+                c.set(provider_id, hardcoded.clone());
+            }
+            hardcoded
+        }
+    }
+}
+
+/// Get cached models or fall back to hardcoded.
+pub fn cached_or_hardcoded(provider_id: &str, cache: &ModelCacheHandle) -> Vec<ModelInfo> {
+    if let Ok(c) = cache.lock() {
+        if let Some(models) = c.get(provider_id) {
+            return models;
+        }
+    }
+    let registry = ModelRegistry::new();
+    registry.models_for(provider_id).to_vec()
+}
+
+fn resolve_provider_creds(provider_id: &str) -> (String, Option<String>) {
+    let def = nyzhi_config::find_provider_def(provider_id);
+    let base_url = def
+        .map(|d| d.default_base_url.to_string())
+        .unwrap_or_default();
+
+    let env_var = def.map(|d| d.env_var).unwrap_or("");
+    let api_key = if !env_var.is_empty() {
+        std::env::var(env_var).ok()
+    } else {
+        None
+    };
+
+    (base_url, api_key)
 }
 
 fn deepseek_models() -> Vec<ModelInfo> {
