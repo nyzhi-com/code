@@ -100,6 +100,8 @@ impl Tool for TaskTool {
             thinking_level: None,
             team_name: ctx.team_name.clone(),
             agent_name: ctx.agent_name.clone(),
+            plan_mode: false,
+            act_after_plan: false,
         };
 
         let mut child_thread = Thread::new();

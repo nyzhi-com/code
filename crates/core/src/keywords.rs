@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 pub enum AgentMode {
     Execute,
     Plan,
-    PlanAndExecute,
     Debug,
 }
 
@@ -21,7 +20,6 @@ impl std::fmt::Display for AgentMode {
         match self {
             AgentMode::Execute => write!(f, "execute"),
             AgentMode::Plan => write!(f, "plan"),
-            AgentMode::PlanAndExecute => write!(f, "plan+execute"),
             AgentMode::Debug => write!(f, "debug"),
         }
     }
@@ -42,41 +40,9 @@ pub struct TurnFlags {
 }
 
 impl TurnFlags {
-    pub fn active_labels(&self) -> Vec<&'static str> {
-        let mut labels = vec![];
-        if self.plan { labels.push("plan"); }
-        if self.persist { labels.push("persist"); }
-        if self.parallel { labels.push("parallel"); }
-        if self.tdd { labels.push("tdd"); }
-        if self.eco { labels.push("eco"); }
-        if self.review { labels.push("review"); }
-        if self.think { labels.push("think"); }
-        if self.deep { labels.push("deep"); }
-        if self.ultra { labels.push("ultra"); }
-        if self.debug { labels.push("debug"); }
-        labels
-    }
-
     pub fn any(&self) -> bool {
         self.plan || self.persist || self.parallel || self.tdd || self.eco
             || self.review || self.think || self.deep || self.ultra || self.debug
-    }
-
-    pub fn inferred_mode(&self) -> AgentMode {
-        if self.debug {
-            AgentMode::Debug
-        } else if self.plan {
-            AgentMode::Plan
-        } else {
-            AgentMode::Execute
-        }
-    }
-
-    pub fn thinking_level(&self) -> u32 {
-        if self.ultra { 3 }
-        else if self.deep { 2 }
-        else if self.think { 1 }
-        else { 0 }
     }
 }
 

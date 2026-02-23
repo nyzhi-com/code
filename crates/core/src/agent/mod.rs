@@ -214,6 +214,8 @@ pub struct AgentConfig {
     pub thinking_level: Option<String>,
     pub team_name: Option<String>,
     pub agent_name: Option<String>,
+    pub plan_mode: bool,
+    pub act_after_plan: bool,
 }
 
 impl Default for AgentConfig {
@@ -233,6 +235,8 @@ impl Default for AgentConfig {
             thinking_level: None,
             team_name: None,
             agent_name: None,
+            plan_mode: false,
+            act_after_plan: false,
         }
     }
 }
@@ -280,10 +284,19 @@ pub async fn run_turn_with_content(
         content: user_content,
     });
 
-    let tool_defs = if let Some(allowed) = &ctx.allowed_tool_names {
+    let tool_defs = if config.plan_mode {
+        registry.definitions_read_only()
+    } else if let Some(allowed) = &ctx.allowed_tool_names {
         registry.definitions_filtered(allowed)
     } else {
         registry.definitions()
+    };
+    let system_prompt = if config.plan_mode {
+        format!("{}{}", config.system_prompt, crate::prompt::plan_mode_instructions())
+    } else if config.act_after_plan {
+        format!("{}{}", config.system_prompt, crate::prompt::act_after_plan_instructions())
+    } else {
+        config.system_prompt.clone()
     };
     let max_tokens = config.max_tokens.or_else(|| model_info.map(|m| m.max_output_tokens));
 
@@ -312,7 +325,7 @@ pub async fn run_turn_with_content(
         }
 
         if let Some(mi) = model_info {
-            let est = thread.estimated_tokens(&config.system_prompt);
+            let est = thread.estimated_tokens(&system_prompt);
             let _ = event_tx.send(AgentEvent::ContextUpdate {
                 estimated_tokens: est,
                 context_window: mi.context_window,
@@ -386,7 +399,7 @@ pub async fn run_turn_with_content(
             tools: tool_defs.clone(),
             max_tokens,
             temperature: None,
-            system: Some(config.system_prompt.clone()),
+            system: Some(system_prompt.clone()),
             stream: true,
             thinking,
         };
@@ -589,7 +602,7 @@ pub async fn run_turn_with_content(
                 let tc = &acc.tool_calls[i];
                 let start = std::time::Instant::now();
                 let output = match execute_with_permission(
-                    registry, &tc.name, args, ctx, event_tx, &config.trust,
+                    registry, &tc.name, args, ctx, event_tx, &config.trust, config.plan_mode,
                 )
                 .await
                 {
@@ -691,10 +704,21 @@ async fn execute_with_permission(
     ctx: &ToolContext,
     event_tx: &broadcast::Sender<AgentEvent>,
     trust: &TrustConfig,
+    plan_mode: bool,
 ) -> Result<crate::tools::ToolResult> {
     let tool = registry
         .get(tool_name)
         .ok_or_else(|| anyhow::anyhow!("Unknown tool: {tool_name}"))?;
+
+    if plan_mode && tool.permission() == ToolPermission::NeedsApproval {
+        return Ok(crate::tools::ToolResult {
+            output: format!(
+                "Tool `{tool_name}` is blocked in Plan Mode. Switch to Act mode (Shift+Tab) to make changes."
+            ),
+            title: format!("{tool_name} (plan mode)"),
+            metadata: serde_json::json!({ "denied": true, "reason": "plan_mode" }),
+        });
+    }
 
     let target_path = extract_target_path(tool_name, &args);
     if crate::tools::permission::check_deny(tool_name, target_path.as_deref(), trust) {

@@ -851,7 +851,7 @@ async fn main() -> Result<()> {
         };
     let bundle = nyzhi_core::tools::default_registry();
     let mut registry = bundle.registry;
-    let _todo_store = bundle.todo_store;
+    let todo_store = bundle.todo_store;
     let deferred_index = bundle.deferred_index;
 
     let mut all_mcp_servers = config.mcp.servers.clone();
@@ -1018,6 +1018,7 @@ async fn main() -> Result<()> {
                 nyzhi_tui::App::new(provider_name, &model_name, &config.tui, workspace.clone());
             app.mcp_manager = mcp_manager.clone();
             app.initial_session = initial_session;
+            app.todo_store = Some(todo_store.clone());
             app.run(provider.clone(), registry, &config).await?;
         }
         Some(Commands::CiFix { log_file, format, commit }) => {

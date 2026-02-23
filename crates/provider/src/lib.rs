@@ -5,6 +5,7 @@ pub mod anthropic;
 pub mod gemini;
 pub mod claude_sdk;
 pub mod codex;
+pub mod cursor;
 
 mod error;
 mod sse;
@@ -88,6 +89,14 @@ pub fn create_provider(
         "codex" => {
             Ok(Box::new(codex::CodexProvider::from_config(config)?))
         }
+        "cursor" => {
+            let cred = nyzhi_auth::resolve_credential(name, entry.and_then(|e| e.api_key.as_deref()))?;
+            let combined = cred.header_value();
+            let (token, machine_id) = nyzhi_auth::oauth::cursor::parse_cursor_token(&combined);
+            Ok(Box::new(cursor::CursorProvider::new(
+                token, machine_id, entry.and_then(|e| e.model.clone()),
+            )))
+        }
         other => anyhow::bail!("Unsupported api_style '{other}' for provider '{name}'"),
     }
 }
@@ -105,6 +114,16 @@ pub async fn create_provider_async(
         }
         "codex" => {
             return Ok(Box::new(codex::CodexProvider::from_config(config)?));
+        }
+        "cursor" => {
+            let cred = nyzhi_auth::resolve_credential_async(
+                name, entry.and_then(|e| e.api_key.as_deref()),
+            ).await?;
+            let combined = cred.header_value();
+            let (token, machine_id) = nyzhi_auth::oauth::cursor::parse_cursor_token(&combined);
+            return Ok(Box::new(cursor::CursorProvider::new(
+                token, machine_id, entry.and_then(|e| e.model.clone()),
+            )));
         }
         _ => {}
     }
@@ -154,6 +173,7 @@ impl ModelRegistry {
         let glm = glm_models();
         models.insert("glm".into(), glm.clone());
         models.insert("glm-coding".into(), glm);
+        models.insert("cursor".into(), cursor::cursor_models());
         models.insert("antigravity".into(), antigravity_models());
         models.insert("openrouter".into(), vec![]);
         models.insert("together".into(), together_models());

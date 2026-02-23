@@ -147,3 +147,61 @@ pub fn build_expansion_prompt(idea: &str) -> String {
          5. Success criteria"
     )
 }
+
+pub fn build_planning_prompt(requirements: &str, idea: &str) -> String {
+    format!(
+        "Based on the following requirements, create a detailed implementation plan.\n\n\
+         Original idea: {idea}\n\n\
+         Requirements:\n{requirements}\n\n\
+         Output a numbered list of implementation steps. Each step should:\n\
+         - Be specific and actionable (file paths, function names, APIs)\n\
+         - Have clear acceptance criteria\n\
+         - List dependencies on other steps\n\
+         - Estimate effort (small/medium/large)\n\n\
+         Group steps into parallel execution waves where possible."
+    )
+}
+
+pub fn build_execution_prompt(plan: &str, idea: &str) -> String {
+    format!(
+        "Execute the following implementation plan step by step. Do not re-plan or ask for confirmation.\n\n\
+         Original idea: {idea}\n\n\
+         Plan:\n{plan}\n\n\
+         Rules:\n\
+         - Work through each step in order.\n\
+         - After completing each step, briefly report what you did.\n\
+         - If a step fails, note the failure and continue with the next step.\n\
+         - Run verification checks (tests, lint, type-check) after implementation.\n\
+         - Do not stop until all steps are complete."
+    )
+}
+
+pub fn build_qa_prompt(idea: &str) -> String {
+    format!(
+        "Run quality assurance checks on the implementation of: {idea}\n\n\
+         Perform the following checks:\n\
+         1. Run the project's test suite. Report failures.\n\
+         2. Run the linter/formatter. Report violations.\n\
+         3. Run type checks if applicable. Report errors.\n\
+         4. Check for obvious regressions (broken imports, missing files, syntax errors).\n\
+         5. Review edge cases and error handling.\n\n\
+         Output a structured report:\n\
+         - PASS: checks that passed\n\
+         - FAIL: checks that failed with details\n\
+         - FIX: immediate fixes you applied\n\
+         - REMAINING: issues that need attention"
+    )
+}
+
+pub fn build_validation_prompt(qa_results: &str, idea: &str) -> String {
+    format!(
+        "Validate the completed implementation of: {idea}\n\n\
+         QA Results:\n{qa_results}\n\n\
+         Perform final validation:\n\
+         1. Verify all QA failures have been addressed.\n\
+         2. Check that the original success criteria are met.\n\
+         3. Verify no unintended side effects were introduced.\n\
+         4. Confirm the implementation matches the original requirements.\n\n\
+         Output a final verdict: PASS (ready to ship) or FAIL (with remaining issues)."
+    )
+}

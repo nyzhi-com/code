@@ -26,11 +26,12 @@ fn format_cost(usd: f64) -> String {
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let mode_toggle_hint = if app.plan_mode { "S-Tab act" } else { "S-Tab plan" };
     let left = match app.mode {
         AppMode::Streaming => "esc cancel",
         AppMode::AwaitingApproval => "y approve  n deny",
         AppMode::AwaitingUserQuestion => "select an option",
-        AppMode::Input => "^K cmds  Tab thinking",
+        AppMode::Input => mode_toggle_hint,
     };
 
     let mut info_parts: Vec<String> = Vec::new();
@@ -74,14 +75,29 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         info_str.len() + 2 + model_label.len()
     };
 
+    let mode_badge = if app.plan_mode { "Plan" } else { "Act" };
+    let badge_len = mode_badge.len() + 3;
+
     let available = area.width as usize;
-    let gap = available.saturating_sub(left.len() + right_len + 4);
+    let gap = available.saturating_sub(badge_len + left.len() + right_len + 4);
 
     let mut spans: Vec<Span> = Vec::new();
 
+    if app.plan_mode {
+        spans.push(Span::styled(
+            format!(" {mode_badge} "),
+            Style::default().fg(theme.bg_page).bg(theme.warning).bold(),
+        ));
+    } else {
+        spans.push(Span::styled(
+            format!(" {mode_badge} "),
+            Style::default().fg(theme.text_tertiary),
+        ));
+    }
+
     if !left.is_empty() {
         spans.push(Span::styled(
-            format!("  {left}"),
+            format!(" {left}"),
             Style::default().fg(theme.text_tertiary),
         ));
     }

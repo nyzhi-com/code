@@ -98,7 +98,15 @@ pub async fn handle_key(
             }
         }
         KeyCode::BackTab if app.completion.is_none() && app.input.is_empty() => {
-            cycle_thinking_level(app, model_info, true);
+            if app.plan_mode {
+                app.open_plan_transition_selector();
+            } else {
+                app.plan_mode = true;
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: "Switched to Plan mode".to_string(),
+                });
+            }
         }
         KeyCode::Esc => {
             if app.completion.is_some() {
@@ -660,9 +668,32 @@ pub async fn handle_key(
             }
 
             if input == "/todo" {
+                let content = if let Some(ref store) = app.todo_store {
+                    let items = store.blocking_lock();
+                    if items.is_empty() {
+                        "No todos yet. The agent creates todos with the todowrite tool.".to_string()
+                    } else {
+                        let mut lines = vec!["Todo list:".to_string()];
+                        for (session, todos) in items.iter() {
+                            lines.push(format!("\n  Session: {session}"));
+                            for t in todos {
+                                let marker = match t.status.as_str() {
+                                    "completed" => "[x]",
+                                    "in_progress" => "[~]",
+                                    "cancelled" => "[-]",
+                                    _ => "[ ]",
+                                };
+                                lines.push(format!("    {marker} {} ({})", t.content, t.id));
+                            }
+                        }
+                        lines.join("\n")
+                    }
+                } else {
+                    "Todo store not available.".to_string()
+                };
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
-                    content: "Reading todo list from agent store...".to_string(),
+                    content,
                 });
                 app.input.clear();
                 app.cursor_pos = 0;
@@ -690,11 +721,12 @@ pub async fn handle_key(
                     if let Ok(Some(mut state)) = nyzhi_core::autopilot::load_state(&tool_ctx.project_root) {
                         state.cancel();
                         let _ = nyzhi_core::autopilot::save_state(&tool_ctx.project_root, &state);
-                        app.items.push(DisplayItem::Message {
-                            role: "system".to_string(),
-                            content: "Autopilot cancelled.".to_string(),
-                        });
                     }
+                    app.autopilot = None;
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Autopilot cancelled.".to_string(),
+                    });
                 } else if arg == "clear" {
                     let _ = nyzhi_core::autopilot::clear_state(&tool_ctx.project_root);
                     app.items.push(DisplayItem::Message {
@@ -704,10 +736,19 @@ pub async fn handle_key(
                 } else {
                     let state = nyzhi_core::autopilot::AutopilotState::new(arg);
                     let _ = nyzhi_core::autopilot::save_state(&tool_ctx.project_root, &state);
+                    let expansion = nyzhi_core::autopilot::build_expansion_prompt(arg);
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
-                        content: format!("Autopilot initialized for: {arg}\n\n{}\n\nSending expansion prompt...", state.summary()),
+                        content: format!("Autopilot started: {arg}\nPhase: expansion"),
                     });
+                    app.autopilot = Some(state);
+                    app.turn_request = Some(TurnRequest {
+                        input: expansion,
+                        content: None,
+                        is_background: false,
+                        label: "autopilot".to_string(),
+                    });
+                    app.mode = AppMode::Streaming;
                 }
                 app.input.clear();
                 app.cursor_pos = 0;
@@ -724,12 +765,24 @@ pub async fn handle_key(
                     });
                 } else if let Ok(n) = parts[0].parse::<u32>() {
                     let task = parts[1].to_string();
-                    let config = nyzhi_core::team::TeamConfig { team_size: n, task: task.clone() };
-                    let state = nyzhi_core::team::TeamState::new(&config);
+                    let prompt = format!(
+                        "Break the following task into {n} parallel sub-tasks and spawn {n} sub-agents to execute them simultaneously using `spawn_agent`. \
+                         Assign appropriate roles (worker, deep-executor, reviewer, etc.) based on each sub-task's nature.\n\n\
+                         Task: {task}\n\n\
+                         After spawning all agents, use `wait` to monitor their progress. \
+                         Once all agents complete, synthesize their results and report back."
+                    );
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
-                        content: format!("Team created for: {task}\n\n{}", state.summary()),
+                        content: format!("Team of {n} dispatched for: {task}"),
                     });
+                    app.turn_request = Some(TurnRequest {
+                        input: prompt,
+                        content: None,
+                        is_background: false,
+                        label: format!("team({n}): {task}"),
+                    });
+                    app.mode = AppMode::Streaming;
                 } else {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
@@ -1629,7 +1682,8 @@ pub async fn handle_key(
                         "Agent tools:",
                         "  git_status, git_diff, git_log, git_show, git_branch (read-only)",
                         "  git_commit, git_checkout (require approval)",
-                        "  task (delegate sub-tasks to a child agent)",
+                        "  spawn_agent (delegate to a sub-agent by role)",
+                        "  send_input, wait, close_agent (manage sub-agents)",
                         "",
                         "Auth:",
                         "  nyzhi login <provider>    Log in via OAuth (gemini, openai)",
@@ -1747,6 +1801,41 @@ pub async fn handle_key(
 
             if flags.think {
                 agent_config.thinking_enabled = true;
+            }
+            if flags.deep {
+                agent_config.thinking_enabled = true;
+                agent_config.reasoning_effort = Some("high".into());
+                agent_config.thinking_budget = Some(16384);
+                agent_config.thinking_level = Some("high".into());
+            }
+            if flags.ultra {
+                agent_config.thinking_enabled = true;
+                agent_config.reasoning_effort = Some("xhigh".into());
+                agent_config.thinking_budget = Some(32768);
+                agent_config.thinking_level = Some("xhigh".into());
+            }
+
+            if flags.plan {
+                agent_config.plan_mode = true;
+            }
+            if flags.debug {
+                agent_config.system_prompt.push_str(nyzhi_core::prompt::debug_instructions());
+            }
+            if flags.tdd {
+                agent_config.system_prompt.push_str(nyzhi_core::prompt::tdd_instructions());
+            }
+            if flags.review {
+                agent_config.system_prompt.push_str(nyzhi_core::prompt::review_instructions());
+            }
+            if flags.eco {
+                agent_config.system_prompt.push_str(nyzhi_core::prompt::eco_instructions());
+                agent_config.max_tokens = Some(2048);
+            }
+            if flags.parallel {
+                agent_config.system_prompt.push_str(nyzhi_core::prompt::parallel_instructions());
+            }
+            if flags.persist {
+                agent_config.system_prompt.push_str(nyzhi_core::prompt::persist_instructions());
             }
 
             if let Some(ref level) = app.thinking_level {

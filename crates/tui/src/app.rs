@@ -159,6 +159,10 @@ pub struct App {
     pub pending_provider_reload: Option<String>,
     pub pending_user_question:
         Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<String>>>>>,
+    pub plan_mode: bool,
+    pub last_plan_name: Option<String>,
+    pub todo_store: Option<nyzhi_core::tools::TodoStoreHandle>,
+    pub autopilot: Option<nyzhi_core::autopilot::AutopilotState>,
 }
 
 impl App {
@@ -228,6 +232,10 @@ impl App {
             oauth_msg_rx: None,
             pending_provider_reload: None,
             pending_user_question: None,
+            plan_mode: false,
+            last_plan_name: None,
+            todo_store: None,
+            autopilot: None,
         }
     }
 
@@ -618,10 +626,22 @@ impl App {
                             self.stream_token_count = 0;
                             self.turn_start = None;
                             self.mode = AppMode::Input;
-                            self.items.push(DisplayItem::Message {
-                                role: "system".to_string(),
-                                content: "Cancelled.".to_string(),
-                            });
+                            if self.autopilot.is_some() {
+                                if let Some(ref mut ap) = self.autopilot {
+                                    ap.cancel();
+                                    let _ = nyzhi_core::autopilot::save_state(&tool_ctx.project_root, ap);
+                                }
+                                self.autopilot = None;
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Autopilot cancelled.".to_string(),
+                                });
+                            } else {
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Cancelled.".to_string(),
+                                });
+                            }
                         }
                     } else if key.code == KeyCode::Char('f')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
@@ -818,7 +838,8 @@ impl App {
                     let (bg_event_tx, _) = broadcast::channel::<AgentEvent>(256);
                     let provider_c = provider.clone();
                     let registry_c = registry.clone();
-                    let config_c = agent_config.clone();
+                    let mut config_c = agent_config.clone();
+                    config_c.plan_mode = self.plan_mode || config_c.plan_mode;
                     let tool_ctx_c = tool_ctx.clone();
                     let join_handle = tokio::spawn(async move {
                         let mut t = bg_thread;
@@ -856,7 +877,9 @@ impl App {
                     let fg_usage = self.session_usage.clone();
                     let provider_c = provider.clone();
                     let registry_c = registry.clone();
-                    let config_c = agent_config.clone();
+                    let mut config_c = agent_config.clone();
+                    config_c.plan_mode = self.plan_mode || config_c.plan_mode;
+                    config_c.act_after_plan = req.label == "execute plan";
                     let event_tx_c = event_tx.clone();
                     let tool_ctx_c = tool_ctx.clone();
                     let join_handle = tokio::spawn(async move {
@@ -1050,6 +1073,14 @@ impl App {
                                 *item_output = Some(truncate_display(&output, 500));
                                 *status = ToolStatus::Completed;
                                 *elapsed_ms = Some(ev_elapsed);
+                            }
+                        }
+                        if name == "update_plan" {
+                            if let Some(plan_name) = output
+                                .strip_prefix("Plan '")
+                                .and_then(|s| s.split('\'').next())
+                            {
+                                self.last_plan_name = Some(plan_name.to_string());
                             }
                         }
                         const FILE_TOOLS: &[&str] = &[
@@ -1271,6 +1302,81 @@ impl App {
                                         let _ = tx.send(r.summary());
                                     }
                                 });
+                            }
+                        }
+
+                        if let Some(ref mut ap) = self.autopilot {
+                            let last_output = self.items.iter().rev()
+                                .find_map(|item| {
+                                    if let DisplayItem::Message { role, content } = item {
+                                        if role == "assistant" { Some(content.clone()) } else { None }
+                                    } else { None }
+                                })
+                                .unwrap_or_default();
+
+                            match ap.phase {
+                                nyzhi_core::autopilot::AutopilotPhase::Expansion => {
+                                    ap.requirements = Some(last_output.clone());
+                                }
+                                nyzhi_core::autopilot::AutopilotPhase::Planning => {
+                                    ap.plan = Some(last_output.clone());
+                                }
+                                nyzhi_core::autopilot::AutopilotPhase::Execution => {
+                                    ap.execution_log.push(last_output.clone());
+                                }
+                                nyzhi_core::autopilot::AutopilotPhase::Qa => {
+                                    ap.qa_results.push(last_output.clone());
+                                }
+                                nyzhi_core::autopilot::AutopilotPhase::Validation => {
+                                    ap.validation_report = Some(last_output.clone());
+                                }
+                                _ => {}
+                            }
+
+                            ap.advance();
+                            let _ = nyzhi_core::autopilot::save_state(
+                                &tool_ctx.project_root, ap,
+                            );
+
+                            if ap.is_terminal() {
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Autopilot complete.\n\n{}", ap.summary()),
+                                });
+                                self.autopilot = None;
+                            } else {
+                                let next_prompt = match ap.phase {
+                                    nyzhi_core::autopilot::AutopilotPhase::Planning => {
+                                        let reqs = ap.requirements.as_deref().unwrap_or("");
+                                        nyzhi_core::autopilot::build_planning_prompt(reqs, &ap.idea)
+                                    }
+                                    nyzhi_core::autopilot::AutopilotPhase::Execution => {
+                                        let plan = ap.plan.as_deref().unwrap_or("");
+                                        nyzhi_core::autopilot::build_execution_prompt(plan, &ap.idea)
+                                    }
+                                    nyzhi_core::autopilot::AutopilotPhase::Qa => {
+                                        nyzhi_core::autopilot::build_qa_prompt(&ap.idea)
+                                    }
+                                    nyzhi_core::autopilot::AutopilotPhase::Validation => {
+                                        let qa = ap.qa_results.last().map(|s| s.as_str()).unwrap_or("");
+                                        nyzhi_core::autopilot::build_validation_prompt(qa, &ap.idea)
+                                    }
+                                    _ => String::new(),
+                                };
+
+                                if !next_prompt.is_empty() {
+                                    self.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: format!("Autopilot advancing to phase: {}", ap.phase),
+                                    });
+                                    self.turn_request = Some(TurnRequest {
+                                        input: next_prompt,
+                                        content: None,
+                                        is_background: false,
+                                        label: "autopilot".to_string(),
+                                    });
+                                    self.mode = AppMode::Streaming;
+                                }
                             }
                         }
                     }
@@ -1548,6 +1654,55 @@ impl App {
                         self.respond_user_question(value).await;
                         return;
                     }
+                    SelectorKind::PlanTransition => {
+                        self.selector = None;
+                        match value.as_str() {
+                            "build" => {
+                                self.plan_mode = false;
+                                let plan_content = self.last_plan_name.as_ref().and_then(|name| {
+                                    nyzhi_core::planning::load_plan(
+                                        &std::env::current_dir().unwrap_or_default(),
+                                        name,
+                                    ).ok().flatten()
+                                });
+
+                                let msg = if let Some(ref content) = plan_content {
+                                    format!(
+                                        "Execute the following plan step by step. Use `update_plan` to mark steps complete (- [x]) as you finish them.\n\n{content}"
+                                    )
+                                } else {
+                                    "Execute the plan above step by step. Use `update_plan` to mark steps complete as you go.".to_string()
+                                };
+
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Switched to Act mode -- executing plan".to_string(),
+                                });
+                                self.items.push(DisplayItem::Message {
+                                    role: "user".to_string(),
+                                    content: msg.clone(),
+                                });
+                                self.turn_request = Some(TurnRequest {
+                                    input: msg,
+                                    content: None,
+                                    is_background: false,
+                                    label: "execute plan".to_string(),
+                                });
+                                self.mode = AppMode::Streaming;
+                            }
+                            "keep-editing" => {
+                                self.plan_mode = false;
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Switched to Act mode".to_string(),
+                                });
+                            }
+                            _ => {
+                                // "stay" or any other -- remain in plan mode
+                            }
+                        }
+                        return;
+                    }
                 }
                 self.selector = None;
             }
@@ -1714,6 +1869,22 @@ impl App {
         ));
     }
 
+    pub fn open_plan_transition_selector(&mut self) {
+        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+
+        let mut items = vec![];
+        items.push(SelectorItem::entry("Build -- execute the plan", "build"));
+        items.push(SelectorItem::entry("Keep editing -- switch to Act, prompt yourself", "keep-editing"));
+        items.push(SelectorItem::entry("Stay in Plan", "stay"));
+
+        self.selector = Some(SelectorState::new(
+            SelectorKind::PlanTransition,
+            "Exit Plan Mode",
+            items,
+            "",
+        ));
+    }
+
     pub fn open_model_selector(&mut self) {
         use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
 
@@ -1868,6 +2039,16 @@ impl App {
                 ));
                 items.push(SelectorItem::entry(
                     "Enter API key manually",
+                    "apikey",
+                ));
+            }
+            "cursor" => {
+                items.push(SelectorItem::entry(
+                    "Import from Cursor IDE (auto)",
+                    "cursor-auto",
+                ));
+                items.push(SelectorItem::entry(
+                    "Paste token manually",
                     "apikey",
                 ));
             }

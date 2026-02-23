@@ -1,6 +1,7 @@
 pub mod anthropic;
 pub mod antigravity;
 pub mod chatgpt;
+pub mod cursor;
 pub mod google;
 pub mod openai;
 pub mod refresh;
@@ -17,6 +18,7 @@ pub async fn login(provider: &str) -> Result<StoredToken> {
         "anthropic" => anthropic::login().await,
         "chatgpt" => chatgpt::login().await,
         "antigravity" => antigravity::login(None).await,
+        "cursor" => cursor::login().await,
         other => {
             if let Some(def) = nyzhi_config::find_provider_def(other) {
                 if !def.supports_oauth {
@@ -57,6 +59,9 @@ pub async fn login_interactive(
         }
         ("anthropic", _) => {
             anthropic::login_interactive(msg_tx).await
+        }
+        ("cursor", _) => {
+            cursor::login_interactive(msg_tx).await
         }
         _ => {
             anyhow::bail!("No interactive login for {provider}/{method}")

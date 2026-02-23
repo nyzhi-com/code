@@ -41,6 +41,7 @@ pub enum SelectorKind {
     Session,
     CustomModelInput,
     UserQuestion,
+    PlanTransition,
 }
 
 #[derive(Debug, Clone)]
@@ -223,7 +224,7 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
                 Span::styled("esc ", Style::default().fg(theme.text_disabled)),
             ]
         }
-        SelectorKind::UserQuestion => {
+        SelectorKind::UserQuestion | SelectorKind::PlanTransition => {
             vec![
                 Span::styled(" enter", Style::default().fg(theme.accent)),
                 Span::styled(": select  ", Style::default().fg(theme.text_disabled)),

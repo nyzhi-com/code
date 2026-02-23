@@ -143,6 +143,23 @@ impl ToolRegistry {
         defs
     }
 
+    /// Return definitions for read-only tools only (plan mode).
+    pub fn definitions_read_only(&self) -> Vec<nyzhi_provider::ToolDefinition> {
+        let mut defs: Vec<_> = self
+            .tools
+            .values()
+            .filter(|t| t.permission() == permission::ToolPermission::ReadOnly)
+            .filter(|t| !self.deferred.contains(t.name()) || self.expanded.contains(t.name()))
+            .map(|t| nyzhi_provider::ToolDefinition {
+                name: t.name().to_string(),
+                description: t.description().to_string(),
+                parameters: t.parameters_schema(),
+            })
+            .collect();
+        defs.sort_by(|a, b| a.name.cmp(&b.name));
+        defs
+    }
+
     pub fn deferred_count(&self) -> usize {
         self.deferred.len().saturating_sub(self.expanded.len())
     }
