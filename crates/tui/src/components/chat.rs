@@ -1,7 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use crate::app::{App, DisplayItem, ToolStatus};
+use crate::app::{App, DiffLineKind, DisplayItem, ToolStatus};
 use crate::highlight::{self, SyntaxHighlighter};
 use crate::theme::{Theme, ThemeMode};
 
@@ -92,6 +92,58 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                     }
                 }
                 prepend_bar(&mut lines[tool_start..], theme.text_disabled);
+            }
+            DisplayItem::Diff {
+                file,
+                hunks,
+                is_new_file,
+            } => {
+                let diff_start = lines.len();
+                let header_label = if *is_new_file {
+                    format!("  +++ {file} (new file)")
+                } else {
+                    format!("  --- {file}")
+                };
+                lines.push(Line::from(Span::styled(
+                    header_label,
+                    Style::default().fg(theme.accent).bold(),
+                )));
+
+                for hunk in hunks {
+                    lines.push(Line::from(Span::styled(
+                        format!("  {}", hunk.header),
+                        Style::default().fg(Color::Cyan),
+                    )));
+                    for dl in &hunk.lines {
+                        let (prefix, style) = match dl.kind {
+                            DiffLineKind::Added => (
+                                "+",
+                                Style::default().fg(Color::Green),
+                            ),
+                            DiffLineKind::Removed => (
+                                "-",
+                                Style::default().fg(Color::Red),
+                            ),
+                            DiffLineKind::Context => (
+                                " ",
+                                Style::default().fg(theme.text_secondary),
+                            ),
+                        };
+                        let line_text = if dl.content.len() > 120 {
+                            format!("  {prefix}{}", &dl.content[..117])
+                        } else {
+                            format!("  {prefix}{}", dl.content)
+                        };
+                        lines.push(Line::from(Span::styled(line_text, style)));
+                    }
+                }
+                if hunks.is_empty() && !*is_new_file {
+                    lines.push(Line::from(Span::styled(
+                        "  (no changes)",
+                        Style::default().fg(theme.text_disabled),
+                    )));
+                }
+                prepend_bar(&mut lines[diff_start..], Color::Yellow);
             }
         }
 

@@ -46,6 +46,30 @@ pub enum DisplayItem {
         status: ToolStatus,
         elapsed_ms: Option<u64>,
     },
+    Diff {
+        file: String,
+        hunks: Vec<DiffHunk>,
+        is_new_file: bool,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct DiffHunk {
+    pub header: String,
+    pub lines: Vec<DiffLine>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DiffLine {
+    pub kind: DiffLineKind,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DiffLineKind {
+    Context,
+    Added,
+    Removed,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -283,6 +307,7 @@ impl App {
                     }
                     t
                 }
+                DisplayItem::Diff { file, .. } => file.to_lowercase(),
             };
             if text.contains(&q) {
                 self.search_matches.push(i);
@@ -1255,6 +1280,54 @@ impl App {
                                 *elapsed_ms = Some(ev_elapsed);
                             }
                         }
+                        if name == "write" || name == "edit" || name == "multi_edit" || name == "apply_patch" {
+                            let tracker = change_tracker.clone();
+                            let last_change = {
+                                let guard = futures::executor::block_on(tracker.lock());
+                                guard.last().map(|c| {
+                                    (
+                                        c.path.display().to_string(),
+                                        c.original.clone(),
+                                        c.new_content.clone(),
+                                    )
+                                })
+                            };
+                            if let Some((file_path, old_content, new_content)) = last_change {
+                                let rel = file_path
+                                    .strip_prefix(
+                                        &self.workspace.project_root.display().to_string(),
+                                    )
+                                    .unwrap_or(&file_path)
+                                    .trim_start_matches('/')
+                                    .to_string();
+                                let diff_item = generate_diff(
+                                    &rel,
+                                    old_content.as_deref(),
+                                    &new_content,
+                                );
+                                if let DisplayItem::Diff { ref hunks, .. } = diff_item {
+                                    if !hunks.is_empty() {
+                                        self.items.push(diff_item);
+                                    }
+                                }
+
+                                let fmt_path = rel.clone();
+                                let fmt_root = self.workspace.project_root.clone();
+                                if let Some(tx) = self.hook_tx.clone() {
+                                    tokio::spawn(async move {
+                                        if let Some(r) = nyzhi_core::formatter::format_file_async(
+                                            fmt_path,
+                                            fmt_root,
+                                        ).await {
+                                            if r.success {
+                                                let _ = tx.send(format!("Formatted with {}", r.formatter));
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                        }
+
                         if name == "todowrite" || name == "todoread" {
                             if let Some(ref store) = self.todo_store {
                                 let store_c = store.clone();
@@ -2833,4 +2906,227 @@ fn truncate_display(s: &str, max: usize) -> String {
     } else {
         s.to_string()
     }
+}
+
+pub fn generate_diff(file: &str, old: Option<&str>, new: &str) -> DisplayItem {
+    let old = old.unwrap_or("");
+    let is_new_file = old.is_empty();
+
+    let old_lines: Vec<&str> = if old.is_empty() {
+        vec![]
+    } else {
+        old.lines().collect()
+    };
+    let new_lines: Vec<&str> = new.lines().collect();
+
+    let mut hunks = Vec::new();
+    let max_ctx = 3;
+
+    let lcs = simple_diff_ranges(&old_lines, &new_lines);
+    let edits = edits_from_lcs(&old_lines, &new_lines, &lcs);
+
+    if edits.is_empty() {
+        return DisplayItem::Diff {
+            file: file.to_string(),
+            hunks: vec![],
+            is_new_file,
+        };
+    }
+
+    let mut current_hunk_lines: Vec<DiffLine> = Vec::new();
+    let mut hunk_old_start = 1usize;
+    let mut hunk_new_start = 1usize;
+    let mut hunk_old_count = 0usize;
+    let mut hunk_new_count = 0usize;
+    let mut last_change_idx: Option<usize> = None;
+
+    for (i, edit) in edits.iter().enumerate() {
+        let is_change = !matches!(edit, Edit::Equal(_));
+        if is_change {
+            if let Some(last) = last_change_idx {
+                if i - last > max_ctx * 2 {
+                    let header = format!(
+                        "@@ -{},{} +{},{} @@",
+                        hunk_old_start, hunk_old_count, hunk_new_start, hunk_new_count
+                    );
+                    hunks.push(DiffHunk {
+                        header,
+                        lines: std::mem::take(&mut current_hunk_lines),
+                    });
+                    hunk_old_start =
+                        edits[..i].iter().filter(|e| matches!(e, Edit::Equal(_) | Edit::Delete(_))).count() + 1 - max_ctx.min(i);
+                    hunk_new_start =
+                        edits[..i].iter().filter(|e| matches!(e, Edit::Equal(_) | Edit::Insert(_))).count() + 1 - max_ctx.min(i);
+                    hunk_old_count = 0;
+                    hunk_new_count = 0;
+                    let ctx_start = i.saturating_sub(max_ctx);
+                    for e in &edits[ctx_start..i] {
+                        if let Edit::Equal(line) = e {
+                            current_hunk_lines.push(DiffLine {
+                                kind: DiffLineKind::Context,
+                                content: line.to_string(),
+                            });
+                            hunk_old_count += 1;
+                            hunk_new_count += 1;
+                        }
+                    }
+                }
+            } else {
+                let ctx_start = i.saturating_sub(max_ctx);
+                let mut old_pos = edits[..ctx_start]
+                    .iter()
+                    .filter(|e| matches!(e, Edit::Equal(_) | Edit::Delete(_)))
+                    .count();
+                let mut new_pos = edits[..ctx_start]
+                    .iter()
+                    .filter(|e| matches!(e, Edit::Equal(_) | Edit::Insert(_)))
+                    .count();
+                hunk_old_start = old_pos + 1;
+                hunk_new_start = new_pos + 1;
+                for e in &edits[ctx_start..i] {
+                    if let Edit::Equal(line) = e {
+                        current_hunk_lines.push(DiffLine {
+                            kind: DiffLineKind::Context,
+                            content: line.to_string(),
+                        });
+                        hunk_old_count += 1;
+                        hunk_new_count += 1;
+                        old_pos += 1;
+                        new_pos += 1;
+                    }
+                }
+            }
+            last_change_idx = Some(i);
+        }
+
+        if last_change_idx.is_some() {
+            match edit {
+                Edit::Equal(line) => {
+                    current_hunk_lines.push(DiffLine {
+                        kind: DiffLineKind::Context,
+                        content: line.to_string(),
+                    });
+                    hunk_old_count += 1;
+                    hunk_new_count += 1;
+                }
+                Edit::Delete(line) => {
+                    current_hunk_lines.push(DiffLine {
+                        kind: DiffLineKind::Removed,
+                        content: line.to_string(),
+                    });
+                    hunk_old_count += 1;
+                }
+                Edit::Insert(line) => {
+                    current_hunk_lines.push(DiffLine {
+                        kind: DiffLineKind::Added,
+                        content: line.to_string(),
+                    });
+                    hunk_new_count += 1;
+                }
+            }
+        }
+    }
+
+    if !current_hunk_lines.is_empty() {
+        while current_hunk_lines.len() > 1 {
+            if matches!(
+                current_hunk_lines.last(),
+                Some(DiffLine { kind: DiffLineKind::Context, .. })
+            ) && current_hunk_lines
+                .iter()
+                .rev()
+                .take_while(|l| l.kind == DiffLineKind::Context)
+                .count()
+                > max_ctx
+            {
+                current_hunk_lines.pop();
+                hunk_old_count -= 1;
+                hunk_new_count -= 1;
+            } else {
+                break;
+            }
+        }
+        let header = format!(
+            "@@ -{},{} +{},{} @@",
+            hunk_old_start, hunk_old_count, hunk_new_start, hunk_new_count
+        );
+        hunks.push(DiffHunk {
+            header,
+            lines: current_hunk_lines,
+        });
+    }
+
+    DisplayItem::Diff {
+        file: file.to_string(),
+        hunks,
+        is_new_file,
+    }
+}
+
+enum Edit<'a> {
+    Equal(&'a str),
+    Delete(&'a str),
+    Insert(&'a str),
+}
+
+fn simple_diff_ranges(old: &[&str], new: &[&str]) -> Vec<(usize, usize)> {
+    let n = old.len();
+    let m = new.len();
+    if n == 0 || m == 0 {
+        return vec![];
+    }
+    let mut dp = vec![vec![0u16; m + 1]; n + 1];
+    for i in 1..=n {
+        for j in 1..=m {
+            dp[i][j] = if old[i - 1] == new[j - 1] {
+                dp[i - 1][j - 1] + 1
+            } else {
+                dp[i - 1][j].max(dp[i][j - 1])
+            };
+        }
+    }
+    let mut result = Vec::new();
+    let (mut i, mut j) = (n, m);
+    while i > 0 && j > 0 {
+        if old[i - 1] == new[j - 1] {
+            result.push((i - 1, j - 1));
+            i -= 1;
+            j -= 1;
+        } else if dp[i - 1][j] >= dp[i][j - 1] {
+            i -= 1;
+        } else {
+            j -= 1;
+        }
+    }
+    result.reverse();
+    result
+}
+
+fn edits_from_lcs<'a>(old: &[&'a str], new: &[&'a str], lcs: &[(usize, usize)]) -> Vec<Edit<'a>> {
+    let mut edits = Vec::new();
+    let mut oi = 0usize;
+    let mut ni = 0usize;
+
+    for &(lo, ln) in lcs {
+        while oi < lo {
+            edits.push(Edit::Delete(old[oi]));
+            oi += 1;
+        }
+        while ni < ln {
+            edits.push(Edit::Insert(new[ni]));
+            ni += 1;
+        }
+        edits.push(Edit::Equal(old[oi]));
+        oi += 1;
+        ni += 1;
+    }
+    while oi < old.len() {
+        edits.push(Edit::Delete(old[oi]));
+        oi += 1;
+    }
+    while ni < new.len() {
+        edits.push(Edit::Insert(new[ni]));
+        ni += 1;
+    }
+    edits
 }

@@ -83,6 +83,11 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
+        name: "/diff",
+        description: "show all file changes this session as diffs",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
         name: "/doctor",
         description: "run diagnostics",
         kind: CommandKind::Instant,

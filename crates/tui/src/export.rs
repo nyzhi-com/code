@@ -94,6 +94,33 @@ pub fn export_session_markdown(items: &[DisplayItem], meta: &ExportMeta) -> Stri
                     }
                 }
             }
+            DisplayItem::Diff {
+                file,
+                hunks,
+                is_new_file,
+            } => {
+                let label = if *is_new_file {
+                    format!("+++ {file} (new file)")
+                } else {
+                    format!("--- {file}")
+                };
+                out.push_str(&format!("```diff\n{label}\n"));
+                for hunk in hunks {
+                    out.push_str(&hunk.header);
+                    out.push('\n');
+                    for dl in &hunk.lines {
+                        let prefix = match dl.kind {
+                            crate::app::DiffLineKind::Added => "+",
+                            crate::app::DiffLineKind::Removed => "-",
+                            crate::app::DiffLineKind::Context => " ",
+                        };
+                        out.push_str(prefix);
+                        out.push_str(&dl.content);
+                        out.push('\n');
+                    }
+                }
+                out.push_str("```\n\n");
+            }
         }
     }
 

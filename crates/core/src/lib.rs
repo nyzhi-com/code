@@ -10,6 +10,7 @@ pub mod context;
 pub mod context_files;
 pub mod deepinit;
 pub mod diagnostics;
+pub mod formatter;
 pub mod hooks;
 
 pub mod conversation;

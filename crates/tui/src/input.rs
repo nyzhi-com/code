@@ -1745,6 +1745,37 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/diff" {
+                let tracker = tool_ctx.change_tracker.lock().await;
+                if tracker.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No file changes in this session.".to_string(),
+                    });
+                } else {
+                    let project = app.workspace.project_root.display().to_string();
+                    for c in tracker.changes() {
+                        let rel = c
+                            .path
+                            .display()
+                            .to_string()
+                            .strip_prefix(&project)
+                            .unwrap_or(&c.path.display().to_string())
+                            .trim_start_matches('/')
+                            .to_string();
+                        let diff_item = crate::app::generate_diff(
+                            &rel,
+                            c.original.as_deref(),
+                            &c.new_content,
+                        );
+                        app.items.push(diff_item);
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/changes" {
                 let tracker = tool_ctx.change_tracker.lock().await;
                 if tracker.is_empty() {
@@ -2269,6 +2300,70 @@ pub async fn handle_key(
                     is_background: false,
                     label,
                 });
+                return;
+            }
+
+            if let Some(shell_cmd) = input.strip_prefix('!') {
+                let shell_cmd = shell_cmd.trim();
+                if shell_cmd.is_empty() {
+                    app.input.clear();
+                    app.cursor_pos = 0;
+                    return;
+                }
+                app.items.push(DisplayItem::Message {
+                    role: "user".to_string(),
+                    content: format!("!{shell_cmd}"),
+                });
+                let cwd = tool_ctx.cwd.clone();
+                let cmd = shell_cmd.to_string();
+                let output = tokio::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(&cmd)
+                    .current_dir(&cwd)
+                    .output()
+                    .await;
+                let result = match output {
+                    Ok(o) => {
+                        let stdout = String::from_utf8_lossy(&o.stdout);
+                        let stderr = String::from_utf8_lossy(&o.stderr);
+                        let mut text = String::new();
+                        if !stdout.is_empty() {
+                            text.push_str(&stdout);
+                        }
+                        if !stderr.is_empty() {
+                            if !text.is_empty() {
+                                text.push('\n');
+                            }
+                            text.push_str(&stderr);
+                        }
+                        if text.is_empty() {
+                            text = format!("(exit {})", o.status.code().unwrap_or(-1));
+                        }
+                        text
+                    }
+                    Err(e) => format!("Failed to run command: {e}"),
+                };
+                let truncated = if result.len() > 4000 {
+                    format!("{}...\n(truncated)", &result[..4000])
+                } else {
+                    result.clone()
+                };
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!("```\n{truncated}\n```"),
+                });
+                if let Some(ref mut t) = thread {
+                    use nyzhi_provider::{Message, Role};
+                    t.push_message(Message {
+                        role: Role::User,
+                        content: MessageContent::Text(format!(
+                            "Shell command `{cmd}` output:\n```\n{result}\n```"
+                        )),
+                    });
+                }
+                app.history.push(format!("!{cmd}"));
+                app.input.clear();
+                app.cursor_pos = 0;
                 return;
             }
 
