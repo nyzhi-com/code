@@ -345,6 +345,31 @@ impl App {
             });
         }
 
+        if config.index.enabled && self.codebase_index.is_none() {
+            let api_key = nyzhi_auth::resolve_credential("openai", None)
+                .ok()
+                .map(|c| c.header_value());
+            match nyzhi_index::CodebaseIndex::open_sync(&self.workspace.project_root, api_key) {
+                Ok(index) => {
+                    let handle = std::sync::Arc::new(index);
+                    self.codebase_index = Some(handle.clone());
+                    self.index_progress = Some((0, 0, false));
+                    tokio::spawn(async move {
+                        match handle.build().await {
+                            Ok(stats) => {
+                                tracing::info!(
+                                    "Index built: {} files, {} chunks, {} vectors",
+                                    stats.file_count, stats.chunk_count, stats.vector_count
+                                );
+                            }
+                            Err(e) => tracing::warn!("Index build failed: {e}"),
+                        }
+                    });
+                }
+                Err(e) => tracing::warn!("Failed to open index: {e}"),
+            }
+        }
+
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
         io::stdout().execute(EnableBracketedPaste)?;
@@ -578,6 +603,17 @@ impl App {
                                 role: "system".to_string(),
                                 content: format!("Update failed: {e:#}"),
                             });
+                        }
+                    }
+                }
+            }
+
+            if let Some(ref idx) = self.codebase_index {
+                if let Some((_, _, complete)) = self.index_progress {
+                    if !complete {
+                        use futures::FutureExt;
+                        if let Some(p) = idx.progress().now_or_never() {
+                            self.index_progress = Some((p.indexed, p.total, p.complete));
                         }
                     }
                 }

@@ -103,6 +103,7 @@ impl Tool for TaskTool {
             agent_name: ctx.agent_name.clone(),
             plan_mode: false,
             act_after_plan: false,
+            auto_context: false,
         };
 
         let mut child_thread = Thread::new();

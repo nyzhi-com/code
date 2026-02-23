@@ -10,6 +10,7 @@ description = "Terminal UI for nyzhi"
 [dependencies]
 nyzhi-auth.workspace = true
 nyzhi-core.workspace = true
+nyzhi-index.workspace = true
 nyzhi-provider.workspace = true
 nyzhi-config.workspace = true
 tokio.workspace = true

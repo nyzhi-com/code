@@ -1566,6 +1566,61 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/index" || input.starts_with("/index ") {
+                let sub = input.strip_prefix("/index").unwrap_or("").trim();
+                if sub == "status" {
+                    let msg = if let Some(ref idx) = app.codebase_index {
+                        match idx.stats() {
+                            Ok(s) => format!(
+                                "Index: {} files, {} chunks, {} vectors\n  Ready: {}",
+                                s.file_count, s.chunk_count, s.vector_count,
+                                idx.is_ready()
+                            ),
+                            Err(e) => format!("Index stats error: {e}"),
+                        }
+                    } else {
+                        "Index: not initialized".to_string()
+                    };
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: msg,
+                    });
+                } else if sub == "off" {
+                    app.codebase_index = None;
+                    app.index_progress = None;
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Codebase index disabled for this session.".to_string(),
+                    });
+                } else {
+                    if let Some(ref idx) = app.codebase_index {
+                        let handle = idx.clone();
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Re-indexing codebase...".to_string(),
+                        });
+                        app.index_progress = Some((0, 0, false));
+                        tokio::spawn(async move {
+                            match handle.build().await {
+                                Ok(s) => tracing::info!(
+                                    "Re-index complete: {} files, {} chunks",
+                                    s.file_count, s.chunk_count
+                                ),
+                                Err(e) => tracing::warn!("Re-index failed: {e}"),
+                            }
+                        });
+                    } else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Index not initialized. Enable [index] in config.".to_string(),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/connect" {
                 app.open_provider_selector();
                 app.input.clear();
@@ -2076,6 +2131,9 @@ pub async fn handle_key(
                         "  /thinking       Set thinking/reasoning level",
                         "  /thinking <lvl> Set level directly (off/low/medium/high)",
                         "  /image <path>   Attach an image for the next prompt",
+                        "  /index          Re-index the codebase",
+                        "  /index status   Show index stats",
+                        "  /index off      Disable index for this session",
                         "  /connect        Connect a provider (OAuth or API key)",
                         "  /login          Show auth status for all providers",
                         "  /init           Initialize .nyzhi/ project config",

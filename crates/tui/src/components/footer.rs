@@ -76,6 +76,18 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         }
     }
 
+    if let Some((indexed, total, complete)) = app.index_progress {
+        if complete {
+            if total > 0 {
+                info_parts.push(format!("idx:{total}"));
+            }
+        } else if total > 0 {
+            info_parts.push(format!("idx:{indexed}/{total}"));
+        } else {
+            info_parts.push("idx:...".to_string());
+        }
+    }
+
     let queue_count = app.message_queue.len();
     if queue_count > 0 {
         info_parts.push(format!("queue:{queue_count}"));

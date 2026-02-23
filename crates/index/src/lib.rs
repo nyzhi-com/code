@@ -40,7 +40,10 @@ pub struct CodebaseIndex {
 }
 
 impl CodebaseIndex {
-    pub async fn open(project_root: &Path, api_key: Option<String>) -> Result<Self> {
+    /// Synchronous constructor. Opens (or creates) the SQLite index DB and
+    /// selects the embedding backend. The index is NOT built yet -- call
+    /// `build()` afterwards (typically in a background task).
+    pub fn open_sync(project_root: &Path, api_key: Option<String>) -> Result<Self> {
         let store = store::Store::open(project_root)?;
 
         let embedder: Arc<dyn embedder::Embedder> = if let Some(key) = api_key {
@@ -55,6 +58,10 @@ impl CodebaseIndex {
             project_root: project_root.to_path_buf(),
             progress: Arc::new(Mutex::new(IndexProgress::default())),
         })
+    }
+
+    pub async fn open(project_root: &Path, api_key: Option<String>) -> Result<Self> {
+        Self::open_sync(project_root, api_key)
     }
 
     pub async fn build(&self) -> Result<IndexStats> {

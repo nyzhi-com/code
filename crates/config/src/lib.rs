@@ -26,6 +26,8 @@ pub struct Config {
     pub memory: MemoryConfig,
     #[serde(default)]
     pub update: UpdateConfig,
+    #[serde(default)]
+    pub index: IndexConfig,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -68,6 +70,40 @@ pub struct BrowserConfig {
 pub struct MemoryConfig {
     #[serde(default)]
     pub auto_memory: bool,
+}
+
+fn default_embedding_mode() -> String {
+    "auto".to_string()
+}
+
+fn default_auto_context_chunks() -> usize {
+    5
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_embedding_mode")]
+    pub embedding: String,
+    #[serde(default = "default_true")]
+    pub auto_context: bool,
+    #[serde(default = "default_auto_context_chunks")]
+    pub auto_context_chunks: usize,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+}
+
+impl Default for IndexConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            embedding: default_embedding_mode(),
+            auto_context: true,
+            auto_context_chunks: default_auto_context_chunks(),
+            exclude: vec![],
+        }
+    }
 }
 
 fn default_check_interval_hours() -> u32 {
@@ -1033,6 +1069,29 @@ impl Config {
                 // release_url is ONLY settable from global config — never from project config.
                 // Prevents a malicious repo from redirecting updates to an attacker server.
                 release_url: global.update.release_url.clone(),
+            },
+            index: IndexConfig {
+                enabled: global.index.enabled && project.index.enabled,
+                embedding: if project.index.embedding != default_embedding_mode() {
+                    project.index.embedding.clone()
+                } else {
+                    global.index.embedding.clone()
+                },
+                auto_context: global.index.auto_context && project.index.auto_context,
+                auto_context_chunks: if project.index.auto_context_chunks
+                    != default_auto_context_chunks()
+                {
+                    project.index.auto_context_chunks
+                } else {
+                    global.index.auto_context_chunks
+                },
+                exclude: {
+                    let mut exc = global.index.exclude.clone();
+                    exc.extend(project.index.exclude.clone());
+                    exc.sort();
+                    exc.dedup();
+                    exc
+                },
             },
         }
     }

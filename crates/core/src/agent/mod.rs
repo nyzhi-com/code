@@ -261,6 +261,7 @@ impl Default for AgentConfig {
             agent_name: None,
             plan_mode: false,
             act_after_plan: false,
+            auto_context: true,
         }
     }
 }
@@ -303,9 +304,42 @@ pub async fn run_turn_with_content(
     model_info: Option<&ModelInfo>,
     session_usage: &mut SessionUsage,
 ) -> Result<()> {
+    let final_content = if config.auto_context {
+        if let Some(ref index) = ctx.index {
+            if index.is_ready() {
+                let query_text = match &user_content {
+                    MessageContent::Text(t) => t.clone(),
+                    MessageContent::Parts(parts) => parts
+                        .iter()
+                        .filter_map(|p| match p {
+                            ContentPart::Text { text } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                };
+                match index.auto_context(&query_text, 5).await {
+                    Ok(ctx_xml) if !ctx_xml.is_empty() => match user_content {
+                        MessageContent::Text(t) => {
+                            MessageContent::Text(format!("{ctx_xml}\n\n{t}"))
+                        }
+                        other => other,
+                    },
+                    _ => user_content,
+                }
+            } else {
+                user_content
+            }
+        } else {
+            user_content
+        }
+    } else {
+        user_content
+    };
+
     thread.push_message(Message {
         role: Role::User,
-        content: user_content,
+        content: final_content,
     });
 
     let tool_defs = if config.plan_mode {

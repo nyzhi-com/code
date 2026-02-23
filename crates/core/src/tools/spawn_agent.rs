@@ -113,6 +113,7 @@ impl Tool for SpawnAgentTool {
             agent_name: None,
             plan_mode: false,
             act_after_plan: false,
+            auto_context: false,
         };
 
         apply_role(&mut agent_config, &role);

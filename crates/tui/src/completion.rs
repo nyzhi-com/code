@@ -128,6 +128,21 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
+        name: "/index",
+        description: "force re-index the codebase",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/index off",
+        description: "disable auto-context for this session",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/index status",
+        description: "show index stats (files, chunks, db size)",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
         name: "/init",
         description: "initialize .nyzhi/ project config",
         kind: CommandKind::Instant,
