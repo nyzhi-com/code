@@ -69,6 +69,18 @@ pub fn shared_store() -> TodoStore {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
+pub async fn progress_summary(store: &TodoStore, session_id: &str) -> Option<(usize, usize, usize)> {
+    let store = store.lock().await;
+    let items = store.get(session_id)?;
+    if items.is_empty() {
+        return None;
+    }
+    let total = items.len();
+    let done = items.iter().filter(|t| t.status == "completed" || t.status == "cancelled").count();
+    let active = items.iter().filter(|t| t.status == "in_progress").count();
+    Some((done, active, total))
+}
+
 pub async fn has_incomplete_todos(store: &TodoStore, session_id: &str) -> bool {
     let store = store.lock().await;
     store
@@ -175,6 +187,12 @@ impl Tool for TodoWriteTool {
             if let Some(existing) = session_todos.iter_mut().find(|t| t.id == item.id) {
                 existing.content = item.content.clone();
                 existing.status = item.status.clone();
+                if !item.blocked_by.is_empty() {
+                    existing.blocked_by = item.blocked_by.clone();
+                }
+                if !item.blocks.is_empty() {
+                    existing.blocks = item.blocks.clone();
+                }
             } else {
                 session_todos.push(item.clone());
             }

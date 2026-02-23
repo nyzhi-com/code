@@ -1112,6 +1112,7 @@ async fn run_once(
         retry: config.agent.retry.clone(),
         routing: config.agent.routing.clone(),
         auto_compact_threshold: config.agent.auto_compact_threshold,
+        compact_instructions: config.agent.compact_instructions.clone(),
         team_name: team_name.map(String::from),
         agent_name: team_name.map(|_| "team-lead".to_string()),
         ..AgentConfig::default()
@@ -1132,6 +1133,7 @@ async fn run_once(
         team_name: team_name.map(String::from),
         agent_name: team_name.map(|_| "team-lead".to_string()),
         is_team_lead: team_name.is_some(),
+        todo_store: None,
     };
 
     let tx = event_tx.clone();

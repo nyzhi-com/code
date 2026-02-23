@@ -244,6 +244,7 @@ impl AgentManager {
             team_name: agent_config.team_name.clone(),
             agent_name: agent_config.agent_name.clone(),
             is_team_lead: false,
+            todo_store: None,
         };
 
         let join_handle = tokio::spawn(async move {

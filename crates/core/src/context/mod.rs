@@ -1,10 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use nyzhi_provider::{ContentPart, Message, MessageContent};
+use nyzhi_provider::{ContentPart, Message, MessageContent, Role};
 
 const CHARS_PER_TOKEN: usize = 4;
 const MICROCOMPACT_THRESHOLD: usize = 4000;
-const HOT_TAIL_COUNT: usize = 3;
+const HOT_TAIL_COUNT: usize = 5;
+const OUTPUT_HEADROOM_TOKENS: usize = 16384;
 
 /// Threshold for offloading tool results to files at call time (Cursor pattern).
 pub const TOOL_RESULT_FILE_THRESHOLD: usize = 4000;
@@ -101,46 +102,128 @@ pub fn should_compact_at(estimated_tokens: usize, context_window: u32, ratio: f6
 }
 
 pub fn build_compaction_prompt(messages: &[Message], focus_hint: Option<&str>) -> String {
+    build_compaction_prompt_full(messages, focus_hint, None, None)
+}
+
+pub fn build_compaction_prompt_full(
+    messages: &[Message],
+    focus_hint: Option<&str>,
+    previous_summary: Option<&str>,
+    compact_instructions: Option<&str>,
+) -> String {
     let mut transcript = String::new();
+    let mut tool_call_count = 0;
+    let mut file_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     for msg in messages {
         let role = match msg.role {
-            nyzhi_provider::Role::User => "User",
-            nyzhi_provider::Role::Assistant => "Assistant",
-            nyzhi_provider::Role::System => "System",
-            nyzhi_provider::Role::Tool => "Tool",
+            Role::User => "User",
+            Role::Assistant => "Assistant",
+            Role::System => "System",
+            Role::Tool => "Tool",
         };
-        let text = msg.content.as_text();
-        if !text.is_empty() {
-            let truncated = if text.len() > 2000 {
-                format!("{}...[truncated]", &text[..2000])
-            } else {
-                text.to_string()
-            };
-            transcript.push_str(&format!("{role}: {truncated}\n\n"));
+
+        match &msg.content {
+            MessageContent::Text(text) if !text.is_empty() => {
+                let truncated = if text.len() > 3000 {
+                    format!("{}...[truncated]", &text[..3000])
+                } else {
+                    text.clone()
+                };
+                transcript.push_str(&format!("{role}: {truncated}\n\n"));
+            }
+            MessageContent::Parts(parts) => {
+                let mut part_text = String::new();
+                for part in parts {
+                    match part {
+                        ContentPart::Text { text } => {
+                            let t = if text.len() > 2000 {
+                                format!("{}...", &text[..2000])
+                            } else {
+                                text.clone()
+                            };
+                            part_text.push_str(&t);
+                        }
+                        ContentPart::ToolUse { name, input, .. } => {
+                            tool_call_count += 1;
+                            if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
+                                file_set.insert(path.to_string());
+                            }
+                            part_text.push_str(&format!("[tool:{name}] "));
+                        }
+                        ContentPart::ToolResult { content, .. } => {
+                            let preview = if content.len() > 500 {
+                                format!("{}...", &content[..500])
+                            } else {
+                                content.clone()
+                            };
+                            part_text.push_str(&format!("→ {preview}\n"));
+                        }
+                        ContentPart::Image { .. } => {
+                            part_text.push_str("[image] ");
+                        }
+                    }
+                }
+                if !part_text.is_empty() {
+                    transcript.push_str(&format!("{role}: {part_text}\n\n"));
+                }
+            }
+            _ => {}
         }
     }
 
     let focus = match focus_hint {
-        Some(hint) => format!("\nPay special attention to: {hint}\n"),
+        Some(hint) => format!("\n**Focus**: {hint}\n"),
         None => String::new(),
     };
 
+    let delta_context = match previous_summary {
+        Some(prev) => format!(
+            "\n## Previous Summary (for delta update)\nThe conversation was previously compacted. \
+             Here is the last summary — update and extend it rather than starting from scratch:\n\n{prev}\n\n---\n"
+        ),
+        None => String::new(),
+    };
+
+    let custom = match compact_instructions {
+        Some(inst) => format!("\n## Project-Specific Instructions\n{inst}\n"),
+        None => String::new(),
+    };
+
+    let stats = format!(
+        "\nConversation stats: {} messages, {} tool calls, {} unique files touched.\n",
+        messages.len(), tool_call_count, file_set.len()
+    );
+
     format!(
-        "Summarize this conversation into a structured working state that allows \
-         continuation without re-asking questions. Include these sections:\n\n\
-         ## User Intent\n\
-         What the user asked for and any changes to the original request.\n\n\
-         ## Key Decisions\n\
-         Technical decisions made and why.\n\n\
-         ## Files Changed\n\
-         Files touched with brief description of changes.\n\n\
-         ## Errors & Fixes\n\
-         Errors encountered and how they were resolved. Skip if none.\n\n\
-         ## Current State\n\
-         What has been completed and what remains.\n\n\
-         ## Next Step\n\
-         The immediate next action to continue work.\n\
-         {focus}\n\
+        "You are a compaction engine. Produce a structured working state summary that enables \
+         seamless continuation of this coding session. Your summary will REPLACE the conversation \
+         history, so completeness is critical — anything you omit is lost forever.\n\n\
+         {delta_context}\
+         ## Required Sections\n\n\
+         ### 1. Primary Request and Intent\n\
+         The user's original request and how it evolved. Include exact requirements.\n\n\
+         ### 2. Key Technical Decisions\n\
+         Architecture choices, library selections, approach decisions, and WHY each was made.\n\n\
+         ### 3. Files and Code Sections\n\
+         Every file touched, with:\n\
+         - File path\n\
+         - Summary of changes made\n\
+         - Important code snippets if they contain non-obvious logic\n\n\
+         ### 4. Errors and Fixes\n\
+         Every error encountered, its root cause, and the fix applied. These are critical for \
+         avoiding regressions. Skip this section entirely if no errors occurred.\n\n\
+         ### 5. Problem Solving\n\
+         Key debugging steps, investigations, and solutions that led to breakthroughs.\n\n\
+         ### 6. Current State\n\
+         What is complete, what is partially done, and what remains untouched.\n\n\
+         ### 7. Pending Tasks\n\
+         Numbered list of remaining work items, in priority order.\n\n\
+         ### 8. Next Step\n\
+         The single most important next action to take.\n\
+         {focus}\
+         {custom}\
+         {stats}\
          ---\n\n{transcript}"
     )
 }
@@ -188,6 +271,198 @@ pub fn microcompact(messages: &mut [Message], storage_dir: &Path) -> usize {
         }
     }
     offloaded
+}
+
+/// Deduplicate tool results: if the same file was read/written multiple times,
+/// keep only the most recent result. Returns number of entries deduplicated.
+pub fn dedup_tool_results(messages: &mut Vec<Message>) -> usize {
+    let mut seen_files: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut to_collapse: Vec<usize> = Vec::new();
+
+    for (i, msg) in messages.iter().enumerate() {
+        if let MessageContent::Parts(parts) = &msg.content {
+            for part in parts {
+                if let ContentPart::ToolUse { name, input, .. } = part {
+                    if matches!(name.as_str(), "read" | "read_file" | "write" | "write_file" | "edit" | "edit_file") {
+                        if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
+                            if let Some(prev) = seen_files.insert(path.to_string(), i) {
+                                to_collapse.push(prev);
+                                if prev + 1 < messages.len() {
+                                    to_collapse.push(prev + 1);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    to_collapse.sort_unstable();
+    to_collapse.dedup();
+
+    let count = to_collapse.len();
+    for &idx in to_collapse.iter().rev() {
+        if idx < messages.len() {
+            let msg = &mut messages[idx];
+            msg.content = MessageContent::Text("[earlier duplicate — superseded by later access]".to_string());
+        }
+    }
+    count
+}
+
+/// Prune errored tool inputs after they're N messages old.
+/// Keeps the error message but collapses the original tool call input.
+pub fn prune_old_errors(messages: &mut [Message], age_threshold: usize) -> usize {
+    let len = messages.len();
+    if len < age_threshold {
+        return 0;
+    }
+    let cutoff = len - age_threshold;
+    let mut pruned = 0;
+
+    for i in 0..cutoff {
+        let msg = &messages[i];
+        let has_error = if let MessageContent::Parts(parts) = &msg.content {
+            parts.iter().any(|p| {
+                if let ContentPart::ToolResult { content, .. } = p {
+                    content.contains("Error:") || content.contains("error:") || content.starts_with("ERROR")
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        };
+
+        if has_error && i > 0 {
+            let prev = &mut messages[i - 1];
+            if let MessageContent::Parts(parts) = &prev.content {
+                let is_tool_call = parts.iter().any(|p| matches!(p, ContentPart::ToolUse { .. }));
+                if is_tool_call {
+                    prev.content = MessageContent::Text("[tool call that produced error — input collapsed]".to_string());
+                    pruned += 1;
+                }
+            }
+        }
+    }
+    pruned
+}
+
+/// Collapse write tool results when the file was subsequently read.
+/// The read result supersedes the write content.
+pub fn supersede_writes(messages: &mut Vec<Message>) -> usize {
+    let mut write_indices: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
+    let mut read_files: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for (i, msg) in messages.iter().enumerate().rev() {
+        if let MessageContent::Parts(parts) = &msg.content {
+            for part in parts {
+                if let ContentPart::ToolUse { name, input, .. } = part {
+                    let path = input.get("path").and_then(|v| v.as_str());
+                    if let Some(path) = path {
+                        if matches!(name.as_str(), "read" | "read_file") {
+                            read_files.insert(path.to_string());
+                        } else if matches!(name.as_str(), "write" | "write_file") {
+                            write_indices.entry(path.to_string()).or_default().push(i);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut collapsed = 0;
+    for (path, indices) in &write_indices {
+        if read_files.contains(path) {
+            for &idx in indices {
+                if idx + 1 < messages.len() {
+                    let result_msg = &mut messages[idx + 1];
+                    let token_cost = estimate_message_tokens(result_msg);
+                    if token_cost > 30 {
+                        if let MessageContent::Parts(parts) = &mut result_msg.content {
+                            for part in parts.iter_mut() {
+                                if let ContentPart::ToolResult { content, .. } = part {
+                                    if content.len() > 200 {
+                                        *content = format!("[write result for {} — file was later read, content superseded]", path);
+                                        collapsed += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    collapsed
+}
+
+/// Run the full progressive compaction pipeline.
+/// Returns (tokens_saved, description) for transparency.
+pub fn progressive_compact(
+    messages: &mut Vec<Message>,
+    storage_dir: &Path,
+    estimated_tokens: usize,
+    context_window: u32,
+    threshold: f64,
+) -> Vec<(String, usize)> {
+    let mut savings: Vec<(String, usize)> = Vec::new();
+    let target = (context_window as f64 * threshold) as usize;
+
+    if estimated_tokens <= target {
+        return savings;
+    }
+
+    let before = messages.iter().map(estimate_message_tokens).sum::<usize>();
+
+    let deduped = dedup_tool_results(messages);
+    if deduped > 0 {
+        let after = messages.iter().map(estimate_message_tokens).sum::<usize>();
+        let saved = before.saturating_sub(after);
+        savings.push((format!("dedup: {deduped} entries collapsed"), saved));
+        if after + estimate_tokens("") <= target {
+            return savings;
+        }
+    }
+
+    let before2 = messages.iter().map(estimate_message_tokens).sum::<usize>();
+    let superseded = supersede_writes(messages);
+    if superseded > 0 {
+        let after = messages.iter().map(estimate_message_tokens).sum::<usize>();
+        let saved = before2.saturating_sub(after);
+        savings.push((format!("supersede: {superseded} write results collapsed"), saved));
+    }
+
+    let before3 = messages.iter().map(estimate_message_tokens).sum::<usize>();
+    let pruned = prune_old_errors(messages, 8);
+    if pruned > 0 {
+        let after = messages.iter().map(estimate_message_tokens).sum::<usize>();
+        let saved = before3.saturating_sub(after);
+        savings.push((format!("error prune: {pruned} failed tool inputs collapsed"), saved));
+    }
+
+    let before4 = messages.iter().map(estimate_message_tokens).sum::<usize>();
+    let offloaded = microcompact(messages, storage_dir);
+    if offloaded > 0 {
+        let after = messages.iter().map(estimate_message_tokens).sum::<usize>();
+        let saved = before4.saturating_sub(after);
+        savings.push((format!("microcompact: {offloaded} tool outputs offloaded"), saved));
+    }
+
+    savings
+}
+
+/// Check if full compaction is still needed after progressive passes.
+pub fn needs_full_compact(
+    estimated_tokens: usize,
+    context_window: u32,
+    threshold: f64,
+    message_count: usize,
+) -> bool {
+    let target = (context_window as f64 * threshold) as usize;
+    let headroom = (context_window as usize).saturating_sub(estimated_tokens);
+    estimated_tokens > target && message_count > 10 && headroom < OUTPUT_HEADROOM_TOKENS * 2
 }
 
 /// Compute detailed context breakdown for `/context` display.
@@ -360,6 +635,8 @@ mod tests {
             tool_result_msg("recent_1", &large_content),
             tool_result_msg("recent_2", &large_content),
             tool_result_msg("recent_3", &large_content),
+            tool_result_msg("recent_4", &large_content),
+            tool_result_msg("recent_5", &large_content),
         ];
 
         let offloaded = microcompact(&mut messages, dir.path());
@@ -372,7 +649,6 @@ mod tests {
                 panic!("Expected ToolResult");
             }
         }
-        // Small result should be unchanged
         if let MessageContent::Parts(parts) = &messages[1].content {
             if let ContentPart::ToolResult { content, .. } = &parts[0] {
                 assert_eq!(content, "small output");
@@ -388,6 +664,8 @@ mod tests {
             tool_result_msg("r1", &large),
             tool_result_msg("r2", &large),
             tool_result_msg("r3", &large),
+            tool_result_msg("r4", &large),
+            tool_result_msg("r5", &large),
         ];
 
         let offloaded = microcompact(&mut messages, dir.path());
@@ -401,18 +679,18 @@ mod tests {
             text_msg(Role::Assistant, "I'll create the API using axum."),
         ];
         let prompt = build_compaction_prompt(&messages, None);
-        assert!(prompt.contains("## User Intent"));
-        assert!(prompt.contains("## Key Decisions"));
-        assert!(prompt.contains("## Files Changed"));
-        assert!(prompt.contains("## Current State"));
-        assert!(prompt.contains("## Next Step"));
+        assert!(prompt.contains("Primary Request and Intent"));
+        assert!(prompt.contains("Key Technical Decisions"));
+        assert!(prompt.contains("Files and Code Sections"));
+        assert!(prompt.contains("Current State"));
+        assert!(prompt.contains("Next Step"));
     }
 
     #[test]
     fn structured_prompt_includes_focus() {
         let messages = vec![text_msg(Role::User, "Test")];
         let prompt = build_compaction_prompt(&messages, Some("API changes"));
-        assert!(prompt.contains("Pay special attention to: API changes"));
+        assert!(prompt.contains("API changes"));
     }
 
     #[test]
@@ -453,5 +731,68 @@ mod tests {
         assert_eq!(format_token_count(500), "500");
         assert_eq!(format_token_count(1500), "1.5k");
         assert_eq!(format_token_count(1_500_000), "1.5M");
+    }
+
+    #[test]
+    fn dedup_collapses_repeated_reads() {
+        let mut messages = vec![
+            tool_use_msg("read_file", "/src/main.rs"),
+            tool_result_msg("tu_1", &"a".repeat(500)),
+            tool_use_msg("read_file", "/src/main.rs"),
+            tool_result_msg("tu_2", &"b".repeat(500)),
+        ];
+        let count = dedup_tool_results(&mut messages);
+        assert!(count > 0);
+        let first_text = messages[0].content.as_text();
+        assert!(first_text.contains("superseded"));
+    }
+
+    #[test]
+    fn supersede_writes_collapses_when_read_follows() {
+        let mut messages = vec![
+            tool_use_msg("write_file", "/src/main.rs"),
+            tool_result_msg("tu_1", &"x".repeat(1000)),
+            tool_use_msg("read_file", "/src/main.rs"),
+            tool_result_msg("tu_2", &"y".repeat(500)),
+        ];
+        let count = supersede_writes(&mut messages);
+        assert!(count > 0);
+    }
+
+    #[test]
+    fn prune_old_errors_collapses_tool_input() {
+        let error_msg = "Error: file not found";
+        let mut messages = vec![
+            tool_use_msg("read_file", "/nonexistent.rs"),
+            tool_result_msg("tu_1", error_msg),
+        ];
+        for _ in 0..10 {
+            messages.push(text_msg(Role::User, "continue"));
+            messages.push(text_msg(Role::Assistant, "ok"));
+        }
+        let count = prune_old_errors(&mut messages, 8);
+        assert!(count > 0);
+    }
+
+    #[test]
+    fn needs_full_compact_checks_headroom() {
+        assert!(needs_full_compact(180_000, 200_000, 0.85, 15));
+        assert!(!needs_full_compact(100_000, 200_000, 0.85, 15));
+        assert!(!needs_full_compact(180_000, 200_000, 0.85, 5));
+    }
+
+    #[test]
+    fn build_compaction_prompt_full_includes_delta() {
+        let messages = vec![text_msg(Role::User, "Build API")];
+        let prompt = build_compaction_prompt_full(
+            &messages,
+            Some("API layer"),
+            Some("Previous summary here"),
+            Some("Focus on TypeScript"),
+        );
+        assert!(prompt.contains("Previous Summary"));
+        assert!(prompt.contains("Previous summary here"));
+        assert!(prompt.contains("Focus on TypeScript"));
+        assert!(prompt.contains("API layer"));
     }
 }

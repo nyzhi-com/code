@@ -74,6 +74,8 @@ pub struct ToolContext {
     pub agent_name: Option<String>,
     /// Whether this agent is the team lead (coordinator).
     pub is_team_lead: bool,
+    /// Shared todo store for rehydration during compaction.
+    pub todo_store: Option<TodoStoreHandle>,
 }
 
 pub struct ToolResult {
@@ -255,6 +257,10 @@ pub async fn todo_has_incomplete(store: &TodoStoreHandle, session_id: &str) -> b
 
 pub async fn todo_incomplete_summary(store: &TodoStoreHandle, session_id: &str) -> Option<String> {
     todo::incomplete_summary(store, session_id).await
+}
+
+pub async fn todo_progress(store: &TodoStoreHandle, session_id: &str) -> Option<(usize, usize, usize)> {
+    todo::progress_summary(store, session_id).await
 }
 
 pub struct RegistryBundle {

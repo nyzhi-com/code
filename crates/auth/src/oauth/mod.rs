@@ -1,5 +1,4 @@
 pub mod anthropic;
-pub mod antigravity;
 pub mod chatgpt;
 pub mod cursor;
 pub mod google;
@@ -17,7 +16,6 @@ pub async fn login(provider: &str) -> Result<StoredToken> {
         "openai" => openai::login().await,
         "anthropic" => anthropic::login().await,
         "chatgpt" => chatgpt::login().await,
-        "antigravity" => antigravity::login(None).await,
         "cursor" => cursor::login().await,
         other => {
             if let Some(def) = nyzhi_config::find_provider_def(other) {
@@ -38,7 +36,6 @@ pub async fn login(provider: &str) -> Result<StoredToken> {
 ///   - "oauth" (default for anthropic)
 ///   - "codex" (OpenAI Codex subscription device code flow)
 ///   - "gemini-cli" (Google Gemini CLI OAuth)
-///   - "antigravity" (Google Antigravity / Cloud Code OAuth)
 pub async fn login_interactive(
     provider: &str,
     method: &str,
@@ -50,12 +47,6 @@ pub async fn login_interactive(
         }
         ("gemini", "gemini-cli") | ("gemini", "oauth") => {
             google::login_interactive(msg_tx).await
-        }
-        ("gemini", "antigravity") => {
-            antigravity::login(Some(msg_tx)).await
-        }
-        ("antigravity", _) => {
-            antigravity::login(Some(msg_tx)).await
         }
         ("anthropic", _) => {
             anthropic::login_interactive(msg_tx).await

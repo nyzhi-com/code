@@ -4,5 +4,6 @@ pub mod input_box;
 pub mod plan_banner;
 pub mod selector;
 pub mod text_prompt;
+pub mod todo_panel;
 pub mod update_banner;
 pub mod welcome;

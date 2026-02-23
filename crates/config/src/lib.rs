@@ -156,6 +156,8 @@ pub struct AgentSettings {
     #[serde(default)]
     pub auto_compact_threshold: Option<f64>,
     #[serde(default)]
+    pub compact_instructions: Option<String>,
+    #[serde(default)]
     pub enforce_todos: bool,
     #[serde(default)]
     pub auto_simplify: bool,
@@ -432,9 +434,6 @@ pub const BUILT_IN_PROVIDERS: &[ProviderDef] = &[
                   default_base_url: "https://api.anthropic.com/v1",
                   api_style: "anthropic", category: "popular", supports_oauth: true },
     ProviderDef { id: "gemini", name: "Google Gemini", env_var: "GEMINI_API_KEY",
-                  default_base_url: "https://generativelanguage.googleapis.com/v1beta",
-                  api_style: "gemini", category: "popular", supports_oauth: true },
-    ProviderDef { id: "antigravity", name: "Antigravity (Cloud Code)", env_var: "ANTIGRAVITY_API_KEY",
                   default_base_url: "https://generativelanguage.googleapis.com/v1beta",
                   api_style: "gemini", category: "popular", supports_oauth: true },
     ProviderDef { id: "cursor", name: "Cursor", env_var: "CURSOR_API_KEY",
@@ -826,6 +825,11 @@ impl Config {
                     .agent
                     .auto_compact_threshold
                     .or(global.agent.auto_compact_threshold),
+                compact_instructions: project
+                    .agent
+                    .compact_instructions
+                    .clone()
+                    .or(global.agent.compact_instructions.clone()),
                 enforce_todos: project.agent.enforce_todos || global.agent.enforce_todos,
                 auto_simplify: project.agent.auto_simplify || global.agent.auto_simplify,
                 verify: if !project.agent.verify.checks.is_empty() {

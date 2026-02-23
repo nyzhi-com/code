@@ -61,6 +61,22 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         info_parts.push(format!("think:{level}"));
     }
 
+    if let Some((done, active, total)) = app.todo_progress {
+        if total > 0 {
+            let label = if active > 0 {
+                format!("todos:{done}/{total} ({active})")
+            } else {
+                format!("todos:{done}/{total}")
+            };
+            info_parts.push(label);
+        }
+    }
+
+    let queue_count = app.message_queue.len();
+    if queue_count > 0 {
+        info_parts.push(format!("queue:{queue_count}"));
+    }
+
     let auth = nyzhi_auth::auth_status(&app.provider_name);
     let model_label = if auth == "not connected" {
         "not connected".to_string()

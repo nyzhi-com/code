@@ -94,6 +94,7 @@ impl Tool for TaskTool {
             retry: nyzhi_config::RetrySettings::default(),
             routing: nyzhi_config::RoutingConfig::default(),
             auto_compact_threshold: None,
+            compact_instructions: None,
             thinking_enabled: false,
             thinking_budget: None,
             reasoning_effort: None,
@@ -155,6 +156,7 @@ impl Tool for TaskTool {
             team_name: ctx.team_name.clone(),
             agent_name: ctx.agent_name.clone(),
             is_team_lead: ctx.is_team_lead,
+            todo_store: ctx.todo_store.clone(),
         };
 
         let mut session_usage = SessionUsage::default();

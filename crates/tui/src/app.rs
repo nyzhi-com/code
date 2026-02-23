@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -165,6 +166,9 @@ pub struct App {
     pub autopilot: Option<nyzhi_core::autopilot::AutopilotState>,
     pub todo_enforcement_paused: bool,
     pub todo_enforce_count: u32,
+    pub todo_progress: Option<(usize, usize, usize)>,
+    pub todo_panel: Option<crate::components::todo_panel::TodoPanelState>,
+    pub message_queue: VecDeque<TurnRequest>,
 }
 
 impl App {
@@ -240,6 +244,9 @@ impl App {
             autopilot: None,
             todo_enforcement_paused: false,
             todo_enforce_count: 0,
+            todo_progress: None,
+            todo_panel: None,
+            message_queue: VecDeque::new(),
         }
     }
 
@@ -408,6 +415,7 @@ impl App {
             retry: config.agent.retry.clone(),
             routing: config.agent.routing.clone(),
             auto_compact_threshold: config.agent.auto_compact_threshold,
+            compact_instructions: config.agent.compact_instructions.clone(),
             ..AgentConfig::default()
         };
         self.trust_mode = agent_config.trust.mode.clone();
@@ -431,6 +439,7 @@ impl App {
             team_name: None,
             agent_name: None,
             is_team_lead: false,
+            todo_store: Some(self.todo_store.clone().unwrap_or_else(|| nyzhi_core::tools::todo::shared_store())),
         };
 
         let agent_manager = if let Some(ref p) = provider {
@@ -560,6 +569,17 @@ impl App {
                     let update_key_handled = self.handle_update_key(key);
                     if update_key_handled {
                         // handled by update banner
+                    } else if self.todo_panel.is_some() {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Char('q') => { self.todo_panel = None; }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                if let Some(ref mut tp) = self.todo_panel { tp.scroll_up(); }
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                if let Some(ref mut tp) = self.todo_panel { tp.scroll_down(); }
+                            }
+                            _ => {}
+                        }
                     } else if self.text_prompt.is_some() {
                         self.handle_text_prompt_key(key, config).await;
                     } else if self.selector.is_some() {
@@ -682,7 +702,7 @@ impl App {
                             }
                             _ => {}
                         }
-                    } else if let Some(t) = thread.as_mut() {
+                    } else {
                         if key.code != KeyCode::Char('f')
                             || !key.modifiers.contains(KeyModifiers::CONTROL)
                         {
@@ -695,7 +715,7 @@ impl App {
                             self,
                             key,
                             provider.as_deref(),
-                            t,
+                            thread.as_mut(),
                             &mut agent_config,
                             &event_tx,
                             &registry,
@@ -709,10 +729,18 @@ impl App {
                 Event::Mouse(mouse) => {
                     match mouse.kind {
                         crossterm::event::MouseEventKind::ScrollUp => {
-                            self.scroll_offset = self.scroll_offset.saturating_add(3);
+                            if let Some(ref mut tp) = self.todo_panel {
+                                tp.scroll_up();
+                            } else {
+                                self.scroll_offset = self.scroll_offset.saturating_add(3);
+                            }
                         }
                         crossterm::event::MouseEventKind::ScrollDown => {
-                            self.scroll_offset = self.scroll_offset.saturating_sub(3);
+                            if let Some(ref mut tp) = self.todo_panel {
+                                tp.scroll_down();
+                            } else {
+                                self.scroll_offset = self.scroll_offset.saturating_sub(3);
+                            }
                         }
                         _ => {}
                     }
@@ -723,20 +751,18 @@ impl App {
 
             if self.pending_command_dispatch {
                 self.pending_command_dispatch = false;
-                if let Some(t) = thread.as_mut() {
-                    let mi = provider.as_ref().and_then(|p| {
-                        model_info_idx.map(|i| &p.supported_models()[i])
-                    });
-                    let enter = crossterm::event::KeyEvent::new(
-                        KeyCode::Enter,
-                        crossterm::event::KeyModifiers::NONE,
-                    );
-                    handle_key(
-                        self, enter, provider.as_deref(), t,
-                        &mut agent_config, &event_tx, &registry,
-                        &tool_ctx, mi, &mut model_info_idx,
-                    ).await;
-                }
+                let mi = provider.as_ref().and_then(|p| {
+                    model_info_idx.map(|i| &p.supported_models()[i])
+                });
+                let enter = crossterm::event::KeyEvent::new(
+                    KeyCode::Enter,
+                    crossterm::event::KeyModifiers::NONE,
+                );
+                handle_key(
+                    self, enter, provider.as_deref(), thread.as_mut(),
+                    &mut agent_config, &event_tx, &registry,
+                    &tool_ctx, mi, &mut model_info_idx,
+                ).await;
             }
 
             if let Some((provider_id, method)) = self.pending_oauth.take() {
@@ -1079,6 +1105,36 @@ impl App {
                                 *elapsed_ms = Some(ev_elapsed);
                             }
                         }
+                        if name == "todowrite" || name == "todoread" {
+                            if let Some(ref store) = self.todo_store {
+                                let store_c = store.clone();
+                                let sid = thread.as_ref()
+                                    .map(|t| t.id.clone())
+                                    .unwrap_or_default();
+                                self.todo_progress = futures::executor::block_on(
+                                    nyzhi_core::tools::todo_progress(&store_c, &sid),
+                                );
+                                if self.todo_panel.is_some() {
+                                    use crate::components::todo_panel::{TodoPanelItem, TodoPanelState};
+                                    let items = store_c.blocking_lock();
+                                    let panel_items: Vec<TodoPanelItem> = items.values().flat_map(|todos| {
+                                        todos.iter().map(|t| TodoPanelItem {
+                                            id: t.id.clone(),
+                                            content: t.content.clone(),
+                                            status: t.status.clone(),
+                                            blocked_by: t.blocked_by.clone(),
+                                        })
+                                    }).collect();
+                                    let old_scroll = self.todo_panel.as_ref().map(|p| p.scroll).unwrap_or(0);
+                                    self.todo_panel = Some(TodoPanelState {
+                                        items: panel_items,
+                                        scroll: old_scroll,
+                                        enforcer_active: !self.todo_enforcement_paused,
+                                        enforce_count: self.todo_enforce_count,
+                                    });
+                                }
+                            }
+                        }
                         if name == "update_plan" {
                             if let Some(plan_name) = output
                                 .strip_prefix("Plan '")
@@ -1172,6 +1228,12 @@ impl App {
                             content: format!(
                                 "Auto-compacting context ({estimated_tokens} tokens / {context_window} window)"
                             ),
+                        });
+                    }
+                    AgentEvent::SystemMessage(msg) => {
+                        self.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: msg.clone(),
                         });
                     }
                     AgentEvent::RoutedModel { model_name, tier } => {
@@ -1384,15 +1446,20 @@ impl App {
                             }
                         }
 
-                        if self.autopilot.is_none()
-                            && self.turn_request.is_none()
-                            && !self.todo_enforcement_paused
-                        {
-                            if let Some(ref store) = self.todo_store {
-                                let store_c = store.clone();
-                                let sid = thread.as_ref()
-                                    .map(|t| t.id.clone())
-                                    .unwrap_or_default();
+                        if let Some(ref store) = self.todo_store {
+                            let store_c = store.clone();
+                            let sid = thread.as_ref()
+                                .map(|t| t.id.clone())
+                                .unwrap_or_default();
+
+                            self.todo_progress = futures::executor::block_on(
+                                nyzhi_core::tools::todo_progress(&store_c, &sid),
+                            );
+
+                            if self.autopilot.is_none()
+                                && self.turn_request.is_none()
+                                && !self.todo_enforcement_paused
+                            {
                                 let has = futures::executor::block_on(
                                     nyzhi_core::tools::todo_has_incomplete(&store_c, &sid),
                                 );
@@ -1402,15 +1469,18 @@ impl App {
                                         nyzhi_core::tools::todo_incomplete_summary(&store_c, &sid),
                                     )
                                     .unwrap_or_default();
+                                    let incomplete_count = summary.lines().count();
                                     let reminder = format!(
-                                        "[SYSTEM REMINDER - TODO CONTINUATION]\n\n\
-                                         You have incomplete todos! Complete ALL before ending your turn:\n\
+                                        "[SYSTEM - TODO ENFORCER (attempt {}/10)]\n\n\
+                                         {incomplete_count} incomplete todo(s). You MUST complete them:\n\n\
                                          {summary}\n\n\
-                                         DO NOT end your turn until all todos are marked completed."
-                                    );
+                                         Pick the next `pending` or `in_progress` item and execute it NOW.\n\
+                                         Use `todowrite` to mark items `completed` as you finish.\n\
+                                         Do NOT end your turn with incomplete todos."
+                                    , self.todo_enforce_count);
                                     self.items.push(DisplayItem::Message {
                                         role: "system".to_string(),
-                                        content: format!("Todo enforcer: {} incomplete items, continuing... (attempt {}/10)", summary.lines().count(), self.todo_enforce_count),
+                                        content: format!("Enforcer: {incomplete_count} incomplete todos (attempt {}/10)", self.todo_enforce_count),
                                     });
                                     self.turn_request = Some(TurnRequest {
                                         input: reminder,
@@ -1422,6 +1492,26 @@ impl App {
                                 } else if !has {
                                     self.todo_enforce_count = 0;
                                 }
+                            }
+                        }
+
+                        if self.turn_request.is_none()
+                            && !self.message_queue.is_empty()
+                        {
+                            if let Some(next) = self.message_queue.pop_front() {
+                                let remaining = self.message_queue.len();
+                                self.items.push(DisplayItem::Message {
+                                    role: "user".to_string(),
+                                    content: next.input.clone(),
+                                });
+                                if remaining > 0 {
+                                    self.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: format!("Queued message submitted ({remaining} remaining)"),
+                                    });
+                                }
+                                self.turn_request = Some(next);
+                                self.mode = AppMode::Streaming;
                             }
                         }
                     }
@@ -1935,7 +2025,7 @@ impl App {
 
         let registry = nyzhi_provider::ModelRegistry::new();
         let mut all_providers = registry.providers();
-        let priority = ["openai", "anthropic", "gemini", "openrouter", "antigravity", "deepseek", "groq", "together", "ollama"];
+        let priority = ["openai", "anthropic", "gemini", "openrouter", "deepseek", "groq", "together", "ollama"];
         all_providers.sort_by_key(|p| {
             priority.iter().position(|&x| x == *p).unwrap_or(priority.len())
         });
@@ -2079,10 +2169,6 @@ impl App {
                     "gemini-cli",
                 ));
                 items.push(SelectorItem::entry(
-                    "Antigravity OAuth (Cloud Code quota)",
-                    "antigravity",
-                ));
-                items.push(SelectorItem::entry(
                     "Enter API key manually",
                     "apikey",
                 ));
@@ -2095,12 +2181,6 @@ impl App {
                 items.push(SelectorItem::entry(
                     "Paste token manually",
                     "apikey",
-                ));
-            }
-            "antigravity" => {
-                items.push(SelectorItem::entry(
-                    "Antigravity OAuth (opens browser)",
-                    "antigravity",
                 ));
             }
             "anthropic" => {

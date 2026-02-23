@@ -93,6 +93,7 @@ pub enum AgentEvent {
         respond: std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<String>>>>,
     },
     Usage(SessionUsage),
+    SystemMessage(String),
     TurnComplete,
     Error(String),
 }
@@ -192,6 +193,7 @@ impl std::fmt::Debug for AgentEvent {
                 .field("allow_custom", allow_custom)
                 .finish(),
             Self::Usage(u) => f.debug_struct("Usage").field("usage", u).finish(),
+            Self::SystemMessage(s) => f.debug_tuple("SystemMessage").field(s).finish(),
             Self::TurnComplete => write!(f, "TurnComplete"),
             Self::Error(s) => f.debug_tuple("Error").field(s).finish(),
         }
@@ -208,6 +210,7 @@ pub struct AgentConfig {
     pub retry: nyzhi_config::RetrySettings,
     pub routing: nyzhi_config::RoutingConfig,
     pub auto_compact_threshold: Option<f64>,
+    pub compact_instructions: Option<String>,
     pub thinking_enabled: bool,
     pub thinking_budget: Option<u32>,
     pub reasoning_effort: Option<String>,
@@ -229,6 +232,7 @@ impl Default for AgentConfig {
             retry: nyzhi_config::RetrySettings::default(),
             routing: nyzhi_config::RoutingConfig::default(),
             auto_compact_threshold: None,
+            compact_instructions: None,
             thinking_enabled: false,
             thinking_budget: None,
             reasoning_effort: None,
@@ -331,14 +335,28 @@ pub async fn run_turn_with_content(
                 context_window: mi.context_window,
             });
 
-            crate::context::microcompact(thread.messages_mut(), &microcompact_dir);
-
             let threshold = config.auto_compact_threshold.unwrap_or(0.85);
-            if crate::context::should_compact_at(est, mi.context_window, threshold)
-                && thread.message_count() > 10
+
+            // Phase 1: Progressive pruning (dedup, supersede writes, error prune, microcompact)
+            let savings = crate::context::progressive_compact(
+                thread.messages_mut(),
+                &microcompact_dir,
+                est,
+                mi.context_window,
+                threshold,
+            );
+            for (desc, saved) in &savings {
+                let _ = event_tx.send(AgentEvent::SystemMessage(
+                    format!("compaction: {desc} (saved ~{saved} tokens)"),
+                ));
+            }
+
+            // Phase 2: Full summarization if still over threshold
+            let est_after = thread.estimated_tokens(&system_prompt);
+            if crate::context::needs_full_compact(est_after, mi.context_window, threshold, thread.message_count())
             {
                 let _ = event_tx.send(AgentEvent::AutoCompacting {
-                    estimated_tokens: est,
+                    estimated_tokens: est_after,
                     context_window: mi.context_window,
                 });
 
@@ -350,8 +368,28 @@ pub async fn run_turn_with_content(
                 );
                 compact_count += 1;
 
-                let recent_files = crate::context::extract_recent_file_paths(thread.messages(), 3);
-                let summary_prompt = crate::context::build_compaction_prompt(thread.messages(), None);
+                let recent_files = crate::context::extract_recent_file_paths(thread.messages(), 5);
+
+                let previous_summary = if compact_count > 1 {
+                    thread.messages().first().and_then(|m| {
+                        let t = m.content.as_text();
+                        if t.starts_with("[Conversation summary]") {
+                            Some(t[22..].to_string())
+                        } else {
+                            None
+                        }
+                    })
+                } else {
+                    None
+                };
+
+                let summary_prompt = crate::context::build_compaction_prompt_full(
+                    thread.messages(),
+                    None,
+                    previous_summary.as_deref(),
+                    config.compact_instructions.as_deref(),
+                );
+
                 let summary_request = ChatRequest {
                     model: mi.id.to_string(),
                     messages: vec![Message {
@@ -359,7 +397,7 @@ pub async fn run_turn_with_content(
                         content: MessageContent::Text(summary_prompt),
                     }],
                     tools: vec![],
-                    max_tokens: Some(2048),
+                    max_tokens: Some(4096),
                     temperature: Some(0.0),
                     system: None,
                     stream: false,
@@ -373,7 +411,48 @@ pub async fn run_turn_with_content(
                             hist_path.display()
                         ));
                     }
-                    thread.compact_with_restore(&summary_text, 4, &recent_files);
+
+                    let todo_summary = if let Some(ref store) = ctx.todo_store {
+                        crate::tools::todo_incomplete_summary(store, &ctx.session_id).await
+                    } else {
+                        None
+                    };
+                    let plan_content = {
+                        let plan_dir = ctx.project_root.join(".nyzhi").join("plans");
+                        if plan_dir.exists() {
+                            std::fs::read_dir(&plan_dir)
+                                .ok()
+                                .and_then(|entries| {
+                                    entries.filter_map(|e| e.ok())
+                                        .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+                                        .max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
+                                        .and_then(|e| std::fs::read_to_string(e.path()).ok())
+                                })
+                        } else {
+                            None
+                        }
+                    };
+
+                    let notepad_content = {
+                        let notepad_path = ctx.project_root.join(".nyzhi").join("notepad.md");
+                        std::fs::read_to_string(&notepad_path).ok()
+                    };
+
+                    let keep_recent = if thread.message_count() > 20 { 6 } else { 4 };
+                    thread.compact_with_rehydration(
+                        &summary_text,
+                        keep_recent,
+                        &recent_files,
+                        todo_summary.as_deref(),
+                        plan_content.as_deref(),
+                        notepad_content.as_deref(),
+                    );
+
+                    let new_est = thread.estimated_tokens(&system_prompt);
+                    let _ = event_tx.send(AgentEvent::SystemMessage(
+                        format!("Full compaction complete: {} → {} tokens ({} messages kept)",
+                            format_tokens(est_after), format_tokens(new_est), thread.message_count()),
+                    ));
                 }
             }
         }
@@ -894,5 +973,15 @@ async fn summarize_write_args(args: &serde_json::Value) -> String {
         } else {
             format!("{file_path} (new file)\n{preview}")
         }
+    }
+}
+
+fn format_tokens(n: usize) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}k", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
     }
 }

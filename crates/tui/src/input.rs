@@ -6,13 +6,14 @@ use nyzhi_provider::{ContentPart, MessageContent, ModelInfo, Provider};
 use tokio::sync::broadcast;
 
 use crate::app::{App, AppMode, DisplayItem, PendingImage, TurnRequest};
+use crate::completion::CommandKind;
 
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_key(
     app: &mut App,
     key: KeyEvent,
     provider: Option<&dyn Provider>,
-    thread: &mut Thread,
+    mut thread: Option<&mut Thread>,
     agent_config: &mut AgentConfig,
     _event_tx: &broadcast::Sender<nyzhi_core::agent::AgentEvent>,
     _registry: &ToolRegistry,
@@ -20,7 +21,12 @@ pub async fn handle_key(
     model_info: Option<&ModelInfo>,
     model_info_idx: &mut Option<usize>,
 ) {
-    if matches!(app.mode, AppMode::Streaming | AppMode::AwaitingApproval) {
+    let is_busy = matches!(app.mode, AppMode::Streaming | AppMode::AwaitingApproval);
+
+    if is_busy && matches!(key.code, KeyCode::Esc) {
+        if app.completion.is_some() {
+            app.completion = None;
+        }
         return;
     }
 
@@ -134,6 +140,56 @@ pub async fn handle_key(
                 return;
             }
 
+            if is_busy {
+                let kind = if input.starts_with('/') {
+                    crate::completion::classify_command(&input)
+                } else {
+                    CommandKind::Prompt
+                };
+
+                match kind {
+                    CommandKind::StreamingSafe => {
+                        // Fall through to command handlers below
+                    }
+                    CommandKind::Instant => {
+                        // Fall through to command handlers below
+                    }
+                    CommandKind::Prompt => {
+                        let label = truncate_label(&input);
+                        app.message_queue.push_back(TurnRequest {
+                            input: input.clone(),
+                            content: None,
+                            is_background: false,
+                            label,
+                        });
+                        let queue_pos = app.message_queue.len();
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Message queued (position {queue_pos})"),
+                        });
+                        app.input.clear();
+                        app.cursor_pos = 0;
+                        return;
+                    }
+                }
+            }
+
+            if input == "/clear queue" {
+                let count = app.message_queue.len();
+                app.message_queue.clear();
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: if count > 0 {
+                        format!("Cleared {count} queued message(s).")
+                    } else {
+                        "Queue is already empty.".to_string()
+                    },
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/quit" || input == "/exit" {
                 app.should_quit = true;
                 return;
@@ -141,7 +197,9 @@ pub async fn handle_key(
 
             if input == "/clear" {
                 app.items.clear();
-                thread.clear();
+                if let Some(ref mut t) = thread {
+                    t.clear();
+                }
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
@@ -162,6 +220,11 @@ pub async fn handle_key(
             }
 
             if input == "/compact" || input.starts_with("/compact ") {
+                let Some(thread) = thread else {
+                    app.input.clear();
+                    app.cursor_pos = 0;
+                    return;
+                };
                 let focus_hint = input.strip_prefix("/compact").unwrap().trim();
                 let focus = if focus_hint.is_empty() { None } else { Some(focus_hint) };
 
@@ -177,8 +240,33 @@ pub async fn handle_key(
                     });
                     app.mode = AppMode::Streaming;
 
-                    let summary_prompt =
-                        nyzhi_core::context::build_compaction_prompt(thread.messages(), focus);
+                    let sid = thread.id.clone();
+                    let microcompact_dir = std::env::temp_dir()
+                        .join("nyzhi_microcompact")
+                        .join(&sid);
+                    let threshold = agent_config.auto_compact_threshold.unwrap_or(0.85);
+                    let cw = model_info.map(|m| m.context_window).unwrap_or(200_000);
+
+                    let savings = nyzhi_core::context::progressive_compact(
+                        thread.messages_mut(),
+                        &microcompact_dir,
+                        est,
+                        cw,
+                        threshold,
+                    );
+                    for (desc, saved) in &savings {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("  {desc} (saved ~{saved} tokens)"),
+                        });
+                    }
+
+                    let summary_prompt = nyzhi_core::context::build_compaction_prompt_full(
+                        thread.messages(),
+                        focus,
+                        None,
+                        agent_config.compact_instructions.as_deref(),
+                    );
                     let summary_request = nyzhi_provider::ChatRequest {
                         model: String::new(),
                         messages: vec![nyzhi_provider::Message {
@@ -186,14 +274,14 @@ pub async fn handle_key(
                             content: nyzhi_provider::MessageContent::Text(summary_prompt),
                         }],
                         tools: vec![],
-                        max_tokens: Some(2048),
+                        max_tokens: Some(4096),
                         temperature: Some(0.0),
                         system: None,
                         stream: false,
                         thinking: None,
                     };
 
-                    let recent_files = nyzhi_core::context::extract_recent_file_paths(thread.messages(), 3);
+                    let recent_files = nyzhi_core::context::extract_recent_file_paths(thread.messages(), 5);
                     let Some(provider) = provider else {
                         app.items.push(DisplayItem::Message {
                             role: "system".to_string(),
@@ -204,7 +292,42 @@ pub async fn handle_key(
                     match provider.chat(&summary_request).await {
                         Ok(resp) => {
                             let summary = resp.message.content.as_text().to_string();
-                            thread.compact_with_restore(&summary, 4, &recent_files);
+
+                            let todo_summary = if let Some(ref store) = app.todo_store {
+                                nyzhi_core::tools::todo_incomplete_summary(store, &sid).await
+                            } else {
+                                None
+                            };
+                            let project_root = std::path::Path::new(".");
+                            let plan_content = {
+                                let plan_dir = project_root.join(".nyzhi").join("plans");
+                                if plan_dir.exists() {
+                                    std::fs::read_dir(&plan_dir)
+                                        .ok()
+                                        .and_then(|entries| {
+                                            entries.filter_map(|e| e.ok())
+                                                .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+                                                .max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
+                                                .and_then(|e| std::fs::read_to_string(e.path()).ok())
+                                        })
+                                } else {
+                                    None
+                                }
+                            };
+                            let notepad_content = {
+                                let notepad_path = project_root.join(".nyzhi").join("notepad.md");
+                                std::fs::read_to_string(&notepad_path).ok()
+                            };
+
+                            let keep_recent = if thread.message_count() > 20 { 6 } else { 4 };
+                            thread.compact_with_rehydration(
+                                &summary,
+                                keep_recent,
+                                &recent_files,
+                                todo_summary.as_deref(),
+                                plan_content.as_deref(),
+                                notepad_content.as_deref(),
+                            );
                             let new_est =
                                 thread.estimated_tokens(&agent_config.system_prompt);
                             app.items.push(DisplayItem::Message {
@@ -235,10 +358,12 @@ pub async fn handle_key(
             }
 
             if input == "/context" {
+                let empty_msgs = vec![];
+                let thread_msgs = thread.as_ref().map(|t| t.messages()).unwrap_or(&empty_msgs);
                 let threshold = agent_config.auto_compact_threshold.unwrap_or(0.85);
                 let cw = model_info.map(|m| m.context_window).unwrap_or(0);
                 let breakdown = nyzhi_core::context::ContextBreakdown::compute(
-                    thread.messages(),
+                    thread_msgs,
                     &agent_config.system_prompt,
                     cw,
                     threshold,
@@ -325,12 +450,14 @@ pub async fn handle_key(
                                 let meta = matched[0];
                                 match nyzhi_core::session::load_session(&meta.id) {
                                     Ok((loaded_thread, loaded_meta)) => {
-                                        *thread = loaded_thread;
+                                        if let Some(ref mut t) = thread {
+                                            **t = loaded_thread.clone();
+                                        }
                                         app.items.clear();
                                         app.session_usage =
                                             nyzhi_core::agent::SessionUsage::default();
 
-                                        for msg in thread.messages() {
+                                        for msg in loaded_thread.messages() {
                                             let role = match msg.role {
                                                 nyzhi_provider::Role::User => "user",
                                                 nyzhi_provider::Role::Assistant => "assistant",
@@ -404,7 +531,8 @@ pub async fn handle_key(
                             }
                             1 => {
                                 let target = &matched[0];
-                                if target.id == thread.id {
+                                let current_id = thread.as_ref().map(|t| t.id.as_str()).unwrap_or("");
+                                if target.id == current_id {
                                     app.items.push(DisplayItem::Message {
                                         role: "system".to_string(),
                                         content: "Cannot delete the active session.".to_string(),
@@ -460,7 +588,8 @@ pub async fn handle_key(
                         content: "Usage: /session rename <new title>".to_string(),
                     });
                 } else {
-                    match nyzhi_core::session::rename_session(&thread.id, new_title) {
+                    let sid = thread.as_ref().map(|t| t.id.clone()).unwrap_or_default();
+                    match nyzhi_core::session::rename_session(&sid, new_title) {
                         Ok(()) => {
                             app.items.push(DisplayItem::Message {
                                 role: "system".to_string(),
@@ -586,12 +715,13 @@ pub async fn handle_key(
                 app.autopilot = None;
                 app.todo_enforcement_paused = true;
                 app.todo_enforce_count = 0;
+                app.message_queue.clear();
                 if app.mode == AppMode::Streaming {
                     app.mode = AppMode::Input;
                 }
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
-                    content: "All continuation mechanisms stopped (autopilot, todo enforcer).".to_string(),
+                    content: "Stopped: autopilot, todo enforcer, message queue cleared.".to_string(),
                 });
                 app.input.clear();
                 app.cursor_pos = 0;
@@ -824,33 +954,67 @@ pub async fn handle_key(
                 return;
             }
 
-            if input == "/todo" {
-                let content = if let Some(ref store) = app.todo_store {
-                    let items = store.blocking_lock();
-                    if items.is_empty() {
-                        "No todos yet. The agent creates todos with the todowrite tool.".to_string()
-                    } else {
-                        let mut lines = vec!["Todo list:".to_string()];
-                        for (session, todos) in items.iter() {
-                            lines.push(format!("\n  Session: {session}"));
-                            for t in todos {
-                                let marker = match t.status.as_str() {
-                                    "completed" => "[x]",
-                                    "in_progress" => "[~]",
-                                    "cancelled" => "[-]",
-                                    _ => "[ ]",
-                                };
-                                lines.push(format!("    {marker} {} ({})", t.content, t.id));
-                            }
-                        }
-                        lines.join("\n")
+            if input == "/todo" || input.starts_with("/todo ") {
+                let sub = input.strip_prefix("/todo").unwrap().trim();
+
+                if sub == "enforce on" {
+                    app.todo_enforcement_paused = false;
+                    app.todo_enforce_count = 0;
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Todo enforcer enabled. Agent will be forced to complete todos.".to_string(),
+                    });
+                    app.input.clear();
+                    app.cursor_pos = 0;
+                    return;
+                }
+
+                if sub == "enforce off" {
+                    app.todo_enforcement_paused = true;
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Todo enforcer paused. Use /todo enforce on to re-enable.".to_string(),
+                    });
+                    app.input.clear();
+                    app.cursor_pos = 0;
+                    return;
+                }
+
+                if sub == "clear" {
+                    if let Some(ref store) = app.todo_store {
+                        store.blocking_lock().clear();
                     }
+                    app.todo_enforce_count = 0;
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "All todos cleared.".to_string(),
+                    });
+                    app.input.clear();
+                    app.cursor_pos = 0;
+                    return;
+                }
+
+                use crate::components::todo_panel::{TodoPanelItem, TodoPanelState};
+
+                let panel_items: Vec<TodoPanelItem> = if let Some(ref store) = app.todo_store {
+                    let items = store.blocking_lock();
+                    items.values().flat_map(|todos| {
+                        todos.iter().map(|t| TodoPanelItem {
+                            id: t.id.clone(),
+                            content: t.content.clone(),
+                            status: t.status.clone(),
+                            blocked_by: t.blocked_by.clone(),
+                        })
+                    }).collect()
                 } else {
-                    "Todo store not available.".to_string()
+                    Vec::new()
                 };
-                app.items.push(DisplayItem::Message {
-                    role: "system".to_string(),
-                    content,
+
+                app.todo_panel = Some(TodoPanelState {
+                    items: panel_items,
+                    scroll: 0,
+                    enforcer_active: !app.todo_enforcement_paused,
+                    enforce_count: app.todo_enforce_count,
                 });
                 app.input.clear();
                 app.cursor_pos = 0;
