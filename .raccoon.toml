@@ -33,7 +33,7 @@ paths = ["infra/**", ".github/**"]
 
 [[pipelines]]
 name = "check"
-on = ["push:main", "pull_request"]
+on = ["push:master", "pull_request"]
 
 [[pipelines.steps]]
 name = "Format"
