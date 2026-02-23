@@ -119,6 +119,18 @@ impl Tool for SpawnAgentTool {
 
         apply_role(&mut agent_config, &role);
 
+        if let Ok(notepads) = crate::notepad::list_notepads(&ctx.project_root) {
+            if let Some(plan_name) = notepads.last() {
+                if let Ok(wisdom) = crate::notepad::read_notepad(&ctx.project_root, plan_name) {
+                    if wisdom.lines().count() > 3 {
+                        agent_config.system_prompt.push_str(&format!(
+                            "\n\n# Accumulated Wisdom (from prior work)\n{wisdom}"
+                        ));
+                    }
+                }
+            }
+        }
+
         let tool_filter = compute_tool_filter(&role);
 
         match self

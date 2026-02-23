@@ -163,6 +163,8 @@ pub struct App {
     pub last_plan_name: Option<String>,
     pub todo_store: Option<nyzhi_core::tools::TodoStoreHandle>,
     pub autopilot: Option<nyzhi_core::autopilot::AutopilotState>,
+    pub todo_enforcement_paused: bool,
+    pub todo_enforce_count: u32,
 }
 
 impl App {
@@ -236,6 +238,8 @@ impl App {
             last_plan_name: None,
             todo_store: None,
             autopilot: None,
+            todo_enforcement_paused: false,
+            todo_enforce_count: 0,
         }
     }
 
@@ -1376,6 +1380,47 @@ impl App {
                                         label: "autopilot".to_string(),
                                     });
                                     self.mode = AppMode::Streaming;
+                                }
+                            }
+                        }
+
+                        if self.autopilot.is_none()
+                            && self.turn_request.is_none()
+                            && !self.todo_enforcement_paused
+                        {
+                            if let Some(ref store) = self.todo_store {
+                                let store_c = store.clone();
+                                let sid = thread.as_ref()
+                                    .map(|t| t.id.clone())
+                                    .unwrap_or_default();
+                                let has = futures::executor::block_on(
+                                    nyzhi_core::tools::todo_has_incomplete(&store_c, &sid),
+                                );
+                                if has && self.todo_enforce_count < 10 {
+                                    self.todo_enforce_count += 1;
+                                    let summary = futures::executor::block_on(
+                                        nyzhi_core::tools::todo_incomplete_summary(&store_c, &sid),
+                                    )
+                                    .unwrap_or_default();
+                                    let reminder = format!(
+                                        "[SYSTEM REMINDER - TODO CONTINUATION]\n\n\
+                                         You have incomplete todos! Complete ALL before ending your turn:\n\
+                                         {summary}\n\n\
+                                         DO NOT end your turn until all todos are marked completed."
+                                    );
+                                    self.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: format!("Todo enforcer: {} incomplete items, continuing... (attempt {}/10)", summary.lines().count(), self.todo_enforce_count),
+                                    });
+                                    self.turn_request = Some(TurnRequest {
+                                        input: reminder,
+                                        content: None,
+                                        is_background: false,
+                                        label: "todo-enforcer".to_string(),
+                                    });
+                                    self.mode = AppMode::Streaming;
+                                } else if !has {
+                                    self.todo_enforce_count = 0;
                                 }
                             }
                         }

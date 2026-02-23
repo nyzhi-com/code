@@ -13,6 +13,10 @@ pub struct TodoItem {
     pub id: String,
     pub content: String,
     pub status: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocked_by: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<String>,
 }
 
 type TodoStore = Arc<Mutex<HashMap<String, Vec<TodoItem>>>>;
@@ -78,6 +82,12 @@ pub async fn has_incomplete_todos(store: &TodoStore, session_id: &str) -> bool {
 pub async fn incomplete_summary(store: &TodoStore, session_id: &str) -> Option<String> {
     let store = store.lock().await;
     let items = store.get(session_id)?;
+    let completed_ids: std::collections::HashSet<&str> = items
+        .iter()
+        .filter(|t| t.status == "completed")
+        .map(|t| t.id.as_str())
+        .collect();
+
     let incomplete: Vec<&TodoItem> = items
         .iter()
         .filter(|t| t.status == "pending" || t.status == "in_progress")
@@ -87,7 +97,21 @@ pub async fn incomplete_summary(store: &TodoStore, session_id: &str) -> Option<S
     }
     let lines: Vec<String> = incomplete
         .iter()
-        .map(|t| format!("[{}] {}: {}", t.status, t.id, t.content))
+        .map(|t| {
+            let is_blocked = !t.blocked_by.is_empty()
+                && !t.blocked_by.iter().all(|dep| completed_ids.contains(dep.as_str()));
+            let mut line = format!("[{}] {}: {}", t.status, t.id, t.content);
+            if is_blocked {
+                let pending_deps: Vec<&str> = t.blocked_by.iter()
+                    .filter(|dep| !completed_ids.contains(dep.as_str()))
+                    .map(|s| s.as_str())
+                    .collect();
+                line.push_str(&format!(" [BLOCKED by: {}]", pending_deps.join(", ")));
+            } else if !t.blocked_by.is_empty() {
+                line.push_str(" [READY]");
+            }
+            line
+        })
         .collect();
     Some(lines.join("\n"))
 }
@@ -117,6 +141,16 @@ impl Tool for TodoWriteTool {
                             "status": {
                                 "type": "string",
                                 "enum": ["pending", "in_progress", "completed", "cancelled"]
+                            },
+                            "blocked_by": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "IDs of todos that must complete before this one can start"
+                            },
+                            "blocks": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "IDs of todos that this todo blocks"
                             }
                         },
                         "required": ["id", "content", "status"]
@@ -148,7 +182,16 @@ impl Tool for TodoWriteTool {
 
         let summary: Vec<String> = session_todos
             .iter()
-            .map(|t| format!("[{}] {}: {}", t.status, t.id, t.content))
+            .map(|t| {
+                let mut line = format!("[{}] {}: {}", t.status, t.id, t.content);
+                if !t.blocked_by.is_empty() {
+                    line.push_str(&format!(" (blocked by: {})", t.blocked_by.join(", ")));
+                }
+                if !t.blocks.is_empty() {
+                    line.push_str(&format!(" (blocks: {})", t.blocks.join(", ")));
+                }
+                line
+            })
             .collect();
 
         Ok(ToolResult {
@@ -184,7 +227,16 @@ impl Tool for TodoReadTool {
             Some(items) if !items.is_empty() => {
                 items
                     .iter()
-                    .map(|t| format!("[{}] {}: {}", t.status, t.id, t.content))
+                    .map(|t| {
+                        let mut line = format!("[{}] {}: {}", t.status, t.id, t.content);
+                        if !t.blocked_by.is_empty() {
+                            line.push_str(&format!(" (blocked by: {})", t.blocked_by.join(", ")));
+                        }
+                        if !t.blocks.is_empty() {
+                            line.push_str(&format!(" (blocks: {})", t.blocks.join(", ")));
+                        }
+                        line
+                    })
                     .collect::<Vec<_>>()
                     .join("\n")
             }

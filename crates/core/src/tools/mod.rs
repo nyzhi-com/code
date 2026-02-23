@@ -249,6 +249,14 @@ impl ToolRegistry {
 
 pub type TodoStoreHandle = Arc<tokio::sync::Mutex<std::collections::HashMap<String, Vec<todo::TodoItem>>>>;
 
+pub async fn todo_has_incomplete(store: &TodoStoreHandle, session_id: &str) -> bool {
+    todo::has_incomplete_todos(store, session_id).await
+}
+
+pub async fn todo_incomplete_summary(store: &TodoStoreHandle, session_id: &str) -> Option<String> {
+    todo::incomplete_summary(store, session_id).await
+}
+
 pub struct RegistryBundle {
     pub registry: ToolRegistry,
     pub todo_store: TodoStoreHandle,

@@ -518,6 +518,163 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/init-deep" {
+                let prompt = format!(
+                    "Analyze the project structure at {} and generate hierarchical AGENTS.md files.\n\n\
+                     For each directory containing source files:\n\
+                     1. Read the directory contents and key files\n\
+                     2. Write an AGENTS.md describing: purpose, key files, conventions, dependencies\n\
+                     3. Keep each AGENTS.md concise (10-30 lines)\n\
+                     4. Respect .gitignore -- skip node_modules, target, .git, etc.\n\n\
+                     Start from the project root and work downward. Create AGENTS.md files using the `write` tool.",
+                    app.workspace.project_root.display()
+                );
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: "Generating hierarchical AGENTS.md files...".to_string(),
+                });
+                app.turn_request = Some(TurnRequest {
+                    input: prompt,
+                    content: None,
+                    is_background: false,
+                    label: "init-deep".to_string(),
+                });
+                app.mode = AppMode::Streaming;
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input.starts_with("/refactor ") {
+                let target = input.strip_prefix("/refactor ").unwrap().trim().to_string();
+                if target.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /refactor <target>  (function, module, pattern, etc.)".to_string(),
+                    });
+                } else {
+                    let prompt = format!(
+                        "Refactor: {target}\n\n\
+                         Follow this structured workflow:\n\
+                         1. Search for ALL usages of `{target}` across the codebase\n\
+                         2. Assess impact: how many files, what depends on it, risk level\n\
+                         3. Run tests BEFORE making changes (establish baseline)\n\
+                         4. Create a todo list with specific refactoring steps\n\
+                         5. Make changes following existing codebase patterns\n\
+                         6. Run tests AFTER changes (verify zero regressions)\n\
+                         7. Report: files changed, tests before vs after, summary\n\n\
+                         CRITICAL: If tests fail after changes, fix immediately. Do NOT leave code broken."
+                    );
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Refactoring: {target}"),
+                    });
+                    app.turn_request = Some(TurnRequest {
+                        input: prompt,
+                        content: None,
+                        is_background: false,
+                        label: format!("refactor: {target}"),
+                    });
+                    app.mode = AppMode::Streaming;
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/stop" {
+                app.autopilot = None;
+                app.todo_enforcement_paused = true;
+                app.todo_enforce_count = 0;
+                if app.mode == AppMode::Streaming {
+                    app.mode = AppMode::Input;
+                }
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: "All continuation mechanisms stopped (autopilot, todo enforcer).".to_string(),
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/handoff" {
+                let mut sections = vec!["# Session Handoff\n".to_string()];
+
+                sections.push(format!("## Project\n- Root: {}\n", app.workspace.project_root.display()));
+                if let Some(branch) = &app.workspace.git_branch {
+                    sections.push(format!("- Branch: {branch}\n"));
+                }
+
+                sections.push(format!("## Session\n- Provider: {}\n- Model: {}\n", app.provider_name, app.model_name));
+
+                if let Some(ref store) = app.todo_store {
+                    let items = store.blocking_lock();
+                    let mut todo_section = String::from("## Todos\n");
+                    let mut found = false;
+                    for (sid, todos) in items.iter() {
+                        for t in todos {
+                            found = true;
+                            let marker = match t.status.as_str() {
+                                "completed" => "[x]",
+                                "cancelled" => "[-]",
+                                _ => "[ ]",
+                            };
+                            todo_section.push_str(&format!("- {marker} {}: {} (session: {sid})\n", t.id, t.content));
+                        }
+                    }
+                    if found {
+                        sections.push(todo_section);
+                    }
+                }
+
+                let recent_msgs: Vec<String> = app.items.iter().rev().take(10).filter_map(|item| {
+                    if let DisplayItem::Message { role, content } = item {
+                        Some(format!("**{role}**: {}\n", content.chars().take(200).collect::<String>()))
+                    } else {
+                        None
+                    }
+                }).collect();
+                if !recent_msgs.is_empty() {
+                    sections.push("## Recent Context (last 10 messages)\n".to_string());
+                    for msg in recent_msgs.iter().rev() {
+                        sections.push(msg.clone());
+                    }
+                }
+
+                if let Ok(notepads) = nyzhi_core::notepad::list_notepads(&app.workspace.project_root) {
+                    if let Some(plan_name) = notepads.last() {
+                        if let Ok(wisdom) = nyzhi_core::notepad::read_notepad(&app.workspace.project_root, plan_name) {
+                            if wisdom.lines().count() > 3 {
+                                sections.push(format!("## Notepad: {plan_name}\n{wisdom}\n"));
+                            }
+                        }
+                    }
+                }
+
+                let handoff_content = sections.join("\n");
+                let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+                let handoff_path = app.workspace.project_root.join(format!(".nyzhi/handoff-{ts}.md"));
+                let _ = std::fs::create_dir_all(handoff_path.parent().unwrap());
+                match std::fs::write(&handoff_path, &handoff_content) {
+                    Ok(_) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Handoff saved to {}", handoff_path.display()),
+                        });
+                    }
+                    Err(e) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Failed to write handoff: {e}"),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/mcp" {
                 if let Some(mgr) = &app.mcp_manager {
                     let servers = mgr.server_info_list().await;
@@ -1835,6 +1992,15 @@ pub async fn handle_key(
                 agent_config.system_prompt.push_str(nyzhi_core::prompt::parallel_instructions());
             }
             if flags.persist {
+                agent_config.system_prompt.push_str(nyzhi_core::prompt::persist_instructions());
+            }
+            if flags.ultrawork {
+                agent_config.thinking_enabled = true;
+                agent_config.reasoning_effort = Some("xhigh".into());
+                agent_config.thinking_budget = Some(32768);
+                agent_config.thinking_level = Some("xhigh".into());
+                agent_config.system_prompt.push_str(nyzhi_core::prompt::ultrawork_instructions());
+                agent_config.system_prompt.push_str(nyzhi_core::prompt::parallel_instructions());
                 agent_config.system_prompt.push_str(nyzhi_core::prompt::persist_instructions());
             }
 

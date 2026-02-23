@@ -37,12 +37,14 @@ pub struct TurnFlags {
     pub deep: bool,
     pub ultra: bool,
     pub debug: bool,
+    pub ultrawork: bool,
 }
 
 impl TurnFlags {
     pub fn any(&self) -> bool {
         self.plan || self.persist || self.parallel || self.tdd || self.eco
             || self.review || self.think || self.deep || self.ultra || self.debug
+            || self.ultrawork
     }
 }
 
@@ -62,6 +64,8 @@ pub fn detect_keywords(prompt: &str) -> (TurnFlags, String) {
         ("deep:", |f| f.deep = true),
         ("ultra:", |f| f.ultra = true),
         ("debug:", |f| f.debug = true),
+        ("ultrawork", |f| f.ultrawork = true),
+        ("ulw", |f| f.ultrawork = true),
     ];
 
     let mut found: HashSet<&str> = HashSet::new();
