@@ -247,6 +247,8 @@ NO TODOS ON MULTI-STEP WORK = INCOMPLETE WORK.
 Prefer structured tools over bash: `git_status` over `git status`, `list_dir` over `ls`, `directory_tree` over `find`.
 File changes via `edit`/`write` are tracked and undoable via `/undo`.
 
+CRITICAL: NEVER output file contents as text in your response. ALWAYS use the `write` tool to create files and the `edit` tool to modify them. If you need to show code to the user, use the tools to write it to disk first, then reference the file path.
+
 # Sub-Agents (Multi-Agent)
 - `spawn_agent`: Spawn a sub-agent. Params: `message` (required), `agent_type` (optional role). Returns `{{ agent_id, agent_nickname }}`.
 - `send_input`: Send follow-up to a running agent. Params: `id`, `message`.

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
-use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use nyzhi_core::agent::{AgentConfig, AgentEvent, SessionUsage};
@@ -307,6 +307,7 @@ impl App {
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
         io::stdout().execute(EnableBracketedPaste)?;
+        io::stdout().execute(EnableMouseCapture)?;
 
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
@@ -679,6 +680,17 @@ impl App {
                             &mut model_info_idx,
                         )
                         .await;
+                    }
+                }
+                Event::Mouse(mouse) => {
+                    match mouse.kind {
+                        crossterm::event::MouseEventKind::ScrollUp => {
+                            self.scroll_offset = self.scroll_offset.saturating_add(3);
+                        }
+                        crossterm::event::MouseEventKind::ScrollDown => {
+                            self.scroll_offset = self.scroll_offset.saturating_sub(3);
+                        }
+                        _ => {}
                     }
                 }
                 _ => {}
@@ -1294,6 +1306,7 @@ impl App {
         }
         self.history.save();
 
+        io::stdout().execute(DisableMouseCapture)?;
         io::stdout().execute(DisableBracketedPaste)?;
         terminal::disable_raw_mode()?;
         io::stdout().execute(LeaveAlternateScreen)?;
@@ -2143,6 +2156,7 @@ impl App {
         ));
         std::fs::write(&tmp_path, &self.input)?;
 
+        io::stdout().execute(DisableMouseCapture)?;
         terminal::disable_raw_mode()?;
         io::stdout().execute(LeaveAlternateScreen)?;
 
@@ -2159,6 +2173,7 @@ impl App {
 
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
+        io::stdout().execute(EnableMouseCapture)?;
         io::stdout().flush()?;
         // Force full redraw
         terminal.clear()?;
