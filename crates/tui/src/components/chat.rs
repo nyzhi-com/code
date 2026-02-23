@@ -39,6 +39,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 render_message(&mut lines, role, content, theme, &app.highlighter, dark);
             }
             DisplayItem::Thinking(content) => {
+                let think_start = lines.len();
                 let dim = Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
                 lines.push(Line::from(Span::styled("  Thinking...", dim)));
                 for line_text in content.lines().take(10) {
@@ -55,6 +56,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                         dim,
                     )));
                 }
+                prepend_bar(&mut lines[think_start..], Color::DarkGray);
             }
             DisplayItem::ToolCall {
                 name,
@@ -63,9 +65,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 status,
                 elapsed_ms,
             } => {
+                let tool_start = lines.len();
                 match app.output_style {
                     nyzhi_config::OutputStyle::Minimal => {
-                        // In minimal mode, only show the tool name on one line
                         let dim = Style::default().fg(theme.text_disabled);
                         let icon = match status {
                             ToolStatus::Running => "*",
@@ -82,6 +84,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                         render_tool_call(&mut lines, name, args_summary, output, status, elapsed_ms, theme);
                     }
                 }
+                prepend_bar(&mut lines[tool_start..], theme.text_disabled);
             }
         }
 
@@ -102,6 +105,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     if !app.thinking_stream.is_empty() && app.current_stream.is_empty() {
         let dim = Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
         lines.push(Line::from(""));
+        let think_stream_start = lines.len();
         lines.push(Line::from(Span::styled("  Thinking...", dim)));
         let tlines: Vec<&str> = app.thinking_stream.lines().collect();
         let show = tlines.len().min(6);
@@ -124,15 +128,18 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
             }
         }
+        prepend_bar(&mut lines[think_stream_start..], Color::DarkGray);
     }
 
     if !app.current_stream.is_empty() {
         lines.push(Line::from(""));
+        let stream_start = lines.len();
         render_highlighted_content(&mut lines, &app.current_stream, theme, &app.highlighter, dark);
         lines.push(Line::from(Span::styled(
             "  _",
             Style::default().fg(theme.accent),
         )));
+        prepend_bar(&mut lines[stream_start..], theme.accent);
     }
 
     let total_lines = lines.len() as u16;
@@ -188,6 +195,12 @@ fn highlight_search_in_line<'a>(line: Line<'a>, query: &str, hl_style: Style) ->
     Line::from(new_spans)
 }
 
+fn prepend_bar(lines: &mut [Line<'_>], color: Color) {
+    for line in lines.iter_mut() {
+        line.spans.insert(0, Span::styled(" ┃ ", Style::default().fg(color)));
+    }
+}
+
 fn render_message<'a>(
     lines: &mut Vec<Line<'a>>,
     role: &str,
@@ -197,6 +210,7 @@ fn render_message<'a>(
     dark: bool,
 ) {
     lines.push(Line::from(""));
+    let bar_start = lines.len();
 
     match role {
         "user" => {
@@ -211,6 +225,9 @@ fn render_message<'a>(
             render_highlighted_content(lines, content, theme, highlighter, dark);
         }
     }
+
+    let bar_color = if role == "user" { theme.info } else { theme.accent };
+    prepend_bar(&mut lines[bar_start..], bar_color);
 }
 
 fn render_highlighted_content<'a>(

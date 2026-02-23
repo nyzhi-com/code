@@ -20,8 +20,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
         _ => theme.border_default,
     };
 
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
+    let block = Block::default()
+        .borders(Borders::TOP)
         .border_style(Style::default().fg(border_color))
         .style(Style::default().bg(theme.bg_page));
 

@@ -33,15 +33,15 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         AppMode::Input => "^K cmds  Tab thinking",
     };
 
-    let mut right_parts: Vec<String> = Vec::new();
+    let mut info_parts: Vec<String> = Vec::new();
 
     if let nyzhi_config::TrustMode::Full = app.trust_mode {
-        right_parts.push("TRUST:FULL".to_string());
+        info_parts.push("TRUST:FULL".to_string());
     }
 
     let bg_count = app.background_tasks.len();
     if bg_count > 0 {
-        right_parts.push(format!("bg:{bg_count}"));
+        info_parts.push(format!("bg:{bg_count}"));
     }
 
     let usage = &app.session_usage;
@@ -50,27 +50,32 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         let cost = format_cost(usage.total_cost_usd);
         let tok = format!("{}tok", format_tokens(total_tokens));
         if cost.is_empty() {
-            right_parts.push(tok);
+            info_parts.push(tok);
         } else {
-            right_parts.push(format!("{tok} {cost}"));
+            info_parts.push(format!("{tok} {cost}"));
         }
     }
 
     if let Some(ref level) = app.thinking_level {
-        right_parts.push(format!("think:{level}"));
+        info_parts.push(format!("think:{level}"));
     }
 
     let auth = nyzhi_auth::auth_status(&app.provider_name);
-    if auth == "not connected" {
-        right_parts.push("not connected".to_string());
+    let model_label = if auth == "not connected" {
+        "not connected".to_string()
     } else {
-        right_parts.push(format!("{} {}", app.provider_name, app.model_name));
-    }
+        format!("{} {}", app.provider_name, app.model_name)
+    };
 
-    let right = right_parts.join("  ");
+    let info_str = info_parts.join("  ");
+    let right_len = if info_str.is_empty() {
+        model_label.len()
+    } else {
+        info_str.len() + 2 + model_label.len()
+    };
 
     let available = area.width as usize;
-    let gap = available.saturating_sub(left.len() + right.len() + 4);
+    let gap = available.saturating_sub(left.len() + right_len + 4);
 
     let mut spans: Vec<Span> = Vec::new();
 
@@ -81,18 +86,36 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         ));
     }
 
-    spans.push(Span::raw(" ".repeat(if left.is_empty() { available.saturating_sub(right.len() + 2) } else { gap })));
+    spans.push(Span::raw(" ".repeat(if left.is_empty() { available.saturating_sub(right_len + 2) } else { gap })));
 
     if matches!(app.trust_mode, nyzhi_config::TrustMode::Full) {
-        let trust_part = "TRUST:FULL  ";
-        let rest = right.strip_prefix("TRUST:FULL  ").unwrap_or(&right);
-        spans.push(Span::styled(trust_part, Style::default().fg(theme.danger).bold()));
-        spans.push(Span::styled(format!("{rest}  "), Style::default().fg(theme.text_tertiary)));
-    } else {
-        spans.push(Span::styled(format!("{right}  "), Style::default().fg(theme.text_tertiary)));
+        let without_trust: Vec<&str> = info_parts.iter()
+            .filter(|p| *p != "TRUST:FULL")
+            .map(|s| s.as_str())
+            .collect();
+        spans.push(Span::styled("TRUST:FULL", Style::default().fg(theme.danger).bold()));
+        if !without_trust.is_empty() {
+            spans.push(Span::styled(
+                format!("  {}", without_trust.join("  ")),
+                Style::default().fg(theme.text_tertiary),
+            ));
+        }
+    } else if !info_str.is_empty() {
+        spans.push(Span::styled(info_str, Style::default().fg(theme.text_tertiary)));
     }
 
+    if !info_parts.is_empty() || matches!(app.trust_mode, nyzhi_config::TrustMode::Full) {
+        spans.push(Span::raw("  "));
+    }
+
+    let model_style = if auth == "not connected" {
+        Style::default().fg(theme.text_disabled)
+    } else {
+        Style::default().fg(theme.accent).bold()
+    };
+    spans.push(Span::styled(format!("{model_label}  "), model_style));
+
     let line = Line::from(spans);
-    let paragraph = Paragraph::new(line).style(Style::default().bg(theme.bg_page));
+    let paragraph = Paragraph::new(line).style(Style::default().bg(theme.bg_surface));
     frame.render_widget(paragraph, area);
 }
