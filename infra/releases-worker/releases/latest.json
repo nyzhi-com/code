@@ -1,0 +1,10 @@
+{
+  "version": "1.1.0",
+  "date": "2026-02-23T10:56:02Z",
+  "sha256": {
+    "darwin-aarch64": "3555618efa6f875ca5c7a6f835701c27f1a29bf4f99f628ce1b05dfae6580feb",
+    "darwin-x86_64": "81c349b550f4e0e1583faf830afcb9af1172a3c6e89952cfb299e8b20fc99b4f",
+    "linux-x86_64": "ca43e7cb801818857d280c82bc5b0176b7dc460c9cb216cad35586915ed5eff6",
+    "linux-aarch64": "3534707f00678064ff4d04b9a041d5350ff0eb99a9f3561f478eb41abc7a1262"
+  }
+}
