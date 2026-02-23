@@ -60,7 +60,9 @@ impl OpenAIProvider {
         } else {
             None
         };
-        let effective_base = if is_codex_sub && base_url.is_none() {
+        let effective_base = if is_codex_sub
+            && (base_url.is_none() || base_url.as_deref() == Some(DEFAULT_BASE_URL))
+        {
             CODEX_BASE_URL.to_string()
         } else {
             base_url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string())
