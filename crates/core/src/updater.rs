@@ -106,8 +106,8 @@ fn backups_dir() -> PathBuf {
 }
 
 fn backup_current_binary(version: &str) -> Result<PathBuf> {
-    let current_exe = std::env::current_exe()
-        .context("Could not determine current executable path")?;
+    let current_exe =
+        std::env::current_exe().context("Could not determine current executable path")?;
 
     let dir = backups_dir();
     std::fs::create_dir_all(&dir)?;
@@ -116,8 +116,7 @@ fn backup_current_binary(version: &str) -> Result<PathBuf> {
     let backup_name = format!("nyz-v{version}-{timestamp}");
     let backup_path = dir.join(&backup_name);
 
-    std::fs::copy(&current_exe, &backup_path)
-        .context("Failed to backup current binary")?;
+    std::fs::copy(&current_exe, &backup_path).context("Failed to backup current binary")?;
 
     // Preserve executable permission
     #[cfg(unix)]
@@ -272,9 +271,7 @@ fn verify_integrity(manifest: &IntegrityManifest) -> Vec<String> {
             .and_then(|e| e.get_password().ok())
             .is_some();
         if !still_exists {
-            issues.push(format!(
-                "OAuth token for {provider} lost after update"
-            ));
+            issues.push(format!("OAuth token for {provider} lost after update"));
         }
     }
 
@@ -300,8 +297,7 @@ fn load_manifest() -> Option<IntegrityManifest> {
 // ---------------------------------------------------------------------------
 
 fn verify_new_binary() -> Result<bool> {
-    let exe = std::env::current_exe()
-        .context("Could not determine current executable path")?;
+    let exe = std::env::current_exe().context("Could not determine current executable path")?;
 
     let output = std::process::Command::new(&exe)
         .arg("--version")
@@ -330,9 +326,7 @@ fn verify_new_binary() -> Result<bool> {
 const ALLOWED_HOSTS: &[&str] = &["get.nyzhi.com"];
 
 fn validate_release_url(url: &str) -> Result<()> {
-    let parsed: url::Url = url
-        .parse()
-        .context("Invalid release URL")?;
+    let parsed: url::Url = url.parse().context("Invalid release URL")?;
 
     if parsed.scheme() != "https" {
         anyhow::bail!("Release URL must use HTTPS (got {})", parsed.scheme());
@@ -395,10 +389,10 @@ pub async fn check_for_update(config: &nyzhi_config::UpdateConfig) -> Result<Opt
     new_state.last_check_epoch = now_epoch();
     save_state(&new_state);
 
-    let current = semver::Version::parse(CURRENT_VERSION)
-        .context("Failed to parse current version")?;
-    let latest = semver::Version::parse(&release.version)
-        .context("Failed to parse remote version")?;
+    let current =
+        semver::Version::parse(CURRENT_VERSION).context("Failed to parse current version")?;
+    let latest =
+        semver::Version::parse(&release.version).context("Failed to parse remote version")?;
 
     if latest <= current {
         return Ok(None);
@@ -459,8 +453,8 @@ pub async fn download_and_apply(info: &UpdateInfo) -> Result<UpdateResult> {
     save_manifest(&manifest);
 
     // Step 2: backup current binary
-    let backup_path = backup_current_binary(&info.current_version)
-        .context("Pre-update backup failed")?;
+    let backup_path =
+        backup_current_binary(&info.current_version).context("Pre-update backup failed")?;
     tracing::info!("Backed up current binary to {}", backup_path.display());
 
     // Step 3: download and verify
@@ -474,8 +468,9 @@ pub async fn download_and_apply(info: &UpdateInfo) -> Result<UpdateResult> {
 
     // Step 4: atomic replacement
     if let Err(e) = self_replace::self_replace(&new_binary_path) {
-        return Err(anyhow::anyhow!(e)
-            .context("Binary replacement failed; old binary is still in place"));
+        return Err(
+            anyhow::anyhow!(e).context("Binary replacement failed; old binary is still in place")
+        );
     }
 
     // Step 5: post-flight verification
@@ -538,9 +533,7 @@ async fn download_and_extract(info: &UpdateInfo) -> Result<PathBuf> {
     use sha2::Digest;
     let actual = hex::encode(sha2::Sha256::digest(&bytes));
     if actual != *expected_sha {
-        anyhow::bail!(
-            "Checksum mismatch!\n  Expected: {expected_sha}\n  Actual:   {actual}"
-        );
+        anyhow::bail!("Checksum mismatch!\n  Expected: {expected_sha}\n  Actual:   {actual}");
     }
 
     let extract_dir = nyzhi_config::Config::data_dir().join("update-staging");
@@ -556,8 +549,8 @@ async fn download_and_extract(info: &UpdateInfo) -> Result<PathBuf> {
 
     archive.unpack(&extract_dir)?;
 
-    let binary_path = find_binary_in_dir(&extract_dir)
-        .context("Could not find nyz binary in archive")?;
+    let binary_path =
+        find_binary_in_dir(&extract_dir).context("Could not find nyz binary in archive")?;
 
     Ok(binary_path)
 }

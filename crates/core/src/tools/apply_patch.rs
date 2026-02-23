@@ -208,8 +208,14 @@ impl Tool for MultiEditTool {
             let mut content = original;
             let mut count = 0;
             for replacement in replacements {
-                let old = replacement.get("old").and_then(|v| v.as_str()).unwrap_or("");
-                let new = replacement.get("new").and_then(|v| v.as_str()).unwrap_or("");
+                let old = replacement
+                    .get("old")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let new = replacement
+                    .get("new")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if old.is_empty() {
                     continue;
                 }
@@ -218,9 +224,7 @@ impl Tool for MultiEditTool {
                         std::fs::write(path, backup).ok();
                     }
                     return Ok(ToolResult {
-                        output: format!(
-                            "Rolled back: old_string not found in {file}:\n{old}"
-                        ),
+                        output: format!("Rolled back: old_string not found in {file}:\n{old}"),
                         title: "multi_edit: failed".to_string(),
                         metadata: json!({ "success": false }),
                     });

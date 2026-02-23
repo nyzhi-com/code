@@ -32,7 +32,8 @@ impl Tool for LspDiagnosticsTool {
              - rust-analyzer (Rust)\n  \
              - typescript-language-server (TypeScript/JavaScript)\n  \
              - pylsp (Python)\n  \
-             - gopls (Go)".to_string()
+             - gopls (Go)"
+                .to_string()
         } else {
             let lines: Vec<String> = servers
                 .iter()
@@ -92,7 +93,9 @@ impl Tool for AstSearchTool {
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
         let pattern_type = args["pattern_type"].as_str().unwrap_or("function");
         let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("*");
-        let path = args.get("path").and_then(|v| v.as_str())
+        let path = args
+            .get("path")
+            .and_then(|v| v.as_str())
             .map(|p| ctx.cwd.join(p))
             .unwrap_or_else(|| ctx.project_root.clone());
 
@@ -111,7 +114,11 @@ impl Tool for AstSearchTool {
                     format!("No {pattern_type} matching '{name}' found")
                 } else {
                     let lines: Vec<&str> = stdout.lines().take(50).collect();
-                    let truncated = if stdout.lines().count() > 50 { "\n... (truncated)" } else { "" };
+                    let truncated = if stdout.lines().count() > 50 {
+                        "\n... (truncated)"
+                    } else {
+                        ""
+                    };
                     format!("{}{truncated}", lines.join("\n"))
                 }
             }
@@ -130,7 +137,9 @@ pub struct LspGotoDefinitionTool;
 
 #[async_trait]
 impl Tool for LspGotoDefinitionTool {
-    fn name(&self) -> &str { "lsp_goto_definition" }
+    fn name(&self) -> &str {
+        "lsp_goto_definition"
+    }
     fn description(&self) -> &str {
         "Find the definition of a symbol at a given file location. Returns the file and line \
          where the symbol is defined."
@@ -148,7 +157,9 @@ impl Tool for LspGotoDefinitionTool {
     }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
-        let file = args.get("file").and_then(|v| v.as_str())
+        let file = args
+            .get("file")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: file"))?;
         let line = args.get("line").and_then(|v| v.as_u64()).unwrap_or(1);
         let col = args.get("column").and_then(|v| v.as_u64()).unwrap_or(1);
@@ -167,10 +178,18 @@ impl Tool for LspGotoDefinitionTool {
 
         let rg = tokio::process::Command::new("rg")
             .args([
-                "--line-number", "--no-heading", "-e",
-                &format!(r"(fn|struct|enum|trait|type|const|static|class|interface|def)\s+{word}\b"),
+                "--line-number",
+                "--no-heading",
+                "-e",
+                &format!(
+                    r"(fn|struct|enum|trait|type|const|static|class|interface|def)\s+{word}\b"
+                ),
             ])
-            .arg(std::path::Path::new(file).parent().unwrap_or(std::path::Path::new(".")))
+            .arg(
+                std::path::Path::new(file)
+                    .parent()
+                    .unwrap_or(std::path::Path::new(".")),
+            )
             .output()
             .await;
 
@@ -199,7 +218,9 @@ pub struct LspFindReferencesTool;
 
 #[async_trait]
 impl Tool for LspFindReferencesTool {
-    fn name(&self) -> &str { "lsp_find_references" }
+    fn name(&self) -> &str {
+        "lsp_find_references"
+    }
     fn description(&self) -> &str {
         "Find all references to a symbol at a given file location."
     }
@@ -216,7 +237,9 @@ impl Tool for LspFindReferencesTool {
     }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
-        let file = args.get("file").and_then(|v| v.as_str())
+        let file = args
+            .get("file")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: file"))?;
         let line = args.get("line").and_then(|v| v.as_u64()).unwrap_or(1);
         let col = args.get("column").and_then(|v| v.as_u64()).unwrap_or(1);
@@ -235,7 +258,11 @@ impl Tool for LspFindReferencesTool {
 
         let rg = tokio::process::Command::new("rg")
             .args(["--line-number", "--no-heading", "-w", &word])
-            .arg(std::path::Path::new(file).parent().unwrap_or(std::path::Path::new(".")))
+            .arg(
+                std::path::Path::new(file)
+                    .parent()
+                    .unwrap_or(std::path::Path::new(".")),
+            )
             .output()
             .await;
 
@@ -244,11 +271,18 @@ impl Tool for LspFindReferencesTool {
                 let stdout = String::from_utf8_lossy(&out.stdout);
                 let count = stdout.lines().count();
                 let lines: Vec<&str> = stdout.lines().take(30).collect();
-                let truncated = if count > 30 { format!("\n... ({count} total references)") } else { String::new() };
+                let truncated = if count > 30 {
+                    format!("\n... ({count} total references)")
+                } else {
+                    String::new()
+                };
                 if lines.is_empty() {
                     format!("No references to '{word}' found")
                 } else {
-                    format!("References to '{word}' ({count} found):\n{}{truncated}", lines.join("\n"))
+                    format!(
+                        "References to '{word}' ({count} found):\n{}{truncated}",
+                        lines.join("\n")
+                    )
                 }
             }
             Err(_) => "ripgrep not available".to_string(),
@@ -266,7 +300,9 @@ pub struct LspHoverTool;
 
 #[async_trait]
 impl Tool for LspHoverTool {
-    fn name(&self) -> &str { "lsp_hover" }
+    fn name(&self) -> &str {
+        "lsp_hover"
+    }
     fn description(&self) -> &str {
         "Get type information and documentation for a symbol at a given file location."
     }
@@ -283,7 +319,9 @@ impl Tool for LspHoverTool {
     }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
-        let file = args.get("file").and_then(|v| v.as_str())
+        let file = args
+            .get("file")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: file"))?;
         let line = args.get("line").and_then(|v| v.as_u64()).unwrap_or(1);
         let col = args.get("column").and_then(|v| v.as_u64()).unwrap_or(1);
@@ -302,10 +340,20 @@ impl Tool for LspHoverTool {
 
         let rg = tokio::process::Command::new("rg")
             .args([
-                "--line-number", "--no-heading", "-B", "3", "-e",
-                &format!(r"(pub\s+)?(fn|struct|enum|trait|type|const|class|interface|def)\s+{word}\b"),
+                "--line-number",
+                "--no-heading",
+                "-B",
+                "3",
+                "-e",
+                &format!(
+                    r"(pub\s+)?(fn|struct|enum|trait|type|const|class|interface|def)\s+{word}\b"
+                ),
             ])
-            .arg(std::path::Path::new(file).parent().unwrap_or(std::path::Path::new(".")))
+            .arg(
+                std::path::Path::new(file)
+                    .parent()
+                    .unwrap_or(std::path::Path::new(".")),
+            )
             .output()
             .await;
 

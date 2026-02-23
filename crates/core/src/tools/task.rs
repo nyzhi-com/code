@@ -8,7 +8,7 @@ use tokio::sync::broadcast;
 use crate::agent::{run_turn, AgentConfig, AgentEvent, SessionUsage};
 use crate::conversation::Thread;
 
-use super::{Tool, ToolContext, ToolResult, ToolRegistry};
+use super::{Tool, ToolContext, ToolRegistry, ToolResult};
 
 pub struct TaskTool {
     provider: Arc<dyn nyzhi_provider::Provider>,
@@ -157,6 +157,7 @@ impl Tool for TaskTool {
             agent_name: ctx.agent_name.clone(),
             is_team_lead: ctx.is_team_lead,
             todo_store: ctx.todo_store.clone(),
+            index: ctx.index.clone(),
         };
 
         let mut session_usage = SessionUsage::default();

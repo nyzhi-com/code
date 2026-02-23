@@ -115,7 +115,10 @@ fn read_file(path: &Path, display: &str) -> Option<ContextFile> {
     let content = String::from_utf8_lossy(&bytes);
     let content = if truncated {
         let last_nl = content.rfind('\n').unwrap_or(content.len());
-        format!("{}\n... (truncated, file exceeds 100KB)", &content[..last_nl])
+        format!(
+            "{}\n... (truncated, file exceeds 100KB)",
+            &content[..last_nl]
+        )
     } else {
         content.into_owned()
     };
@@ -222,10 +225,16 @@ pub fn format_attachment_summary(files: &[ContextFile]) -> String {
     for f in files {
         if f.is_dir {
             let suffix = if f.truncated { " (truncated)" } else { "" };
-            parts.push(format!("{} ({} entries{})", f.display_path, f.line_count, suffix));
+            parts.push(format!(
+                "{} ({} entries{})",
+                f.display_path, f.line_count, suffix
+            ));
         } else {
             let suffix = if f.truncated { " (truncated)" } else { "" };
-            parts.push(format!("{} ({} lines{})", f.display_path, f.line_count, suffix));
+            parts.push(format!(
+                "{} ({} lines{})",
+                f.display_path, f.line_count, suffix
+            ));
         }
     }
     format!("Attached: {}", parts.join(", "))
@@ -338,6 +347,9 @@ mod tests {
             },
         ];
         let summary = format_attachment_summary(&files);
-        assert_eq!(summary, "Attached: a.rs (10 lines), src/ (5 entries (truncated))");
+        assert_eq!(
+            summary,
+            "Attached: a.rs (10 lines), src/ (5 entries (truncated))"
+        );
     }
 }

@@ -32,7 +32,13 @@ pub fn build_system_prompt_with_vision(
     mcp_tools: &[McpToolSummary],
     supports_vision: bool,
 ) -> String {
-    build_full_system_prompt(workspace, custom_instructions, mcp_tools, supports_vision, "")
+    build_full_system_prompt(
+        workspace,
+        custom_instructions,
+        mcp_tools,
+        supports_vision,
+        "",
+    )
 }
 
 pub fn build_system_prompt_with_skills(
@@ -42,7 +48,13 @@ pub fn build_system_prompt_with_skills(
     supports_vision: bool,
     skills_text: &str,
 ) -> String {
-    build_full_system_prompt(workspace, custom_instructions, mcp_tools, supports_vision, skills_text)
+    build_full_system_prompt(
+        workspace,
+        custom_instructions,
+        mcp_tools,
+        supports_vision,
+        skills_text,
+    )
 }
 
 pub fn plan_mode_instructions() -> &'static str {
@@ -102,7 +114,8 @@ Plan mode has ended. You are now in Act mode with a plan to execute.
 - Execute the plan step by step. Do not re-plan unless the user explicitly asks.
 - After completing each step, use `update_plan` to mark it done: change `- [ ]` to `- [x]`.
 - If a step fails or is blocked, note why, skip it, and continue with the next step.
-- Focus on implementation. Be concise in your responses."#.to_string()
+- Focus on implementation. Be concise in your responses."#
+        .to_string()
 }
 
 pub fn debug_instructions() -> &'static str {
@@ -360,10 +373,7 @@ When blocked: try a different approach, decompose the problem, challenge assumpt
     );
 
     if let Some(ws) = workspace {
-        prompt.push_str(&format!(
-            "\n- Project root: {}",
-            ws.project_root.display()
-        ));
+        prompt.push_str(&format!("\n- Project root: {}", ws.project_root.display()));
         if let Some(pt) = &ws.project_type {
             prompt.push_str(&format!("\n- Project type: {}", pt.name()));
         }
@@ -742,7 +752,9 @@ When you think you're done: re-read the request. Run verification ONE MORE TIME.
                 mcp_tools.len()
             ));
         } else {
-            prompt.push_str("\n\n# MCP Tools\nThe following external tools are available via MCP servers:");
+            prompt.push_str(
+                "\n\n# MCP Tools\nThe following external tools are available via MCP servers:",
+            );
             let mut current_server = "";
             for tool in mcp_tools {
                 if tool.server_name != current_server {
@@ -767,9 +779,7 @@ When you think you're done: re-read the request. Run verification ONE MORE TIME.
 
     if let Some(instructions) = custom_instructions {
         if !instructions.is_empty() {
-            prompt.push_str(&format!(
-                "\n\n# Custom Instructions\n{instructions}"
-            ));
+            prompt.push_str(&format!("\n\n# Custom Instructions\n{instructions}"));
         }
     }
 

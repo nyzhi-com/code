@@ -50,8 +50,8 @@ impl PluginManifest {
         let content = std::fs::read_to_string(&manifest_path)
             .with_context(|| format!("Failed to read manifest at {}", manifest_path.display()))?;
 
-        let mut manifest: Self = serde_json::from_str(&content)
-            .context("Failed to parse plugin manifest")?;
+        let mut manifest: Self =
+            serde_json::from_str(&content).context("Failed to parse plugin manifest")?;
 
         let root_str = plugin_root.display().to_string();
         if let Some(ref mut cmds) = manifest.commands {
@@ -85,7 +85,5 @@ pub fn is_plugin_dir(dir: &Path) -> bool {
 
 /// Detect by conventional structure even without manifest.
 pub fn has_conventional_structure(dir: &Path) -> bool {
-    dir.join("commands").is_dir()
-        || dir.join("agents").is_dir()
-        || dir.join("skills").is_dir()
+    dir.join("commands").is_dir() || dir.join("agents").is_dir() || dir.join("skills").is_dir()
 }

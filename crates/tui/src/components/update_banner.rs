@@ -6,7 +6,11 @@ use crate::theme::Theme;
 
 pub fn draw(frame: &mut Frame, area: Rect, status: &UpdateStatus, theme: &Theme) {
     match status {
-        UpdateStatus::Available { new_version, current_version, .. } => {
+        UpdateStatus::Available {
+            new_version,
+            current_version,
+            ..
+        } => {
             let text = Line::from(vec![
                 Span::styled("  ↑ ", Style::default().fg(theme.accent).bold()),
                 Span::styled(

@@ -48,7 +48,12 @@ pub fn scan_project(root: &Path) -> Result<ProjectScan> {
             let path = entry.path();
             if path.is_dir() {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with('.') || name == "node_modules" || name == "target" || name == "__pycache__" || name == "vendor" {
+                if name.starts_with('.')
+                    || name == "node_modules"
+                    || name == "target"
+                    || name == "__pycache__"
+                    || name == "vendor"
+                {
                     continue;
                 }
                 let file_count = count_files_shallow(&path);
@@ -64,7 +69,11 @@ pub fn scan_project(root: &Path) -> Result<ProjectScan> {
 
     directories.sort_by(|a, b| a.path.cmp(&b.path));
 
-    Ok(ProjectScan { languages, frameworks, directories })
+    Ok(ProjectScan {
+        languages,
+        frameworks,
+        directories,
+    })
 }
 
 fn count_files_shallow(dir: &Path) -> usize {
@@ -82,19 +91,23 @@ fn detect_primary_language(dir: &Path) -> Option<String> {
             }
         }
     }
-    ext_counts.into_iter().max_by_key(|&(_, c)| c).map(|(ext, _)| {
-        match ext.as_str() {
-            "rs" => "Rust",
-            "ts" | "tsx" => "TypeScript",
-            "js" | "jsx" => "JavaScript",
-            "py" => "Python",
-            "go" => "Go",
-            "java" => "Java",
-            "rb" => "Ruby",
-            "md" => "Markdown",
-            _ => &ext,
-        }.to_string()
-    })
+    ext_counts
+        .into_iter()
+        .max_by_key(|&(_, c)| c)
+        .map(|(ext, _)| {
+            match ext.as_str() {
+                "rs" => "Rust",
+                "ts" | "tsx" => "TypeScript",
+                "js" | "jsx" => "JavaScript",
+                "py" => "Python",
+                "go" => "Go",
+                "java" => "Java",
+                "rb" => "Ruby",
+                "md" => "Markdown",
+                _ => &ext,
+            }
+            .to_string()
+        })
 }
 
 pub fn generate_agents_md(root: &Path) -> Result<String> {

@@ -46,10 +46,7 @@ impl Tool for BrowserOpenTool {
             .get("url")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: url"))?;
-        let wait_ms = args
-            .get("wait_ms")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(2000);
+        let wait_ms = args.get("wait_ms").and_then(|v| v.as_u64()).unwrap_or(2000);
 
         let output = run_playwright_command(&format!(
             "const page = await browser.newPage();\n\

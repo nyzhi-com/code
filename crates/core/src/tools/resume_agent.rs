@@ -49,10 +49,7 @@ impl Tool for ResumeAgentTool {
             .ok_or_else(|| anyhow::anyhow!("resume_agent requires 'id' parameter"))?;
 
         let info = self.manager.get_agent_info(id).await;
-        let nickname = info
-            .as_ref()
-            .map(|(n, _)| n.as_str())
-            .unwrap_or("unknown");
+        let nickname = info.as_ref().map(|(n, _)| n.as_str()).unwrap_or("unknown");
 
         match self.manager.resume_agent(id).await {
             Ok(status) => {

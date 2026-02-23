@@ -37,10 +37,7 @@ impl Tool for ThinkTool {
     }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
-        let thought = args
-            .get("thought")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let thought = args.get("thought").and_then(|v| v.as_str()).unwrap_or("");
 
         Ok(ToolResult {
             output: thought.to_string(),

@@ -14,11 +14,21 @@ pub struct SelectorItem {
 
 impl SelectorItem {
     pub fn entry(label: &str, value: &str) -> Self {
-        Self { label: label.to_string(), value: value.to_string(), preview_color: None, is_header: false }
+        Self {
+            label: label.to_string(),
+            value: value.to_string(),
+            preview_color: None,
+            is_header: false,
+        }
     }
 
     pub fn header(label: &str) -> Self {
-        Self { label: label.to_string(), value: String::new(), preview_color: None, is_header: true }
+        Self {
+            label: label.to_string(),
+            value: String::new(),
+            preview_color: None,
+            is_header: true,
+        }
     }
 
     pub fn with_color(mut self, color: Color) -> Self {
@@ -63,8 +73,15 @@ pub enum SelectorAction {
 }
 
 impl SelectorState {
-    pub fn new(kind: SelectorKind, title: &str, items: Vec<SelectorItem>, active_value: &str) -> Self {
-        let active_idx = items.iter().position(|i| !i.is_header && i.value == active_value);
+    pub fn new(
+        kind: SelectorKind,
+        title: &str,
+        items: Vec<SelectorItem>,
+        active_value: &str,
+    ) -> Self {
+        let active_idx = items
+            .iter()
+            .position(|i| !i.is_header && i.value == active_value);
         let first_selectable = items.iter().position(|i| !i.is_header).unwrap_or(0);
         Self {
             kind,
@@ -95,7 +112,9 @@ impl SelectorState {
                 }
                 last_header = Some(i);
                 header_needed = false;
-            } else if item.label.to_lowercase().contains(&query) || item.value.to_lowercase().contains(&query) {
+            } else if item.label.to_lowercase().contains(&query)
+                || item.value.to_lowercase().contains(&query)
+            {
                 if !header_needed {
                     if let Some(h) = last_header {
                         result.push(h);
@@ -114,9 +133,16 @@ impl SelectorState {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') if self.search.is_empty() => {
                 loop {
-                    if self.cursor == 0 { break; }
+                    if self.cursor == 0 {
+                        break;
+                    }
                     self.cursor -= 1;
-                    if !self.items.get(self.cursor).map(|i| i.is_header).unwrap_or(false) {
+                    if !self
+                        .items
+                        .get(self.cursor)
+                        .map(|i| i.is_header)
+                        .unwrap_or(false)
+                    {
                         break;
                     }
                 }
@@ -124,9 +150,16 @@ impl SelectorState {
             }
             KeyCode::Down | KeyCode::Char('j') if self.search.is_empty() => {
                 loop {
-                    if self.cursor + 1 >= self.items.len() { break; }
+                    if self.cursor + 1 >= self.items.len() {
+                        break;
+                    }
                     self.cursor += 1;
-                    if !self.items.get(self.cursor).map(|i| i.is_header).unwrap_or(false) {
+                    if !self
+                        .items
+                        .get(self.cursor)
+                        .map(|i| i.is_header)
+                        .unwrap_or(false)
+                    {
                         break;
                     }
                 }
@@ -175,7 +208,18 @@ impl SelectorState {
                 }
                 SelectorAction::None
             }
-            KeyCode::Char(c) if matches!(self.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput | SelectorKind::Command | SelectorKind::Session | SelectorKind::Model | SelectorKind::CustomModelInput | SelectorKind::UserQuestion) => {
+            KeyCode::Char(c)
+                if matches!(
+                    self.kind,
+                    SelectorKind::Provider
+                        | SelectorKind::ApiKeyInput
+                        | SelectorKind::Command
+                        | SelectorKind::Session
+                        | SelectorKind::Model
+                        | SelectorKind::CustomModelInput
+                        | SelectorKind::UserQuestion
+                ) =>
+            {
                 self.search.push(c);
                 let filtered = self.filtered_indices();
                 if let Some(&first) = filtered.iter().find(|&&i| !self.items[i].is_header) {
@@ -193,7 +237,16 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
     let filtered = selector.filtered_indices();
 
     let item_count = filtered.len() as u16;
-    let has_search = matches!(selector.kind, SelectorKind::Provider | SelectorKind::ApiKeyInput | SelectorKind::Command | SelectorKind::Session | SelectorKind::Model | SelectorKind::CustomModelInput | SelectorKind::UserQuestion);
+    let has_search = matches!(
+        selector.kind,
+        SelectorKind::Provider
+            | SelectorKind::ApiKeyInput
+            | SelectorKind::Command
+            | SelectorKind::Session
+            | SelectorKind::Model
+            | SelectorKind::CustomModelInput
+            | SelectorKind::UserQuestion
+    );
     let search_rows = if has_search { 2 } else { 0 };
     let popup_h = (item_count + 4 + search_rows).min(area.height.saturating_sub(4));
     let base_w = match selector.kind {
@@ -232,7 +285,10 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
             ]
         }
         _ => {
-            vec![Span::styled(" esc ", Style::default().fg(theme.text_disabled))]
+            vec![Span::styled(
+                " esc ",
+                Style::default().fg(theme.text_disabled),
+            )]
         }
     };
     let block = block.title_bottom(Line::from(footer_spans).alignment(Alignment::Right));
@@ -261,23 +317,35 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         } else {
             Span::styled(&selector.search, Style::default().fg(theme.text_primary))
         };
-        let search_line = Line::from(vec![
-            Span::styled("  ", Style::default()),
-            search_text,
-        ]);
-        frame.render_widget(Paragraph::new(search_line).style(Style::default().bg(theme.bg_elevated)), search_area);
+        let search_line = Line::from(vec![Span::styled("  ", Style::default()), search_text]);
+        frame.render_widget(
+            Paragraph::new(search_line).style(Style::default().bg(theme.bg_elevated)),
+            search_area,
+        );
 
         let sep_area = Rect::new(content_area.x, content_area.y + 1, content_area.width, 1);
         let sep = "─".repeat(content_area.width as usize);
         frame.render_widget(
-            Paragraph::new(sep).style(Style::default().fg(theme.border_default).bg(theme.bg_elevated)),
+            Paragraph::new(sep).style(
+                Style::default()
+                    .fg(theme.border_default)
+                    .bg(theme.bg_elevated),
+            ),
             sep_area,
         );
-        content_area = Rect::new(content_area.x, content_area.y + 2, content_area.width, content_area.height.saturating_sub(2));
+        content_area = Rect::new(
+            content_area.x,
+            content_area.y + 2,
+            content_area.width,
+            content_area.height.saturating_sub(2),
+        );
     }
 
     let visible_h = content_area.height as usize;
-    let cursor_in_filtered = filtered.iter().position(|&i| i == selector.cursor).unwrap_or(0);
+    let cursor_in_filtered = filtered
+        .iter()
+        .position(|&i| i == selector.cursor)
+        .unwrap_or(0);
     let scroll = if cursor_in_filtered >= visible_h {
         cursor_in_filtered - visible_h + 1
     } else {
@@ -291,7 +359,10 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         if item.is_header {
             lines.push(Line::from(vec![
                 Span::styled("  ", Style::default()),
-                Span::styled(item.label.clone(), Style::default().fg(theme.text_primary).bold()),
+                Span::styled(
+                    item.label.clone(),
+                    Style::default().fg(theme.text_primary).bold(),
+                ),
             ]));
             continue;
         }
@@ -307,10 +378,17 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         if is_cursor {
             spans.push(Span::styled(arrow, Style::default().fg(theme.accent)));
         } else {
-            spans.push(Span::styled(arrow, Style::default().fg(theme.text_disabled)));
+            spans.push(Span::styled(
+                arrow,
+                Style::default().fg(theme.text_disabled),
+            ));
         }
 
-        let marker_color = if is_active { theme.accent } else { theme.text_disabled };
+        let marker_color = if is_active {
+            theme.accent
+        } else {
+            theme.text_disabled
+        };
         spans.push(Span::styled(marker, Style::default().fg(marker_color)));
 
         if let Some(color) = item.preview_color {

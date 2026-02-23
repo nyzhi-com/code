@@ -50,7 +50,8 @@ pub async fn handle_key(
         if app.cursor_pos > 0 {
             let before = &app.input[..app.cursor_pos];
             let trimmed = before.trim_end();
-            let new_end = trimmed.rfind(|c: char| c.is_whitespace())
+            let new_end = trimmed
+                .rfind(|c: char| c.is_whitespace())
                 .map(|i| i + 1)
                 .unwrap_or(0);
             app.input.drain(new_end..app.cursor_pos);
@@ -226,7 +227,11 @@ pub async fn handle_key(
                     return;
                 };
                 let focus_hint = input.strip_prefix("/compact").unwrap().trim();
-                let focus = if focus_hint.is_empty() { None } else { Some(focus_hint) };
+                let focus = if focus_hint.is_empty() {
+                    None
+                } else {
+                    Some(focus_hint)
+                };
 
                 if model_info.is_some() {
                     let est = thread.estimated_tokens(&agent_config.system_prompt);
@@ -241,9 +246,8 @@ pub async fn handle_key(
                     app.mode = AppMode::Streaming;
 
                     let sid = thread.id.clone();
-                    let microcompact_dir = std::env::temp_dir()
-                        .join("nyzhi_microcompact")
-                        .join(&sid);
+                    let microcompact_dir =
+                        std::env::temp_dir().join("nyzhi_microcompact").join(&sid);
                     let threshold = agent_config.auto_compact_threshold.unwrap_or(0.85);
                     let cw = model_info.map(|m| m.context_window).unwrap_or(200_000);
 
@@ -281,7 +285,8 @@ pub async fn handle_key(
                         thinking: None,
                     };
 
-                    let recent_files = nyzhi_core::context::extract_recent_file_paths(thread.messages(), 5);
+                    let recent_files =
+                        nyzhi_core::context::extract_recent_file_paths(thread.messages(), 5);
                     let Some(provider) = provider else {
                         app.items.push(DisplayItem::Message {
                             role: "system".to_string(),
@@ -302,14 +307,19 @@ pub async fn handle_key(
                             let plan_content = {
                                 let plan_dir = project_root.join(".nyzhi").join("plans");
                                 if plan_dir.exists() {
-                                    std::fs::read_dir(&plan_dir)
-                                        .ok()
-                                        .and_then(|entries| {
-                                            entries.filter_map(|e| e.ok())
-                                                .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
-                                                .max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
-                                                .and_then(|e| std::fs::read_to_string(e.path()).ok())
-                                        })
+                                    std::fs::read_dir(&plan_dir).ok().and_then(|entries| {
+                                        entries
+                                            .filter_map(|e| e.ok())
+                                            .filter(|e| {
+                                                e.path()
+                                                    .extension()
+                                                    .map_or(false, |ext| ext == "md")
+                                            })
+                                            .max_by_key(|e| {
+                                                e.metadata().ok().and_then(|m| m.modified().ok())
+                                            })
+                                            .and_then(|e| std::fs::read_to_string(e.path()).ok())
+                                    })
                                 } else {
                                     None
                                 }
@@ -328,8 +338,7 @@ pub async fn handle_key(
                                 plan_content.as_deref(),
                                 notepad_content.as_deref(),
                             );
-                            let new_est =
-                                thread.estimated_tokens(&agent_config.system_prompt);
+                            let new_est = thread.estimated_tokens(&agent_config.system_prompt);
                             app.items.push(DisplayItem::Message {
                                 role: "system".to_string(),
                                 content: format!(
@@ -394,16 +403,22 @@ pub async fn handle_key(
                                 content: format!("No sessions matching '{query}'."),
                             });
                         } else {
-                            use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
-                            let items: Vec<SelectorItem> = sessions.iter().take(20).map(|s| {
-                                let label = format!(
-                                    "{} ({} msgs, {})",
-                                    s.title,
-                                    s.message_count,
-                                    s.updated_at.format("%m/%d %H:%M"),
-                                );
-                                SelectorItem::entry(&label, &s.id)
-                            }).collect();
+                            use crate::components::selector::{
+                                SelectorItem, SelectorKind, SelectorState,
+                            };
+                            let items: Vec<SelectorItem> = sessions
+                                .iter()
+                                .take(20)
+                                .map(|s| {
+                                    let label = format!(
+                                        "{} ({} msgs, {})",
+                                        s.title,
+                                        s.message_count,
+                                        s.updated_at.format("%m/%d %H:%M"),
+                                    );
+                                    SelectorItem::entry(&label, &s.id)
+                                })
+                                .collect();
                             app.selector = Some(SelectorState::new(
                                 SelectorKind::Session,
                                 &format!("Sessions matching '{}'", query),
@@ -478,8 +493,7 @@ pub async fn handle_key(
                                             role: "system".to_string(),
                                             content: format!(
                                                 "Resumed session: {} ({} messages)",
-                                                loaded_meta.title,
-                                                loaded_meta.message_count,
+                                                loaded_meta.title, loaded_meta.message_count,
                                             ),
                                         });
                                     }
@@ -531,7 +545,8 @@ pub async fn handle_key(
                             }
                             1 => {
                                 let target = &matched[0];
-                                let current_id = thread.as_ref().map(|t| t.id.as_str()).unwrap_or("");
+                                let current_id =
+                                    thread.as_ref().map(|t| t.id.as_str()).unwrap_or("");
                                 if target.id == current_id {
                                     app.items.push(DisplayItem::Message {
                                         role: "system".to_string(),
@@ -679,7 +694,8 @@ pub async fn handle_key(
                 if target.is_empty() {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
-                        content: "Usage: /refactor <target>  (function, module, pattern, etc.)".to_string(),
+                        content: "Usage: /refactor <target>  (function, module, pattern, etc.)"
+                            .to_string(),
                     });
                 } else {
                     let prompt = format!(
@@ -721,7 +737,8 @@ pub async fn handle_key(
                 }
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
-                    content: "Stopped: autopilot, todo enforcer, message queue cleared.".to_string(),
+                    content: "Stopped: autopilot, todo enforcer, message queue cleared."
+                        .to_string(),
                 });
                 app.input.clear();
                 app.cursor_pos = 0;
@@ -731,12 +748,18 @@ pub async fn handle_key(
             if input == "/handoff" {
                 let mut sections = vec!["# Session Handoff\n".to_string()];
 
-                sections.push(format!("## Project\n- Root: {}\n", app.workspace.project_root.display()));
+                sections.push(format!(
+                    "## Project\n- Root: {}\n",
+                    app.workspace.project_root.display()
+                ));
                 if let Some(branch) = &app.workspace.git_branch {
                     sections.push(format!("- Branch: {branch}\n"));
                 }
 
-                sections.push(format!("## Session\n- Provider: {}\n- Model: {}\n", app.provider_name, app.model_name));
+                sections.push(format!(
+                    "## Session\n- Provider: {}\n- Model: {}\n",
+                    app.provider_name, app.model_name
+                ));
 
                 if let Some(ref store) = app.todo_store {
                     let items = store.blocking_lock();
@@ -750,7 +773,10 @@ pub async fn handle_key(
                                 "cancelled" => "[-]",
                                 _ => "[ ]",
                             };
-                            todo_section.push_str(&format!("- {marker} {}: {} (session: {sid})\n", t.id, t.content));
+                            todo_section.push_str(&format!(
+                                "- {marker} {}: {} (session: {sid})\n",
+                                t.id, t.content
+                            ));
                         }
                     }
                     if found {
@@ -758,13 +784,22 @@ pub async fn handle_key(
                     }
                 }
 
-                let recent_msgs: Vec<String> = app.items.iter().rev().take(10).filter_map(|item| {
-                    if let DisplayItem::Message { role, content } = item {
-                        Some(format!("**{role}**: {}\n", content.chars().take(200).collect::<String>()))
-                    } else {
-                        None
-                    }
-                }).collect();
+                let recent_msgs: Vec<String> = app
+                    .items
+                    .iter()
+                    .rev()
+                    .take(10)
+                    .filter_map(|item| {
+                        if let DisplayItem::Message { role, content } = item {
+                            Some(format!(
+                                "**{role}**: {}\n",
+                                content.chars().take(200).collect::<String>()
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 if !recent_msgs.is_empty() {
                     sections.push("## Recent Context (last 10 messages)\n".to_string());
                     for msg in recent_msgs.iter().rev() {
@@ -772,9 +807,14 @@ pub async fn handle_key(
                     }
                 }
 
-                if let Ok(notepads) = nyzhi_core::notepad::list_notepads(&app.workspace.project_root) {
+                if let Ok(notepads) =
+                    nyzhi_core::notepad::list_notepads(&app.workspace.project_root)
+                {
                     if let Some(plan_name) = notepads.last() {
-                        if let Ok(wisdom) = nyzhi_core::notepad::read_notepad(&app.workspace.project_root, plan_name) {
+                        if let Ok(wisdom) = nyzhi_core::notepad::read_notepad(
+                            &app.workspace.project_root,
+                            plan_name,
+                        ) {
                             if wisdom.lines().count() > 3 {
                                 sections.push(format!("## Notepad: {plan_name}\n{wisdom}\n"));
                             }
@@ -784,7 +824,10 @@ pub async fn handle_key(
 
                 let handoff_content = sections.join("\n");
                 let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-                let handoff_path = app.workspace.project_root.join(format!(".nyzhi/handoff-{ts}.md"));
+                let handoff_path = app
+                    .workspace
+                    .project_root
+                    .join(format!(".nyzhi/handoff-{ts}.md"));
                 let _ = std::fs::create_dir_all(handoff_path.parent().unwrap());
                 match std::fs::write(&handoff_path, &handoff_content) {
                     Ok(_) => {
@@ -937,14 +980,18 @@ pub async fn handle_key(
                             } else {
                                 app.items.push(DisplayItem::Message {
                                     role: "system".to_string(),
-                                    content: "Usage: /notify duration <ms> (e.g. /notify duration 5000)".to_string(),
+                                    content:
+                                        "Usage: /notify duration <ms> (e.g. /notify duration 5000)"
+                                            .to_string(),
                                 });
                             }
                         }
                         _ => {
                             app.items.push(DisplayItem::Message {
                                 role: "system".to_string(),
-                                content: "Usage: /notify [bell on|off] [desktop on|off] [duration <ms>]".to_string(),
+                                content:
+                                    "Usage: /notify [bell on|off] [desktop on|off] [duration <ms>]"
+                                        .to_string(),
                             });
                         }
                     }
@@ -962,7 +1009,8 @@ pub async fn handle_key(
                     app.todo_enforce_count = 0;
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
-                        content: "Todo enforcer enabled. Agent will be forced to complete todos.".to_string(),
+                        content: "Todo enforcer enabled. Agent will be forced to complete todos."
+                            .to_string(),
                     });
                     app.input.clear();
                     app.cursor_pos = 0;
@@ -973,7 +1021,8 @@ pub async fn handle_key(
                     app.todo_enforcement_paused = true;
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
-                        content: "Todo enforcer paused. Use /todo enforce on to re-enable.".to_string(),
+                        content: "Todo enforcer paused. Use /todo enforce on to re-enable."
+                            .to_string(),
                     });
                     app.input.clear();
                     app.cursor_pos = 0;
@@ -998,14 +1047,17 @@ pub async fn handle_key(
 
                 let panel_items: Vec<TodoPanelItem> = if let Some(ref store) = app.todo_store {
                     let items = store.blocking_lock();
-                    items.values().flat_map(|todos| {
-                        todos.iter().map(|t| TodoPanelItem {
-                            id: t.id.clone(),
-                            content: t.content.clone(),
-                            status: t.status.clone(),
-                            blocked_by: t.blocked_by.clone(),
+                    items
+                        .values()
+                        .flat_map(|todos| {
+                            todos.iter().map(|t| TodoPanelItem {
+                                id: t.id.clone(),
+                                content: t.content.clone(),
+                                status: t.status.clone(),
+                                blocked_by: t.blocked_by.clone(),
+                            })
                         })
-                    }).collect()
+                        .collect()
                 } else {
                     Vec::new()
                 };
@@ -1039,7 +1091,9 @@ pub async fn handle_key(
                         }
                     }
                 } else if arg == "cancel" {
-                    if let Ok(Some(mut state)) = nyzhi_core::autopilot::load_state(&tool_ctx.project_root) {
+                    if let Ok(Some(mut state)) =
+                        nyzhi_core::autopilot::load_state(&tool_ctx.project_root)
+                    {
                         state.cancel();
                         let _ = nyzhi_core::autopilot::save_state(&tool_ctx.project_root, &state);
                     }
@@ -1082,7 +1136,9 @@ pub async fn handle_key(
                 if parts.len() < 2 {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
-                        content: "Usage: /team <N> <task description>\nSpawns N coordinated sub-agents.".to_string(),
+                        content:
+                            "Usage: /team <N> <task description>\nSpawns N coordinated sub-agents."
+                                .to_string(),
                     });
                 } else if let Ok(n) = parts[0].parse::<u32>() {
                     let task = parts[1].to_string();
@@ -1107,7 +1163,9 @@ pub async fn handle_key(
                 } else {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
-                        content: "First argument must be a number. Usage: /team 3 refactor auth module".to_string(),
+                        content:
+                            "First argument must be a number. Usage: /team 3 refactor auth module"
+                                .to_string(),
                     });
                 }
                 app.input.clear();
@@ -1118,26 +1176,35 @@ pub async fn handle_key(
             if input == "/learn" || input.starts_with("/learn ") {
                 let arg = input.strip_prefix("/learn").unwrap().trim();
                 if arg.is_empty() {
-                    let skills = nyzhi_core::skills::load_skills(&tool_ctx.project_root).unwrap_or_default();
+                    let skills =
+                        nyzhi_core::skills::load_skills(&tool_ctx.project_root).unwrap_or_default();
                     if skills.is_empty() {
                         app.items.push(DisplayItem::Message {
                             role: "system".to_string(),
                             content: "No skills learned yet.\nUsage: /learn <skill-name> to create a skill from this session.".to_string(),
                         });
                     } else {
-                        let names: Vec<String> = skills.iter().map(|s| format!("  - {}", s.name)).collect();
+                        let names: Vec<String> =
+                            skills.iter().map(|s| format!("  - {}", s.name)).collect();
                         app.items.push(DisplayItem::Message {
                             role: "system".to_string(),
                             content: format!("Learned skills:\n{}", names.join("\n")),
                         });
                     }
                 } else {
-                    let template = nyzhi_core::skills::build_skill_template(arg, "Extracted from session", &[]);
+                    let template = nyzhi_core::skills::build_skill_template(
+                        arg,
+                        "Extracted from session",
+                        &[],
+                    );
                     match nyzhi_core::skills::save_skill(&tool_ctx.project_root, arg, &template) {
                         Ok(path) => {
                             app.items.push(DisplayItem::Message {
                                 role: "system".to_string(),
-                                content: format!("Skill template saved to {}\nEdit the file to fill in details.", path.display()),
+                                content: format!(
+                                    "Skill template saved to {}\nEdit the file to fill in details.",
+                                    path.display()
+                                ),
                             });
                         }
                         Err(e) => {
@@ -1156,7 +1223,8 @@ pub async fn handle_key(
             if input == "/notepad" || input.starts_with("/notepad ") {
                 let arg = input.strip_prefix("/notepad").unwrap().trim();
                 if arg.is_empty() {
-                    let plans = nyzhi_core::notepad::list_notepads(&tool_ctx.project_root).unwrap_or_default();
+                    let plans = nyzhi_core::notepad::list_notepads(&tool_ctx.project_root)
+                        .unwrap_or_default();
                     if plans.is_empty() {
                         app.items.push(DisplayItem::Message {
                             role: "system".to_string(),
@@ -1165,10 +1233,19 @@ pub async fn handle_key(
                     } else {
                         app.items.push(DisplayItem::Message {
                             role: "system".to_string(),
-                            content: format!("Notepads:\n{}", plans.iter().map(|p| format!("  - {p}")).collect::<Vec<_>>().join("\n")),
+                            content: format!(
+                                "Notepads:\n{}",
+                                plans
+                                    .iter()
+                                    .map(|p| format!("  - {p}"))
+                                    .collect::<Vec<_>>()
+                                    .join("\n")
+                            ),
                         });
                     }
-                } else if let Ok(content) = nyzhi_core::notepad::read_notepad(&tool_ctx.project_root, arg) {
+                } else if let Ok(content) =
+                    nyzhi_core::notepad::read_notepad(&tool_ctx.project_root, arg)
+                {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
                         content,
@@ -1182,7 +1259,8 @@ pub async fn handle_key(
             if input == "/plan" || input.starts_with("/plan ") {
                 let arg = input.strip_prefix("/plan").unwrap().trim();
                 if arg.is_empty() {
-                    let plans = nyzhi_core::planning::list_plans(&tool_ctx.project_root).unwrap_or_default();
+                    let plans = nyzhi_core::planning::list_plans(&tool_ctx.project_root)
+                        .unwrap_or_default();
                     if plans.is_empty() {
                         app.items.push(DisplayItem::Message {
                             role: "system".to_string(),
@@ -1193,11 +1271,17 @@ pub async fn handle_key(
                             role: "system".to_string(),
                             content: format!(
                                 "Saved plans:\n{}",
-                                plans.iter().map(|p| format!("  - {p}")).collect::<Vec<_>>().join("\n"),
+                                plans
+                                    .iter()
+                                    .map(|p| format!("  - {p}"))
+                                    .collect::<Vec<_>>()
+                                    .join("\n"),
                             ),
                         });
                     }
-                } else if let Ok(Some(content)) = nyzhi_core::planning::load_plan(&tool_ctx.project_root, arg) {
+                } else if let Ok(Some(content)) =
+                    nyzhi_core::planning::load_plan(&tool_ctx.project_root, arg)
+                {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
                         content,
@@ -1252,7 +1336,10 @@ pub async fn handle_key(
                         content: "No verification checks detected for this project.".to_string(),
                     });
                 } else {
-                    let cmds: Vec<String> = checks.iter().map(|c| format!("  [{}] {}", c.kind, c.command)).collect();
+                    let cmds: Vec<String> = checks
+                        .iter()
+                        .map(|c| format!("  [{}] {}", c.kind, c.command))
+                        .collect();
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
                         content: format!(
@@ -1274,7 +1361,8 @@ pub async fn handle_key(
                         content: "No custom commands defined.\n\nCreate commands as .md files in .nyzhi/commands/ or in .nyzhi/config.toml:\n\n  [[agent.commands]]\n  name = \"review\"\n  prompt = \"Review $ARGUMENTS for bugs and improvements\"\n  description = \"Code review\"".to_string(),
                     });
                 } else {
-                    let mut lines = vec![format!("Custom commands ({}):", app.custom_commands.len())];
+                    let mut lines =
+                        vec![format!("Custom commands ({}):", app.custom_commands.len())];
                     for cmd in &app.custom_commands {
                         let desc = if cmd.description.is_empty() {
                             "(no description)".to_string()
@@ -1398,9 +1486,7 @@ pub async fn handle_key(
                         content: format!("Switched to {}/{} ({})", prov, found.id, found.name),
                     });
                 } else if let Some(idx) = provider
-                    .and_then(|p| p.supported_models()
-                        .iter()
-                        .position(|m| m.id == new_model))
+                    .and_then(|p| p.supported_models().iter().position(|m| m.id == new_model))
                 {
                     let mi = &provider.unwrap().supported_models()[idx];
                     app.model_name = mi.id.clone();
@@ -1491,19 +1577,28 @@ pub async fn handle_key(
                 let mut lines = vec!["Auth status:".to_string()];
                 for def in nyzhi_config::BUILT_IN_PROVIDERS {
                     let status = nyzhi_auth::auth_status(def.id);
-                    let marker = if status != "not connected" { "✓" } else { "✗" };
+                    let marker = if status != "not connected" {
+                        "✓"
+                    } else {
+                        "✗"
+                    };
                     let mut line = format!("  {marker} {}: {status}", def.name);
                     if let Ok(accounts) = nyzhi_auth::token_store::list_accounts(def.id) {
                         if accounts.len() > 1 {
                             let active_count = accounts.iter().filter(|a| a.active).count();
-                            let rl_count = accounts.iter()
+                            let rl_count = accounts
+                                .iter()
                                 .filter(|a| a.rate_limited_until.is_some())
                                 .count();
                             line.push_str(&format!(
                                 " ({} accounts, {} active{})",
                                 accounts.len(),
                                 active_count,
-                                if rl_count > 0 { format!(", {} rate-limited", rl_count) } else { String::new() }
+                                if rl_count > 0 {
+                                    format!(", {} rate-limited", rl_count)
+                                } else {
+                                    String::new()
+                                }
                             ));
                         }
                     }
@@ -1665,7 +1760,11 @@ pub async fn handle_key(
                 return;
             }
 
-            if input == "/bg" || input == "/background" || input.starts_with("/bg ") || input.starts_with("/background ") {
+            if input == "/bg"
+                || input == "/background"
+                || input.starts_with("/bg ")
+                || input.starts_with("/background ")
+            {
                 let arg = input
                     .strip_prefix("/background")
                     .or_else(|| input.strip_prefix("/bg"))
@@ -1678,12 +1777,17 @@ pub async fn handle_key(
                             content: "No background tasks running.".to_string(),
                         });
                     } else {
-                        let mut lines = vec![format!("Background tasks ({}):", app.background_tasks.len())];
+                        let mut lines = vec![format!(
+                            "Background tasks ({}):",
+                            app.background_tasks.len()
+                        )];
                         for bg in &app.background_tasks {
                             let elapsed = bg.started.elapsed();
                             lines.push(format!(
                                 "  #{}: {} ({:.1}s)",
-                                bg.id, bg.label, elapsed.as_secs_f64()
+                                bg.id,
+                                bg.label,
+                                elapsed.as_secs_f64()
                             ));
                         }
                         lines.push(String::new());
@@ -1768,7 +1872,10 @@ pub async fn handle_key(
                 let mut output = nyzhi_core::diagnostics::format_diagnostics(&results);
 
                 output.push_str("\n\nConfig Compatibility:\n");
-                output.push_str(&format!("  Config source: {}\n", app.workspace.config_source.label()));
+                output.push_str(&format!(
+                    "  Config source: {}\n",
+                    app.workspace.config_source.label()
+                ));
                 if let Some(rf) = &app.workspace.rules_file {
                     output.push_str(&format!("  Rules loaded from: {rf}\n"));
                 }
@@ -1835,7 +1942,11 @@ pub async fn handle_key(
                     app.model_name,
                     agent_config.trust.mode,
                     app.output_style,
-                    if agent_config.thinking_enabled { "on" } else { "off" },
+                    if agent_config.thinking_enabled {
+                        "on"
+                    } else {
+                        "off"
+                    },
                     app.workspace.config_source.label(),
                     app.workspace.rules_file.as_deref().unwrap_or("none"),
                     usage.total_input_tokens,
@@ -1893,11 +2004,8 @@ pub async fn handle_key(
                 let empty = std::collections::HashMap::new();
                 let file_roles =
                     nyzhi_core::agent_files::load_file_based_roles(&tool_ctx.project_root);
-                let list = nyzhi_core::agent_files::format_role_list(
-                    &built_in,
-                    &empty,
-                    &file_roles,
-                );
+                let list =
+                    nyzhi_core::agent_files::format_role_list(&built_in, &empty, &file_roles);
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
                     content: list,
@@ -2080,8 +2188,7 @@ pub async fn handle_key(
             }
 
             if let Some(cmd) = app.custom_commands.iter().find(|c| {
-                input == format!("/{}", c.name)
-                    || input.starts_with(&format!("/{} ", c.name))
+                input == format!("/{}", c.name) || input.starts_with(&format!("/{} ", c.name))
             }) {
                 let args = input
                     .strip_prefix(&format!("/{}", cmd.name))
@@ -2140,32 +2247,50 @@ pub async fn handle_key(
                 agent_config.plan_mode = true;
             }
             if flags.debug {
-                agent_config.system_prompt.push_str(nyzhi_core::prompt::debug_instructions());
+                agent_config
+                    .system_prompt
+                    .push_str(nyzhi_core::prompt::debug_instructions());
             }
             if flags.tdd {
-                agent_config.system_prompt.push_str(nyzhi_core::prompt::tdd_instructions());
+                agent_config
+                    .system_prompt
+                    .push_str(nyzhi_core::prompt::tdd_instructions());
             }
             if flags.review {
-                agent_config.system_prompt.push_str(nyzhi_core::prompt::review_instructions());
+                agent_config
+                    .system_prompt
+                    .push_str(nyzhi_core::prompt::review_instructions());
             }
             if flags.eco {
-                agent_config.system_prompt.push_str(nyzhi_core::prompt::eco_instructions());
+                agent_config
+                    .system_prompt
+                    .push_str(nyzhi_core::prompt::eco_instructions());
                 agent_config.max_tokens = Some(2048);
             }
             if flags.parallel {
-                agent_config.system_prompt.push_str(nyzhi_core::prompt::parallel_instructions());
+                agent_config
+                    .system_prompt
+                    .push_str(nyzhi_core::prompt::parallel_instructions());
             }
             if flags.persist {
-                agent_config.system_prompt.push_str(nyzhi_core::prompt::persist_instructions());
+                agent_config
+                    .system_prompt
+                    .push_str(nyzhi_core::prompt::persist_instructions());
             }
             if flags.ultrawork {
                 agent_config.thinking_enabled = true;
                 agent_config.reasoning_effort = Some("xhigh".into());
                 agent_config.thinking_budget = Some(32768);
                 agent_config.thinking_level = Some("xhigh".into());
-                agent_config.system_prompt.push_str(nyzhi_core::prompt::ultrawork_instructions());
-                agent_config.system_prompt.push_str(nyzhi_core::prompt::parallel_instructions());
-                agent_config.system_prompt.push_str(nyzhi_core::prompt::persist_instructions());
+                agent_config
+                    .system_prompt
+                    .push_str(nyzhi_core::prompt::ultrawork_instructions());
+                agent_config
+                    .system_prompt
+                    .push_str(nyzhi_core::prompt::parallel_instructions());
+                agent_config
+                    .system_prompt
+                    .push_str(nyzhi_core::prompt::persist_instructions());
             }
 
             if let Some(ref level) = app.thinking_level {
@@ -2204,7 +2329,11 @@ pub async fn handle_key(
             }
 
             app.last_prompt = Some(input.clone());
-            app.history.push(if is_background { format!("&{input}") } else { input.clone() });
+            app.history.push(if is_background {
+                format!("&{input}")
+            } else {
+                input.clone()
+            });
 
             let mentions = nyzhi_core::context_files::parse_mentions(&input);
             let context_files = if mentions.is_empty() {
@@ -2238,8 +2367,7 @@ pub async fn handle_key(
             });
 
             if has_context {
-                let summary =
-                    nyzhi_core::context_files::format_attachment_summary(&context_files);
+                let summary = nyzhi_core::context_files::format_attachment_summary(&context_files);
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
                     content: summary,
@@ -2280,13 +2408,13 @@ pub async fn handle_key(
                 });
             }
         }
-            KeyCode::Char(c) => {
-                app.input.insert(app.cursor_pos, c);
-                app.cursor_pos += 1;
-                app.history.reset_cursor();
-                app.completion = None;
-                try_open_completion(app, &tool_ctx.cwd);
-            }
+        KeyCode::Char(c) => {
+            app.input.insert(app.cursor_pos, c);
+            app.cursor_pos += 1;
+            app.history.reset_cursor();
+            app.completion = None;
+            try_open_completion(app, &tool_ctx.cwd);
+        }
         KeyCode::Backspace => {
             if app.cursor_pos > 0 {
                 app.cursor_pos -= 1;
@@ -2491,7 +2619,11 @@ fn cycle_thinking_level(app: &mut App, model_info: Option<&ModelInfo>, reverse: 
     let current_idx = levels.iter().position(|&l| l == current).unwrap_or(0);
 
     let next_idx = if reverse {
-        if current_idx == 0 { levels.len() - 1 } else { current_idx - 1 }
+        if current_idx == 0 {
+            levels.len() - 1
+        } else {
+            current_idx - 1
+        }
     } else {
         (current_idx + 1) % levels.len()
     };
@@ -2535,7 +2667,9 @@ fn try_open_completion(app: &mut App, cwd: &std::path::Path) {
 }
 
 fn accept_completion(app: &mut App, cwd: &std::path::Path) {
-    use crate::completion::{apply_completion, detect_context, generate_candidates, CompletionState};
+    use crate::completion::{
+        apply_completion, detect_context, generate_candidates, CompletionState,
+    };
 
     let state = app.completion.take().unwrap();
     let is_dir = apply_completion(&mut app.input, &mut app.cursor_pos, &state);

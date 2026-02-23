@@ -87,7 +87,14 @@ impl Tool for NotepadReadTool {
             if plans.is_empty() {
                 "No notepads found. Use notepad_write to create one.".to_string()
             } else {
-                format!("Available notepads:\n{}", plans.iter().map(|p| format!("  - {p}")).collect::<Vec<_>>().join("\n"))
+                format!(
+                    "Available notepads:\n{}",
+                    plans
+                        .iter()
+                        .map(|p| format!("  - {p}"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
             }
         };
 

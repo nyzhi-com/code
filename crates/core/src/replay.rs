@@ -21,14 +21,32 @@ pub struct StructuredReplayEvent {
 pub enum ReplayEventType {
     UserMessage,
     AssistantMessage,
-    ToolCall { name: String, id: String },
-    ToolResult { name: String, id: String },
-    ApprovalDecision { tool_name: String, approved: bool },
-    Compaction { from_tokens: usize, to_tokens: usize },
+    ToolCall {
+        name: String,
+        id: String,
+    },
+    ToolResult {
+        name: String,
+        id: String,
+    },
+    ApprovalDecision {
+        tool_name: String,
+        approved: bool,
+    },
+    Compaction {
+        from_tokens: usize,
+        to_tokens: usize,
+    },
     ThinkingStep,
-    ModeChange { mode: String },
-    CheckpointCreated { id: u32 },
-    CacheHit { tokens: u32 },
+    ModeChange {
+        mode: String,
+    },
+    CheckpointCreated {
+        id: u32,
+    },
+    CacheHit {
+        tokens: u32,
+    },
 }
 
 pub fn log_structured_event(session_id: &str, event: &StructuredReplayEvent) -> Result<()> {
@@ -71,10 +89,19 @@ pub fn format_structured_replay(events: &[StructuredReplayEvent]) -> String {
                 ReplayEventType::AssistantMessage => "ASSISTANT".to_string(),
                 ReplayEventType::ToolCall { name, id } => format!("TOOL_CALL({name}#{id})"),
                 ReplayEventType::ToolResult { name, id } => format!("TOOL_RESULT({name}#{id})"),
-                ReplayEventType::ApprovalDecision { tool_name, approved } => {
-                    format!("APPROVAL({tool_name}={})", if *approved { "yes" } else { "no" })
+                ReplayEventType::ApprovalDecision {
+                    tool_name,
+                    approved,
+                } => {
+                    format!(
+                        "APPROVAL({tool_name}={})",
+                        if *approved { "yes" } else { "no" }
+                    )
                 }
-                ReplayEventType::Compaction { from_tokens, to_tokens } => {
+                ReplayEventType::Compaction {
+                    from_tokens,
+                    to_tokens,
+                } => {
                     format!("COMPACT({from_tokens}->{to_tokens})")
                 }
                 ReplayEventType::ThinkingStep => "THINK".to_string(),

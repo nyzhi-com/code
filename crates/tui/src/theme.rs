@@ -66,12 +66,8 @@ impl ThemePreset {
             }
             "dracula" => ThemePreset::Dracula,
             "solarized-dark" | "solarized_dark" | "solarizeddark" => ThemePreset::SolarizedDark,
-            "solarized-light" | "solarized_light" | "solarizedlight" => {
-                ThemePreset::SolarizedLight
-            }
-            "gruvbox-dark" | "gruvbox_dark" | "gruvboxdark" | "gruvbox" => {
-                ThemePreset::GruvboxDark
-            }
+            "solarized-light" | "solarized_light" | "solarizedlight" => ThemePreset::SolarizedLight,
+            "gruvbox-dark" | "gruvbox_dark" | "gruvboxdark" | "gruvbox" => ThemePreset::GruvboxDark,
             _ => ThemePreset::NyzhiDark,
         }
     }

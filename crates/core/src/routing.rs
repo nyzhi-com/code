@@ -1,14 +1,27 @@
 use nyzhi_provider::{ModelInfo, ModelTier, Provider};
 
 const LOW_KEYWORDS: &[&str] = &[
-    "typo", "rename", "format", "lint", "simple", "quick", "trivial", "minor",
-    "comment", "readme", "docs", "log", "print", "echo",
+    "typo", "rename", "format", "lint", "simple", "quick", "trivial", "minor", "comment", "readme",
+    "docs", "log", "print", "echo",
 ];
 
 const HIGH_KEYWORDS: &[&str] = &[
-    "architect", "design", "refactor", "security", "complex", "migrate",
-    "optimize", "performance", "debug", "investigate", "analyze", "review",
-    "concurrent", "parallel", "distributed", "algorithm",
+    "architect",
+    "design",
+    "refactor",
+    "security",
+    "complex",
+    "migrate",
+    "optimize",
+    "performance",
+    "debug",
+    "investigate",
+    "analyze",
+    "review",
+    "concurrent",
+    "parallel",
+    "distributed",
+    "algorithm",
 ];
 
 pub fn classify_prompt(prompt: &str, config: &nyzhi_config::RoutingConfig) -> ModelTier {

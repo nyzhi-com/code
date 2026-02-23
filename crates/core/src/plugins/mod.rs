@@ -1,6 +1,6 @@
-pub mod manifest;
 pub mod loader;
 pub mod manager;
+pub mod manifest;
 
 use std::path::PathBuf;
 

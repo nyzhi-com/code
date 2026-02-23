@@ -68,7 +68,10 @@ impl AutopilotState {
     }
 
     pub fn is_terminal(&self) -> bool {
-        matches!(self.phase, AutopilotPhase::Complete | AutopilotPhase::Cancelled)
+        matches!(
+            self.phase,
+            AutopilotPhase::Complete | AutopilotPhase::Cancelled
+        )
     }
 
     pub fn summary(&self) -> String {
@@ -87,7 +90,10 @@ impl AutopilotState {
         }
 
         if !self.execution_log.is_empty() {
-            lines.push(format!("Execution log: {} entries", self.execution_log.len()));
+            lines.push(format!(
+                "Execution log: {} entries",
+                self.execution_log.len()
+            ));
         }
 
         if !self.qa_results.is_empty() {
@@ -95,7 +101,11 @@ impl AutopilotState {
         }
 
         if let Some(report) = &self.validation_report {
-            let preview = if report.len() > 100 { &report[..100] } else { report };
+            let preview = if report.len() > 100 {
+                &report[..100]
+            } else {
+                report
+            };
             lines.push(format!("Validation: {preview}..."));
         }
 
@@ -104,7 +114,10 @@ impl AutopilotState {
 }
 
 fn state_path(project_root: &Path) -> PathBuf {
-    project_root.join(".nyzhi").join("state").join("autopilot.json")
+    project_root
+        .join(".nyzhi")
+        .join("state")
+        .join("autopilot.json")
 }
 
 pub fn save_state(project_root: &Path, state: &AutopilotState) -> Result<()> {

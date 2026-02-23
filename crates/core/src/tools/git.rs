@@ -60,7 +60,8 @@ impl Tool for GitStatusTool {
     }
 
     async fn execute(&self, _args: Value, ctx: &ToolContext) -> Result<ToolResult> {
-        let (out, code) = run_git(&["status", "--porcelain=v2", "--branch"], &ctx.project_root).await?;
+        let (out, code) =
+            run_git(&["status", "--porcelain=v2", "--branch"], &ctx.project_root).await?;
 
         if code != 0 {
             return Ok(ToolResult {
@@ -86,7 +87,11 @@ impl Tool for GitStatusTool {
                 if let Some(b) = parts.get(1) {
                     behind = b.trim_start_matches('-').parse().unwrap_or(0);
                 }
-            } else if line.starts_with('1') || line.starts_with('2') || line.starts_with('?') || line.starts_with('u') {
+            } else if line.starts_with('1')
+                || line.starts_with('2')
+                || line.starts_with('?')
+                || line.starts_with('u')
+            {
                 changes.push(line.to_string());
             }
         }
@@ -148,7 +153,10 @@ impl Tool for GitDiffTool {
     }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
-        let staged = args.get("staged").and_then(|v| v.as_bool()).unwrap_or(false);
+        let staged = args
+            .get("staged")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let path = args.get("path").and_then(|v| v.as_str());
 
         let mut git_args = vec!["diff"];
@@ -322,7 +330,8 @@ impl Tool for GitShowTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: ref"))?;
 
-        let (out, code) = run_git(&["show", "--stat", "--patch", git_ref], &ctx.project_root).await?;
+        let (out, code) =
+            run_git(&["show", "--stat", "--patch", git_ref], &ctx.project_root).await?;
 
         if code != 0 {
             return Ok(ToolResult {
@@ -452,11 +461,7 @@ impl Tool for GitCommitTool {
         let paths: Vec<&str> = args
             .get("paths")
             .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
 
         if paths.is_empty() {
@@ -553,7 +558,10 @@ impl Tool for GitCheckoutTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: branch"))?;
 
-        let create = args.get("create").and_then(|v| v.as_bool()).unwrap_or(false);
+        let create = args
+            .get("create")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let git_args = if create {
             vec!["checkout", "-b", branch]
@@ -571,7 +579,11 @@ impl Tool for GitCheckoutTool {
             });
         }
 
-        let action = if create { "Created and switched to" } else { "Switched to" };
+        let action = if create {
+            "Created and switched to"
+        } else {
+            "Switched to"
+        };
         Ok(ToolResult {
             output: format!("{action} branch '{branch}'.\n{out}"),
             title: format!("git checkout {branch}"),

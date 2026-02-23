@@ -135,7 +135,9 @@ impl TeamState {
     }
 
     pub fn all_done(&self) -> bool {
-        self.members.iter().all(|m| m.status == TeamMemberStatus::Done)
+        self.members
+            .iter()
+            .all(|m| m.status == TeamMemberStatus::Done)
     }
 }
 

@@ -1,6 +1,6 @@
 pub mod config;
-pub mod tasks;
 pub mod mailbox;
+pub mod tasks;
 
 use std::path::PathBuf;
 

@@ -142,10 +142,7 @@ impl Tool for BashTool {
         }
 
         let status = child.wait().await;
-        let exit_code = status
-            .ok()
-            .and_then(|s| s.code())
-            .unwrap_or(-1);
+        let exit_code = status.ok().and_then(|s| s.code()).unwrap_or(-1);
 
         if accumulated.is_empty() {
             accumulated.push_str("(no output)");

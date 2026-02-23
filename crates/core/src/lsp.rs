@@ -71,10 +71,7 @@ impl LspClient {
     }
 
     pub async fn start_for_file(file_path: &Path, cwd: &Path) -> Result<Self> {
-        let ext = file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         let (cmd, args) = detect_server_command(ext)
             .ok_or_else(|| anyhow::anyhow!("No LSP server known for .{ext} files"))?;
@@ -124,11 +121,15 @@ impl LspClient {
     }
 
     pub async fn initialize(&mut self, root_uri: &str) -> Result<Value> {
-        self.send_request("initialize", json!({
-            "processId": std::process::id(),
-            "rootUri": root_uri,
-            "capabilities": {},
-        })).await
+        self.send_request(
+            "initialize",
+            json!({
+                "processId": std::process::id(),
+                "rootUri": root_uri,
+                "capabilities": {},
+            }),
+        )
+        .await
     }
 
     pub async fn shutdown(&mut self) -> Result<()> {

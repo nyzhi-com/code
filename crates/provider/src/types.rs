@@ -70,7 +70,10 @@ impl ThinkingSupport {
 
     pub fn gemini_levels(levels: &[&str]) -> Self {
         let lvls: Vec<String> = levels.iter().map(|s| s.to_string()).collect();
-        let default = lvls.get(lvls.len() / 2).cloned().unwrap_or_else(|| "medium".into());
+        let default = lvls
+            .get(lvls.len() / 2)
+            .cloned()
+            .unwrap_or_else(|| "medium".into());
         ThinkingSupport::ThinkingLevel {
             levels: lvls,
             default,
@@ -135,7 +138,10 @@ impl ThinkingSupport {
 
     /// Returns the ordered list of all level names (including "off") for Tab cycling.
     pub fn cycle_levels(&self) -> Vec<&str> {
-        self.user_facing_levels().into_iter().map(|(k, _)| k).collect()
+        self.user_facing_levels()
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect()
     }
 }
 
@@ -227,9 +233,9 @@ impl MessageContent {
     pub fn has_images(&self) -> bool {
         match self {
             MessageContent::Text(_) => false,
-            MessageContent::Parts(parts) => parts
-                .iter()
-                .any(|p| matches!(p, ContentPart::Image { .. })),
+            MessageContent::Parts(parts) => {
+                parts.iter().any(|p| matches!(p, ContentPart::Image { .. }))
+            }
         }
     }
 }
@@ -240,10 +246,7 @@ pub enum ContentPart {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "image")]
-    Image {
-        media_type: String,
-        data: String,
-    },
+    Image { media_type: String, data: String },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,

@@ -43,11 +43,7 @@ pub fn truncate_diff(diff: &str, max_lines: usize) -> String {
         return diff.to_string();
     }
     let mut out: String = lines[..max_lines].join("\n");
-    let _ = write!(
-        out,
-        "\n... ({} more lines)",
-        lines.len() - max_lines
-    );
+    let _ = write!(out, "\n... ({} more lines)", lines.len() - max_lines);
     out
 }
 

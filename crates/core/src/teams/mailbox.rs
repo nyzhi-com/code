@@ -121,11 +121,7 @@ pub fn read_unread(team_name: &str, agent_name: &str) -> Result<Vec<TeamMessage>
     let lock_file = acquire_inbox_lock(&inbox_path)?;
 
     let mut messages = load_inbox_raw(&inbox_path)?;
-    let unread: Vec<TeamMessage> = messages
-        .iter()
-        .filter(|m| !m.read)
-        .cloned()
-        .collect();
+    let unread: Vec<TeamMessage> = messages.iter().filter(|m| !m.read).cloned().collect();
 
     for msg in messages.iter_mut() {
         msg.read = true;
@@ -168,12 +164,7 @@ pub fn send_direct(team_name: &str, from: &str, to: &str, text: &str) -> Result<
 }
 
 /// Send a request and get a correlation ID back for matching responses.
-pub fn send_request(
-    team_name: &str,
-    from: &str,
-    to: &str,
-    request_text: &str,
-) -> Result<String> {
+pub fn send_request(team_name: &str, from: &str, to: &str, request_text: &str) -> Result<String> {
     let request_id = uuid::Uuid::new_v4().to_string();
     let payload = MessagePayload {
         msg_type: MessageType::Request,

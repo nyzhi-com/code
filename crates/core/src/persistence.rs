@@ -18,11 +18,7 @@ impl Default for PersistenceConfig {
     }
 }
 
-pub async fn run_qa_cycle(
-    project_root: &Path,
-    cwd: &Path,
-    max_cycles: u32,
-) -> Vec<VerifyReport> {
+pub async fn run_qa_cycle(project_root: &Path, cwd: &Path, max_cycles: u32) -> Vec<VerifyReport> {
     let checks = verify::detect_checks(project_root);
     if checks.is_empty() {
         return vec![];

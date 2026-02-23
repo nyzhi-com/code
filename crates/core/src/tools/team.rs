@@ -2,14 +2,16 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use super::{Tool, ToolContext, ToolResult};
 use super::permission::ToolPermission;
+use super::{Tool, ToolContext, ToolResult};
 
 pub struct TeamCreateTool;
 
 #[async_trait]
 impl Tool for TeamCreateTool {
-    fn name(&self) -> &str { "team_create" }
+    fn name(&self) -> &str {
+        "team_create"
+    }
     fn description(&self) -> &str {
         "Create a new agent team. Sets up config, inboxes, and shared task board. \
          The first member is automatically the team lead."
@@ -35,18 +37,27 @@ impl Tool for TeamCreateTool {
             "required": ["name", "members"]
         })
     }
-    fn permission(&self) -> ToolPermission { ToolPermission::NeedsApproval }
+    fn permission(&self) -> ToolPermission {
+        ToolPermission::NeedsApproval
+    }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
-        let name = args.get("name").and_then(|v| v.as_str())
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: name"))?;
-        let members_val = args.get("members").and_then(|v| v.as_array())
+        let members_val = args
+            .get("members")
+            .and_then(|v| v.as_array())
             .ok_or_else(|| anyhow::anyhow!("Missing: members"))?;
 
         let mut members = Vec::new();
         for (i, m) in members_val.iter().enumerate() {
             let mname = m.get("name").and_then(|v| v.as_str()).unwrap_or("agent");
-            let role = m.get("role").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let role = m
+                .get("role")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             let agent_type = if i == 0 { "leader" } else { "general-purpose" };
             members.push(crate::teams::config::TeamMemberConfig {
                 name: mname.to_string(),
@@ -78,8 +89,12 @@ pub struct TeamDeleteTool;
 
 #[async_trait]
 impl Tool for TeamDeleteTool {
-    fn name(&self) -> &str { "team_delete" }
-    fn description(&self) -> &str { "Delete a team and all its artifacts (config, inboxes, tasks)." }
+    fn name(&self) -> &str {
+        "team_delete"
+    }
+    fn description(&self) -> &str {
+        "Delete a team and all its artifacts (config, inboxes, tasks)."
+    }
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
@@ -87,10 +102,14 @@ impl Tool for TeamDeleteTool {
             "required": ["name"]
         })
     }
-    fn permission(&self) -> ToolPermission { ToolPermission::NeedsApproval }
+    fn permission(&self) -> ToolPermission {
+        ToolPermission::NeedsApproval
+    }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
-        let name = args.get("name").and_then(|v| v.as_str())
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: name"))?;
         crate::teams::config::TeamConfig::delete(name)?;
         Ok(ToolResult {
@@ -105,7 +124,9 @@ pub struct SendMessageTool;
 
 #[async_trait]
 impl Tool for SendMessageTool {
-    fn name(&self) -> &str { "send_team_message" }
+    fn name(&self) -> &str {
+        "send_team_message"
+    }
     fn description(&self) -> &str {
         "Send a message to a teammate or broadcast to the entire team. \
          Uses the current agent's identity as the sender."
@@ -123,11 +144,17 @@ impl Tool for SendMessageTool {
     }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
-        let team = args.get("team").and_then(|v| v.as_str())
+        let team = args
+            .get("team")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: team"))?;
-        let to = args.get("to").and_then(|v| v.as_str())
+        let to = args
+            .get("to")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: to"))?;
-        let text = args.get("text").and_then(|v| v.as_str())
+        let text = args
+            .get("text")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: text"))?;
 
         let from = ctx.agent_name.as_deref().unwrap_or("team-lead");
@@ -161,7 +188,9 @@ pub struct TaskCreateTool;
 
 #[async_trait]
 impl Tool for TaskCreateTool {
-    fn name(&self) -> &str { "task_create" }
+    fn name(&self) -> &str {
+        "task_create"
+    }
     fn description(&self) -> &str {
         "Create a task on the team's shared task board. Uses auto-incrementing IDs."
     }
@@ -180,19 +209,32 @@ impl Tool for TaskCreateTool {
     }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
-        let team = args.get("team").and_then(|v| v.as_str())
+        let team = args
+            .get("team")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: team"))?;
-        let subject = args.get("subject").and_then(|v| v.as_str())
+        let subject = args
+            .get("subject")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: subject"))?;
         let description = args.get("description").and_then(|v| v.as_str());
         let active_form = args.get("active_form").and_then(|v| v.as_str());
-        let blocked_by: Vec<String> = args.get("blocked_by")
+        let blocked_by: Vec<String> = args
+            .get("blocked_by")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let task = crate::teams::tasks::TeamTask::create(
-            team, subject, description, active_form, blocked_by,
+            team,
+            subject,
+            description,
+            active_form,
+            blocked_by,
         )?;
         Ok(ToolResult {
             output: format!("Task #{} created: '{}'.", task.id, task.subject),
@@ -206,7 +248,9 @@ pub struct TaskUpdateTool;
 
 #[async_trait]
 impl Tool for TaskUpdateTool {
-    fn name(&self) -> &str { "task_update" }
+    fn name(&self) -> &str {
+        "task_update"
+    }
     fn description(&self) -> &str {
         "Update a task's status or owner. Completing a task auto-unblocks dependents."
     }
@@ -224,24 +268,34 @@ impl Tool for TaskUpdateTool {
     }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
-        let team = args.get("team").and_then(|v| v.as_str())
+        let team = args
+            .get("team")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: team"))?;
-        let task_id = args.get("task_id").and_then(|v| v.as_str())
+        let task_id = args
+            .get("task_id")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: task_id"))?;
-        let status = args.get("status").and_then(|v| v.as_str()).map(|s| match s {
-            "in_progress" => crate::teams::tasks::TaskStatus::InProgress,
-            "completed" => crate::teams::tasks::TaskStatus::Completed,
-            "blocked" => crate::teams::tasks::TaskStatus::Blocked,
-            "deleted" => crate::teams::tasks::TaskStatus::Deleted,
-            _ => crate::teams::tasks::TaskStatus::Pending,
-        });
+        let status = args
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| match s {
+                "in_progress" => crate::teams::tasks::TaskStatus::InProgress,
+                "completed" => crate::teams::tasks::TaskStatus::Completed,
+                "blocked" => crate::teams::tasks::TaskStatus::Blocked,
+                "deleted" => crate::teams::tasks::TaskStatus::Deleted,
+                _ => crate::teams::tasks::TaskStatus::Pending,
+            });
         let owner = args.get("owner").and_then(|v| v.as_str()).map(String::from);
 
         let task = crate::teams::tasks::TeamTask::update(team, task_id, status, owner)?;
         Ok(ToolResult {
-            output: format!("Task #{} updated: status={}, owner={}.",
-                task.id, task.status,
-                task.owner.as_deref().unwrap_or("unassigned")),
+            output: format!(
+                "Task #{} updated: status={}, owner={}.",
+                task.id,
+                task.status,
+                task.owner.as_deref().unwrap_or("unassigned")
+            ),
             title: format!("task_update({team}, #{task_id})"),
             metadata: serde_json::to_value(&task).unwrap_or_default(),
         })
@@ -252,8 +306,12 @@ pub struct TaskListTool;
 
 #[async_trait]
 impl Tool for TaskListTool {
-    fn name(&self) -> &str { "task_list" }
-    fn description(&self) -> &str { "List tasks on the team's shared board with optional status filter." }
+    fn name(&self) -> &str {
+        "task_list"
+    }
+    fn description(&self) -> &str {
+        "List tasks on the team's shared board with optional status filter."
+    }
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
@@ -266,15 +324,21 @@ impl Tool for TaskListTool {
     }
 
     async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
-        let team = args.get("team").and_then(|v| v.as_str())
+        let team = args
+            .get("team")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: team"))?;
         let filter = args.get("filter").and_then(|v| v.as_str());
 
         let tasks = crate::teams::tasks::list_tasks(team, filter)?;
         if tasks.is_empty() {
             return Ok(ToolResult {
-                output: format!("No tasks{} in team '{team}'.",
-                    filter.map(|f| format!(" with status '{f}'")).unwrap_or_default()),
+                output: format!(
+                    "No tasks{} in team '{team}'.",
+                    filter
+                        .map(|f| format!(" with status '{f}'"))
+                        .unwrap_or_default()
+                ),
                 title: format!("task_list({team})"),
                 metadata: serde_json::json!({"count": 0}),
             });
@@ -288,8 +352,10 @@ impl Tool for TaskListTool {
             } else {
                 format!(" [blocked by: {}]", t.blocked_by.join(", "))
             };
-            out.push_str(&format!("- [{}] #{} ({}){} -- {}\n",
-                t.status, t.id, owner, blocked, t.subject));
+            out.push_str(&format!(
+                "- [{}] #{} ({}){} -- {}\n",
+                t.status, t.id, owner, blocked, t.subject
+            ));
         }
 
         Ok(ToolResult {
@@ -300,9 +366,9 @@ impl Tool for TaskListTool {
     }
 }
 
-use std::sync::Arc;
 use crate::agent::AgentConfig;
 use crate::agent_manager::AgentManager;
+use std::sync::Arc;
 
 pub struct SpawnTeammateTool {
     manager: Arc<AgentManager>,
@@ -316,7 +382,9 @@ impl SpawnTeammateTool {
 
 #[async_trait]
 impl Tool for SpawnTeammateTool {
-    fn name(&self) -> &str { "spawn_teammate" }
+    fn name(&self) -> &str {
+        "spawn_teammate"
+    }
     fn description(&self) -> &str {
         "Spawn a new agent and register it as a team member. The agent starts \
          working immediately with the given message as its initial prompt. \
@@ -335,14 +403,22 @@ impl Tool for SpawnTeammateTool {
             "required": ["team", "name", "message"]
         })
     }
-    fn permission(&self) -> ToolPermission { ToolPermission::NeedsApproval }
+    fn permission(&self) -> ToolPermission {
+        ToolPermission::NeedsApproval
+    }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
-        let team = args.get("team").and_then(|v| v.as_str())
+        let team = args
+            .get("team")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: team"))?;
-        let name = args.get("name").and_then(|v| v.as_str())
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: name"))?;
-        let message = args.get("message").and_then(|v| v.as_str())
+        let message = args
+            .get("message")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: message"))?;
         let role = args.get("role").and_then(|v| v.as_str()).map(String::from);
 
@@ -364,14 +440,18 @@ impl Tool for SpawnTeammateTool {
             ..AgentConfig::default()
         };
 
-        match self.manager.spawn_agent(
-            message.to_string(),
-            role.clone(),
-            ctx.depth,
-            ctx,
-            agent_config,
-            None,
-        ).await {
+        match self
+            .manager
+            .spawn_agent(
+                message.to_string(),
+                role.clone(),
+                ctx.depth,
+                ctx,
+                agent_config,
+                None,
+            )
+            .await
+        {
             Ok((agent_id, nickname)) => {
                 config.add_member(crate::teams::config::TeamMemberConfig {
                     name: name.to_string(),
@@ -412,8 +492,12 @@ pub struct TeamListTool;
 
 #[async_trait]
 impl Tool for TeamListTool {
-    fn name(&self) -> &str { "team_list" }
-    fn description(&self) -> &str { "List all existing agent teams." }
+    fn name(&self) -> &str {
+        "team_list"
+    }
+    fn description(&self) -> &str {
+        "List all existing agent teams."
+    }
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
@@ -434,9 +518,14 @@ impl Tool for TeamListTool {
         let mut out = String::from("Active teams:\n\n");
         for name in &teams {
             if let Ok(config) = crate::teams::config::TeamConfig::load(name) {
-                let member_names: Vec<&str> = config.members.iter().map(|m| m.name.as_str()).collect();
-                out.push_str(&format!("- {} ({} members: {})\n",
-                    name, config.members.len(), member_names.join(", ")));
+                let member_names: Vec<&str> =
+                    config.members.iter().map(|m| m.name.as_str()).collect();
+                out.push_str(&format!(
+                    "- {} ({} members: {})\n",
+                    name,
+                    config.members.len(),
+                    member_names.join(", ")
+                ));
             } else {
                 out.push_str(&format!("- {} (config error)\n", name));
             }
@@ -454,7 +543,9 @@ pub struct ReadInboxTool;
 
 #[async_trait]
 impl Tool for ReadInboxTool {
-    fn name(&self) -> &str { "read_inbox" }
+    fn name(&self) -> &str {
+        "read_inbox"
+    }
     fn description(&self) -> &str {
         "Read unread messages from this agent's team inbox. Messages are \
          auto-injected at each turn, but this tool lets you check explicitly."
@@ -470,7 +561,9 @@ impl Tool for ReadInboxTool {
     }
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
-        let team = args.get("team").and_then(|v| v.as_str())
+        let team = args
+            .get("team")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing: team"))?;
         let agent_name = ctx.agent_name.as_deref().unwrap_or("team-lead");
 

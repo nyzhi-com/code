@@ -26,7 +26,13 @@ pub fn offload_tool_result_to_file(
     let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S_%3f");
     let safe_name: String = tool_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let filename = format!("{ts}-{safe_name}.txt");
     let file_path = dir.join(&filename);
@@ -192,7 +198,9 @@ pub fn build_compaction_prompt_full(
 
     let stats = format!(
         "\nConversation stats: {} messages, {} tool calls, {} unique files touched.\n",
-        messages.len(), tool_call_count, file_set.len()
+        messages.len(),
+        tool_call_count,
+        file_set.len()
     );
 
     format!(
@@ -251,11 +259,18 @@ pub fn microcompact(messages: &mut [Message], storage_dir: &Path) -> usize {
         let msg = &mut messages[idx];
         if let MessageContent::Parts(parts) = &mut msg.content {
             for part in parts.iter_mut() {
-                if let ContentPart::ToolResult { tool_use_id, content } = part {
+                if let ContentPart::ToolResult {
+                    tool_use_id,
+                    content,
+                } = part
+                {
                     if content.len() < MICROCOMPACT_THRESHOLD {
                         continue;
                     }
-                    let filename = format!("tool_result_{}.txt", tool_use_id.replace(['/', '\\', ':'], "_"));
+                    let filename = format!(
+                        "tool_result_{}.txt",
+                        tool_use_id.replace(['/', '\\', ':'], "_")
+                    );
                     let file_path = storage_dir.join(&filename);
                     if std::fs::write(&file_path, content.as_bytes()).is_ok() {
                         let chars = content.len();
@@ -283,7 +298,10 @@ pub fn dedup_tool_results(messages: &mut Vec<Message>) -> usize {
         if let MessageContent::Parts(parts) = &msg.content {
             for part in parts {
                 if let ContentPart::ToolUse { name, input, .. } = part {
-                    if matches!(name.as_str(), "read" | "read_file" | "write" | "write_file" | "edit" | "edit_file") {
+                    if matches!(
+                        name.as_str(),
+                        "read" | "read_file" | "write" | "write_file" | "edit" | "edit_file"
+                    ) {
                         if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
                             if let Some(prev) = seen_files.insert(path.to_string(), i) {
                                 to_collapse.push(prev);
@@ -305,7 +323,9 @@ pub fn dedup_tool_results(messages: &mut Vec<Message>) -> usize {
     for &idx in to_collapse.iter().rev() {
         if idx < messages.len() {
             let msg = &mut messages[idx];
-            msg.content = MessageContent::Text("[earlier duplicate — superseded by later access]".to_string());
+            msg.content = MessageContent::Text(
+                "[earlier duplicate — superseded by later access]".to_string(),
+            );
         }
     }
     count
@@ -326,7 +346,9 @@ pub fn prune_old_errors(messages: &mut [Message], age_threshold: usize) -> usize
         let has_error = if let MessageContent::Parts(parts) = &msg.content {
             parts.iter().any(|p| {
                 if let ContentPart::ToolResult { content, .. } = p {
-                    content.contains("Error:") || content.contains("error:") || content.starts_with("ERROR")
+                    content.contains("Error:")
+                        || content.contains("error:")
+                        || content.starts_with("ERROR")
                 } else {
                     false
                 }
@@ -338,9 +360,13 @@ pub fn prune_old_errors(messages: &mut [Message], age_threshold: usize) -> usize
         if has_error && i > 0 {
             let prev = &mut messages[i - 1];
             if let MessageContent::Parts(parts) = &prev.content {
-                let is_tool_call = parts.iter().any(|p| matches!(p, ContentPart::ToolUse { .. }));
+                let is_tool_call = parts
+                    .iter()
+                    .any(|p| matches!(p, ContentPart::ToolUse { .. }));
                 if is_tool_call {
-                    prev.content = MessageContent::Text("[tool call that produced error — input collapsed]".to_string());
+                    prev.content = MessageContent::Text(
+                        "[tool call that produced error — input collapsed]".to_string(),
+                    );
                     pruned += 1;
                 }
             }
@@ -352,7 +378,8 @@ pub fn prune_old_errors(messages: &mut [Message], age_threshold: usize) -> usize
 /// Collapse write tool results when the file was subsequently read.
 /// The read result supersedes the write content.
 pub fn supersede_writes(messages: &mut Vec<Message>) -> usize {
-    let mut write_indices: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
+    let mut write_indices: std::collections::HashMap<String, Vec<usize>> =
+        std::collections::HashMap::new();
     let mut read_files: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for (i, msg) in messages.iter().enumerate().rev() {
@@ -431,7 +458,10 @@ pub fn progressive_compact(
     if superseded > 0 {
         let after = messages.iter().map(estimate_message_tokens).sum::<usize>();
         let saved = before2.saturating_sub(after);
-        savings.push((format!("supersede: {superseded} write results collapsed"), saved));
+        savings.push((
+            format!("supersede: {superseded} write results collapsed"),
+            saved,
+        ));
     }
 
     let before3 = messages.iter().map(estimate_message_tokens).sum::<usize>();
@@ -439,7 +469,10 @@ pub fn progressive_compact(
     if pruned > 0 {
         let after = messages.iter().map(estimate_message_tokens).sum::<usize>();
         let saved = before3.saturating_sub(after);
-        savings.push((format!("error prune: {pruned} failed tool inputs collapsed"), saved));
+        savings.push((
+            format!("error prune: {pruned} failed tool inputs collapsed"),
+            saved,
+        ));
     }
 
     let before4 = messages.iter().map(estimate_message_tokens).sum::<usize>();
@@ -447,7 +480,10 @@ pub fn progressive_compact(
     if offloaded > 0 {
         let after = messages.iter().map(estimate_message_tokens).sum::<usize>();
         let saved = before4.saturating_sub(after);
-        savings.push((format!("microcompact: {offloaded} tool outputs offloaded"), saved));
+        savings.push((
+            format!("microcompact: {offloaded} tool outputs offloaded"),
+            saved,
+        ));
     }
 
     savings
@@ -477,7 +513,12 @@ pub struct ContextBreakdown {
 }
 
 impl ContextBreakdown {
-    pub fn compute(messages: &[Message], system_prompt: &str, context_window: u32, threshold: f64) -> Self {
+    pub fn compute(
+        messages: &[Message],
+        system_prompt: &str,
+        context_window: u32,
+        threshold: f64,
+    ) -> Self {
         let system_prompt_tokens = estimate_tokens(system_prompt);
         let mut message_tokens = 0usize;
         let mut tool_result_tokens = 0usize;
@@ -566,7 +607,9 @@ pub fn extract_recent_file_paths(messages: &[Message], max_files: usize) -> Vec<
         if let MessageContent::Parts(parts) = &msg.content {
             for part in parts {
                 match part {
-                    ContentPart::ToolUse { name, input, .. } if name == "read_file" || name == "write_file" || name == "edit_file" => {
+                    ContentPart::ToolUse { name, input, .. }
+                        if name == "read_file" || name == "write_file" || name == "edit_file" =>
+                    {
                         if let Some(path_str) = input.get("path").and_then(|v| v.as_str()) {
                             let p = PathBuf::from(path_str);
                             if !paths.contains(&p) {

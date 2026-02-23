@@ -78,7 +78,8 @@ impl Tool for InstrumentTool {
         let line = args
             .get("line")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: line"))? as usize;
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: line"))?
+            as usize;
         let code = args
             .get("code")
             .and_then(|v| v.as_str())

@@ -9,9 +9,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.border_default))
-        .title(Line::from(vec![
-            Span::styled(" nyzhi code ", Style::default().fg(theme.accent).bold()),
-        ]))
+        .title(Line::from(vec![Span::styled(
+            " nyzhi code ",
+            Style::default().fg(theme.accent).bold(),
+        )]))
         .title_alignment(Alignment::Center)
         .style(Style::default().bg(theme.bg_page));
 
@@ -29,8 +30,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     };
 
     for (item_idx, item) in app.items.iter().enumerate() {
-        let is_match = search_q.is_some()
-            && app.search_matches.contains(&item_idx);
+        let is_match = search_q.is_some() && app.search_matches.contains(&item_idx);
         let is_current = current_match_item == Some(item_idx);
         let line_start = lines.len();
 
@@ -40,7 +40,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             }
             DisplayItem::Thinking(content) => {
                 let think_start = lines.len();
-                let dim = Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+                let dim = Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC);
                 lines.push(Line::from(Span::styled("  Thinking...", dim)));
                 for line_text in content.lines().take(10) {
                     let trimmed = if line_text.len() > 120 {
@@ -75,13 +77,18 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                             ToolStatus::Completed => "+",
                             ToolStatus::Denied => "x",
                         };
-                        lines.push(Line::from(Span::styled(
-                            format!("    {icon} {name}"),
-                            dim,
-                        )));
+                        lines.push(Line::from(Span::styled(format!("    {icon} {name}"), dim)));
                     }
                     _ => {
-                        render_tool_call(&mut lines, name, args_summary, output, status, elapsed_ms, theme);
+                        render_tool_call(
+                            &mut lines,
+                            name,
+                            args_summary,
+                            output,
+                            status,
+                            elapsed_ms,
+                            theme,
+                        );
                     }
                 }
                 prepend_bar(&mut lines[tool_start..], theme.text_disabled);
@@ -103,7 +110,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     }
 
     if !app.thinking_stream.is_empty() && app.current_stream.is_empty() {
-        let dim = Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+        let dim = Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::ITALIC);
         lines.push(Line::from(""));
         let think_stream_start = lines.len();
         lines.push(Line::from(Span::styled("  Thinking...", dim)));
@@ -134,7 +143,13 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     if !app.current_stream.is_empty() {
         lines.push(Line::from(""));
         let stream_start = lines.len();
-        render_highlighted_content(&mut lines, &app.current_stream, theme, &app.highlighter, dark);
+        render_highlighted_content(
+            &mut lines,
+            &app.current_stream,
+            theme,
+            &app.highlighter,
+            dark,
+        );
         lines.push(Line::from(Span::styled(
             "  _",
             Style::default().fg(theme.accent),
@@ -197,7 +212,8 @@ fn highlight_search_in_line<'a>(line: Line<'a>, query: &str, hl_style: Style) ->
 
 fn prepend_bar(lines: &mut [Line<'_>], color: Color) {
     for line in lines.iter_mut() {
-        line.spans.insert(0, Span::styled(" ┃ ", Style::default().fg(color)));
+        line.spans
+            .insert(0, Span::styled(" ┃ ", Style::default().fg(color)));
     }
 }
 
@@ -226,7 +242,11 @@ fn render_message<'a>(
         }
     }
 
-    let bar_color = if role == "user" { theme.info } else { theme.accent };
+    let bar_color = if role == "user" {
+        theme.info
+    } else {
+        theme.accent
+    };
     prepend_bar(&mut lines[bar_start..], bar_color);
 }
 
@@ -265,13 +285,8 @@ fn render_highlighted_content<'a>(
                     ),
                 ]));
 
-                let highlighted = highlighter.highlight_code(
-                    code,
-                    lang,
-                    dark,
-                    theme.text_disabled,
-                    code_bg,
-                );
+                let highlighted =
+                    highlighter.highlight_code(code, lang, dark, theme.text_disabled, code_bg);
                 for hl_line in highlighted {
                     let mut padded = vec![Span::raw("  ")];
                     padded.extend(hl_line.spans);
@@ -322,14 +337,8 @@ fn render_tool_call<'a>(
     };
 
     let mut spans = vec![
-        Span::styled(
-            format!("    {icon} "),
-            Style::default().fg(icon_color),
-        ),
-        Span::styled(
-            name.to_string(),
-            Style::default().fg(theme.accent).bold(),
-        ),
+        Span::styled(format!("    {icon} "), Style::default().fg(icon_color)),
+        Span::styled(name.to_string(), Style::default().fg(theme.accent).bold()),
         Span::styled(
             format!(" {summary}"),
             Style::default().fg(theme.text_tertiary),
@@ -354,7 +363,11 @@ fn render_tool_call<'a>(
     }
 
     if let Some(out) = output {
-        let max_lines = if *status == ToolStatus::Running { 10 } else { 3 };
+        let max_lines = if *status == ToolStatus::Running {
+            10
+        } else {
+            3
+        };
         let all_lines: Vec<&str> = out.lines().collect();
         let display_lines = if *status == ToolStatus::Running && all_lines.len() > max_lines {
             &all_lines[all_lines.len() - max_lines..]

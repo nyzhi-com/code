@@ -43,7 +43,11 @@ impl Tool for BatchApplyTool {
         let files: Vec<String> = args
             .get("files")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let command = args
             .get("command")
@@ -74,7 +78,10 @@ impl Tool for BatchApplyTool {
                         let stdout = String::from_utf8_lossy(&out.stdout);
                         let _stderr = String::from_utf8_lossy(&out.stderr);
                         let status = if out.status.success() { "ok" } else { "error" };
-                        format!("[{status}] {file}: {}", stdout.trim().chars().take(200).collect::<String>())
+                        format!(
+                            "[{status}] {file}: {}",
+                            stdout.trim().chars().take(200).collect::<String>()
+                        )
                     }
                     Err(e) => format!("[error] {file}: {e}"),
                 }

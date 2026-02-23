@@ -34,11 +34,7 @@ fn session_path(id: &str) -> Result<PathBuf> {
     Ok(sessions_dir()?.join(format!("{id}.json")))
 }
 
-pub fn save_session(
-    thread: &Thread,
-    provider: &str,
-    model: &str,
-) -> Result<SessionMeta> {
+pub fn save_session(thread: &Thread, provider: &str, model: &str) -> Result<SessionMeta> {
     let title = thread
         .messages()
         .iter()
@@ -135,8 +131,6 @@ pub fn find_sessions(query: &str) -> Result<Vec<SessionMeta>> {
     let sessions = list_sessions()?;
     Ok(sessions
         .into_iter()
-        .filter(|s| {
-            s.id.starts_with(query) || s.title.to_lowercase().contains(&query_lower)
-        })
+        .filter(|s| s.id.starts_with(query) || s.title.to_lowercase().contains(&query_lower))
         .collect())
 }

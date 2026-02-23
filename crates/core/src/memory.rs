@@ -7,9 +7,7 @@ const MAX_INJECTION_LINES: usize = 200;
 
 /// Compute a stable hash for a project root path.
 pub fn project_hash(root: &Path) -> String {
-    let canonical = root
-        .canonicalize()
-        .unwrap_or_else(|_| root.to_path_buf());
+    let canonical = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let mut hasher = Sha256::new();
     hasher.update(canonical.to_string_lossy().as_bytes());
     let result = hasher.finalize();
@@ -52,9 +50,8 @@ pub fn load_memory_for_prompt(root: &Path) -> String {
     let project_mem = memory_dir(root).join("MEMORY.md");
     if project_mem.exists() {
         if let Ok(content) = std::fs::read_to_string(&project_mem) {
-            let remaining = MAX_INJECTION_LINES.saturating_sub(
-                sections.first().map(|s| s.lines().count()).unwrap_or(0),
-            );
+            let remaining = MAX_INJECTION_LINES
+                .saturating_sub(sections.first().map(|s| s.lines().count()).unwrap_or(0));
             let lines: Vec<&str> = content.lines().take(remaining).collect();
             if !lines.is_empty() {
                 sections.push(format!("## Project Memory\n{}", lines.join("\n")));

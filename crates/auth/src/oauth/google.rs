@@ -120,7 +120,9 @@ async fn login_inner(msg_tx: Option<mpsc::UnboundedSender<String>>) -> Result<St
     token_store::store_account("gemini", &stored, label.as_deref())?;
 
     let count = token_store::list_accounts("gemini")?.len();
-    send(format!("Gemini CLI login successful. {count} account(s) configured."));
+    send(format!(
+        "Gemini CLI login successful. {count} account(s) configured."
+    ));
 
     Ok(stored)
 }

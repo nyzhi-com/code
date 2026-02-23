@@ -13,36 +13,70 @@ const DEFAULT_MODEL: &str = "gemini-3-flash";
 pub fn default_models() -> Vec<ModelInfo> {
     vec![
         ModelInfo {
-            id: "gemini-3.1-pro-preview".into(), name: "Gemini 3.1 Pro".into(), provider: "gemini".into(),
-            context_window: 1_048_576, max_output_tokens: 65_536,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 1.25, output_price_per_m: 10.0,
-            cache_read_price_per_m: 0.3125, cache_write_price_per_m: 0.0,
-            tier: ModelTier::High, thinking: Some(ThinkingSupport::gemini_levels(&["low", "high"])),
+            id: "gemini-3.1-pro-preview".into(),
+            name: "Gemini 3.1 Pro".into(),
+            provider: "gemini".into(),
+            context_window: 1_048_576,
+            max_output_tokens: 65_536,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 1.25,
+            output_price_per_m: 10.0,
+            cache_read_price_per_m: 0.3125,
+            cache_write_price_per_m: 0.0,
+            tier: ModelTier::High,
+            thinking: Some(ThinkingSupport::gemini_levels(&["low", "high"])),
         },
         ModelInfo {
-            id: "gemini-3-flash".into(), name: "Gemini 3 Flash".into(), provider: "gemini".into(),
-            context_window: 1_048_576, max_output_tokens: 65_536,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 0.15, output_price_per_m: 0.60,
-            cache_read_price_per_m: 0.0375, cache_write_price_per_m: 0.0,
-            tier: ModelTier::Low, thinking: Some(ThinkingSupport::gemini_levels(&["minimal", "low", "medium", "high"])),
+            id: "gemini-3-flash".into(),
+            name: "Gemini 3 Flash".into(),
+            provider: "gemini".into(),
+            context_window: 1_048_576,
+            max_output_tokens: 65_536,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 0.15,
+            output_price_per_m: 0.60,
+            cache_read_price_per_m: 0.0375,
+            cache_write_price_per_m: 0.0,
+            tier: ModelTier::Low,
+            thinking: Some(ThinkingSupport::gemini_levels(&[
+                "minimal", "low", "medium", "high",
+            ])),
         },
         ModelInfo {
-            id: "gemini-3-pro-preview".into(), name: "Gemini 3 Pro".into(), provider: "gemini".into(),
-            context_window: 1_048_576, max_output_tokens: 65_536,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 1.25, output_price_per_m: 10.0,
-            cache_read_price_per_m: 0.3125, cache_write_price_per_m: 0.0,
-            tier: ModelTier::High, thinking: Some(ThinkingSupport::gemini_levels(&["low", "high"])),
+            id: "gemini-3-pro-preview".into(),
+            name: "Gemini 3 Pro".into(),
+            provider: "gemini".into(),
+            context_window: 1_048_576,
+            max_output_tokens: 65_536,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 1.25,
+            output_price_per_m: 10.0,
+            cache_read_price_per_m: 0.3125,
+            cache_write_price_per_m: 0.0,
+            tier: ModelTier::High,
+            thinking: Some(ThinkingSupport::gemini_levels(&["low", "high"])),
         },
         ModelInfo {
-            id: "gemini-2.5-flash".into(), name: "Gemini 2.5 Flash".into(), provider: "gemini".into(),
-            context_window: 1_048_576, max_output_tokens: 65_536,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 0.15, output_price_per_m: 0.60,
-            cache_read_price_per_m: 0.0375, cache_write_price_per_m: 0.0,
-            tier: ModelTier::Low, thinking: Some(ThinkingSupport::anthropic_budget(32768)),
+            id: "gemini-2.5-flash".into(),
+            name: "Gemini 2.5 Flash".into(),
+            provider: "gemini".into(),
+            context_window: 1_048_576,
+            max_output_tokens: 65_536,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 0.15,
+            output_price_per_m: 0.60,
+            cache_read_price_per_m: 0.0375,
+            cache_write_price_per_m: 0.0,
+            tier: ModelTier::Low,
+            thinking: Some(ThinkingSupport::anthropic_budget(32768)),
         },
     ]
 }
@@ -373,11 +407,13 @@ impl Provider for GeminiProvider {
                     };
                     let mut evts = Vec::new();
 
-                    if let Some(parts) =
-                        data["candidates"][0]["content"]["parts"].as_array()
-                    {
+                    if let Some(parts) = data["candidates"][0]["content"]["parts"].as_array() {
                         for part in parts {
-                            if part.get("thought").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            if part
+                                .get("thought")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false)
+                            {
                                 if let Some(text) = part["text"].as_str() {
                                     evts.push(Ok(StreamEvent::ThinkingDelta(text.to_string())));
                                     continue;
@@ -399,19 +435,12 @@ impl Provider for GeminiProvider {
                         }
                     }
 
-                    if let Some(meta) =
-                        data.get("usageMetadata").filter(|m| m.is_object())
-                    {
-                        let cached = meta["cachedContentTokenCount"]
-                            .as_u64()
-                            .unwrap_or(0) as u32;
+                    if let Some(meta) = data.get("usageMetadata").filter(|m| m.is_object()) {
+                        let cached = meta["cachedContentTokenCount"].as_u64().unwrap_or(0) as u32;
                         evts.push(Ok(StreamEvent::Usage(Usage {
-                            input_tokens: meta["promptTokenCount"]
-                                .as_u64()
-                                .unwrap_or(0) as u32,
-                            output_tokens: meta["candidatesTokenCount"]
-                                .as_u64()
-                                .unwrap_or(0) as u32,
+                            input_tokens: meta["promptTokenCount"].as_u64().unwrap_or(0) as u32,
+                            output_tokens: meta["candidatesTokenCount"].as_u64().unwrap_or(0)
+                                as u32,
                             cache_read_tokens: cached,
                             cache_creation_tokens: 0,
                         })));

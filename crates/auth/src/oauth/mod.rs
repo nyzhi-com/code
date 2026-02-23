@@ -22,11 +22,14 @@ pub async fn login(provider: &str) -> Result<StoredToken> {
                 if !def.supports_oauth {
                     anyhow::bail!(
                         "{} does not support OAuth. Set {} or use `/connect` to add an API key.",
-                        def.name, def.env_var
+                        def.name,
+                        def.env_var
                     );
                 }
             }
-            anyhow::bail!("Unknown provider for OAuth: {other}. Use `/connect` to add an API key instead.")
+            anyhow::bail!(
+                "Unknown provider for OAuth: {other}. Use `/connect` to add an API key instead."
+            )
         }
     }
 }
@@ -42,18 +45,10 @@ pub async fn login_interactive(
     msg_tx: mpsc::UnboundedSender<String>,
 ) -> Result<StoredToken> {
     match (provider, method) {
-        ("openai", "codex") | ("openai", "oauth") => {
-            openai::login_interactive(msg_tx).await
-        }
-        ("gemini", "gemini-cli") | ("gemini", "oauth") => {
-            google::login_interactive(msg_tx).await
-        }
-        ("anthropic", _) => {
-            anthropic::login_interactive(msg_tx).await
-        }
-        ("cursor", _) => {
-            cursor::login_interactive(msg_tx).await
-        }
+        ("openai", "codex") | ("openai", "oauth") => openai::login_interactive(msg_tx).await,
+        ("gemini", "gemini-cli") | ("gemini", "oauth") => google::login_interactive(msg_tx).await,
+        ("anthropic", _) => anthropic::login_interactive(msg_tx).await,
+        ("cursor", _) => cursor::login_interactive(msg_tx).await,
         _ => {
             anyhow::bail!("No interactive login for {provider}/{method}")
         }

@@ -104,9 +104,7 @@ impl Tool for AskUserTool {
             respond,
         });
 
-        let selected = rx
-            .await
-            .unwrap_or_else(|_| "__cancelled__".to_string());
+        let selected = rx.await.unwrap_or_else(|_| "__cancelled__".to_string());
 
         if selected == "__cancelled__" {
             Ok(ToolResult {

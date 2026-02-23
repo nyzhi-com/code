@@ -48,8 +48,7 @@ impl Tool for GrepTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: pattern"))?;
 
-        let re = Regex::new(pattern)
-            .map_err(|e| anyhow::anyhow!("Invalid regex pattern: {e}"))?;
+        let re = Regex::new(pattern).map_err(|e| anyhow::anyhow!("Invalid regex pattern: {e}"))?;
 
         let base = args
             .get("path")
@@ -101,9 +100,7 @@ fn search_dir(
         return Ok(());
     }
 
-    let mut entries: Vec<_> = std::fs::read_dir(dir)?
-        .filter_map(|e| e.ok())
-        .collect();
+    let mut entries: Vec<_> = std::fs::read_dir(dir)?.filter_map(|e| e.ok()).collect();
     entries.sort_by_key(|e| e.file_name());
 
     for entry in entries {
@@ -160,7 +157,12 @@ fn search_file(
             } else {
                 line.to_string()
             };
-            results.push(format!("{}:{}:{}", path.display(), line_num + 1, display_line));
+            results.push(format!(
+                "{}:{}:{}",
+                path.display(),
+                line_num + 1,
+                display_line
+            ));
         }
     }
     Ok(())

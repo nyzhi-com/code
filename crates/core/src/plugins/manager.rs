@@ -39,7 +39,11 @@ impl PluginManager {
 
         let plugin_dir = dest_dir.join(&manifest.name);
         if plugin_dir.exists() {
-            anyhow::bail!("Plugin '{}' already installed in {} scope", manifest.name, scope);
+            anyhow::bail!(
+                "Plugin '{}' already installed in {} scope",
+                manifest.name,
+                scope
+            );
         }
 
         copy_dir_recursive(source, &plugin_dir)?;

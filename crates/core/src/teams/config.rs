@@ -65,8 +65,8 @@ impl TeamConfig {
 
     pub fn load(name: &str) -> Result<Self> {
         let path = team_dir(name).join("config.json");
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("Team '{}' not found", name))?;
+        let content =
+            std::fs::read_to_string(&path).with_context(|| format!("Team '{}' not found", name))?;
         serde_json::from_str(&content).context("Failed to parse team config")
     }
 
@@ -97,7 +97,9 @@ impl TeamConfig {
     }
 
     pub fn lead_name(&self) -> String {
-        self.lead().map(|m| m.name.clone()).unwrap_or_else(|| "team-lead".to_string())
+        self.lead()
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| "team-lead".to_string())
     }
 
     fn save(&self) -> Result<()> {
@@ -109,8 +111,8 @@ impl TeamConfig {
 }
 
 const TEAM_COLORS: &[&str] = &[
-    "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd",
-    "#56b6c2", "#d19a66", "#be5046", "#7ec699", "#f8c555",
+    "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#d19a66", "#be5046",
+    "#7ec699", "#f8c555",
 ];
 
 pub fn assign_color(index: usize) -> String {

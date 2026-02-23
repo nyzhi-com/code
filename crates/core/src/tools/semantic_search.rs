@@ -3,18 +3,17 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::{Tool, ToolContext, ToolResult};
-use crate::index::SemanticIndex;
 use crate::tools::permission::ToolPermission;
 
+use nyzhi_index::CodebaseIndex;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 pub struct SemanticSearchTool {
-    index: Arc<Mutex<SemanticIndex>>,
+    index: Arc<CodebaseIndex>,
 }
 
 impl SemanticSearchTool {
-    pub fn new(index: Arc<Mutex<SemanticIndex>>) -> Self {
+    pub fn new(index: Arc<CodebaseIndex>) -> Self {
         Self { index }
     }
 }
@@ -53,7 +52,7 @@ impl Tool for SemanticSearchTool {
         ToolPermission::ReadOnly
     }
 
-    async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
+    async fn execute(&self, args: Value, _ctx: &ToolContext) -> Result<ToolResult> {
         let query = args
             .get("query")
             .and_then(|v| v.as_str())
@@ -64,13 +63,17 @@ impl Tool for SemanticSearchTool {
             .and_then(|v| v.as_u64())
             .unwrap_or(10) as usize;
 
-        let mut index = self.index.lock().await;
-
-        if !index.is_built() {
-            index.build(&ctx.project_root)?;
+        if !self.index.is_ready() {
+            return Ok(ToolResult {
+                output:
+                    "Index is still building. Try again in a moment, or use grep for exact matches."
+                        .to_string(),
+                title: format!("semantic_search: {query}"),
+                metadata: json!({ "result_count": 0, "status": "building" }),
+            });
         }
 
-        let results = index.search(query, max_results);
+        let results = self.index.search(query, max_results).await?;
 
         let count = results.len();
         let output = if results.is_empty() {
@@ -87,7 +90,7 @@ impl Tool for SemanticSearchTool {
                         r.start_line,
                         r.end_line,
                         r.score,
-                        preview(&r.content, 8),
+                        preview(&r.content, 12),
                     )
                 })
                 .collect::<Vec<_>>()
@@ -108,6 +111,10 @@ fn preview(content: &str, max_lines: usize) -> String {
         content.to_string()
     } else {
         let shown: Vec<&str> = lines[..max_lines].to_vec();
-        format!("{}\n  ... ({} more lines)", shown.join("\n"), lines.len() - max_lines)
+        format!(
+            "{}\n  ... ({} more lines)",
+            shown.join("\n"),
+            lines.len() - max_lines
+        )
     }
 }

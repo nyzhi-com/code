@@ -63,16 +63,16 @@ impl McpManager {
                 let env_clone = env.clone();
                 let args_clone = args.clone();
                 let service = ()
-                    .serve(TokioChildProcess::new(
-                        Command::new(command).configure(move |cmd| {
+                    .serve(TokioChildProcess::new(Command::new(command).configure(
+                        move |cmd| {
                             for arg in &args_clone {
                                 cmd.arg(arg);
                             }
                             for (k, v) in &env_clone {
                                 cmd.env(k, v);
                             }
-                        }),
-                    )?)
+                        },
+                    ))?)
                     .await
                     .with_context(|| format!("MCP stdio init failed for '{name}'"))?;
 
@@ -87,7 +87,10 @@ impl McpManager {
                     tools: tools_result.tools,
                 })
             }
-            McpServerConfig::Http { url, headers: _headers } => {
+            McpServerConfig::Http {
+                url,
+                headers: _headers,
+            } => {
                 let transport = StreamableHttpClientTransport::from_uri(url.as_str());
 
                 let service: RunningService<RoleClient, ()> = ()

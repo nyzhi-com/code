@@ -77,7 +77,10 @@ impl Tool for WriteTool {
                 let lines: Vec<&str> = content.lines().take(20).collect();
                 let preview = lines.join("\n");
                 if content.lines().count() > 20 {
-                    format!("{preview}\n... ({} more lines)", content.lines().count() - 20)
+                    format!(
+                        "{preview}\n... ({} more lines)",
+                        content.lines().count() - 20
+                    )
                 } else {
                     preview
                 }

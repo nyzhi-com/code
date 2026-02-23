@@ -7,6 +7,7 @@ members = [
     "crates/auth",
     "crates/tui",
     "crates/config",
+    "crates/index",
 ]
 
 [workspace.package]
@@ -107,3 +108,4 @@ nyzhi-provider = { path = "crates/provider", version = "=1.1.2" }
 nyzhi-auth = { path = "crates/auth", version = "=1.1.2" }
 nyzhi-tui = { path = "crates/tui", version = "=1.1.2" }
 nyzhi-config = { path = "crates/config", version = "=1.1.2" }
+nyzhi-index = { path = "crates/index", version = "=1.1.2" }

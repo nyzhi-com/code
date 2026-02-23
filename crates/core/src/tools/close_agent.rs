@@ -49,10 +49,7 @@ impl Tool for CloseAgentTool {
             .ok_or_else(|| anyhow::anyhow!("close_agent requires 'id' parameter"))?;
 
         let info = self.manager.get_agent_info(id).await;
-        let nickname = info
-            .as_ref()
-            .map(|(n, _)| n.as_str())
-            .unwrap_or("unknown");
+        let nickname = info.as_ref().map(|(n, _)| n.as_str()).unwrap_or("unknown");
 
         match self.manager.shutdown_agent(id).await {
             Ok(status) => {

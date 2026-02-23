@@ -219,8 +219,7 @@ fn parse_ddg_results(html: &str, max: usize) -> Vec<SearchResult> {
             .map(|offset| {
                 let base = html.find(&format!("href=\"{url}\"")).unwrap_or(0);
                 base + offset
-            })
-        {
+            }) {
             let chunk = &html[snip_start..];
             extract_between(chunk, ">", "</")
                 .unwrap_or_default()
@@ -284,9 +283,22 @@ fn html_to_text(html: &str) -> String {
 
     // Block elements -> newlines
     let block_tags = [
-        "<br>", "<br/>", "<br />", "</p>", "</div>", "</li>", "</tr>",
-        "</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>",
-        "</blockquote>", "</pre>", "</table>",
+        "<br>",
+        "<br/>",
+        "<br />",
+        "</p>",
+        "</div>",
+        "</li>",
+        "</tr>",
+        "</h1>",
+        "</h2>",
+        "</h3>",
+        "</h4>",
+        "</h5>",
+        "</h6>",
+        "</blockquote>",
+        "</pre>",
+        "</table>",
     ];
     for tag in &block_tags {
         text = text.replace(tag, &format!("\n{tag}"));

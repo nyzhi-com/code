@@ -118,8 +118,8 @@ impl TeamTask {
 
     pub fn load(team_name: &str, task_id: &str) -> Result<Self> {
         let path = team_tasks_dir(team_name).join(format!("{task_id}.json"));
-        let content =
-            std::fs::read_to_string(&path).with_context(|| format!("Task '{task_id}' not found"))?;
+        let content = std::fs::read_to_string(&path)
+            .with_context(|| format!("Task '{task_id}' not found"))?;
         serde_json::from_str(&content).context("Failed to parse task")
     }
 

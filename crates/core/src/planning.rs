@@ -34,7 +34,17 @@ pub fn save_plan(project_root: &Path, plan: &Plan) -> Result<PathBuf> {
     let dir = plans_dir(project_root);
     std::fs::create_dir_all(&dir)?;
 
-    let safe_name: String = plan.name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
+    let safe_name: String = plan
+        .name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
     let path = dir.join(format!("{safe_name}.md"));
 
     let mut content = format!("# Plan: {}\n\n", plan.name);
@@ -51,7 +61,16 @@ pub fn save_plan(project_root: &Path, plan: &Plan) -> Result<PathBuf> {
 
 pub fn load_plan(project_root: &Path, name: &str) -> Result<Option<String>> {
     let dir = plans_dir(project_root);
-    let safe_name: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
+    let safe_name: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
     let path = dir.join(format!("{safe_name}.md"));
     if path.exists() {
         Ok(Some(std::fs::read_to_string(&path)?))

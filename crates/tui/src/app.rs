@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
-use crossterm::event::{self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event, KeyCode, KeyModifiers};
+use crossterm::event::{
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event, KeyCode, KeyModifiers,
+};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use nyzhi_core::agent::{AgentConfig, AgentEvent, SessionUsage};
@@ -151,11 +154,14 @@ pub struct App {
     pub context_window: u32,
     pub update_status: UpdateStatus,
     update_info: Option<nyzhi_core::updater::UpdateInfo>,
-    update_done_rx: Option<tokio::sync::mpsc::Receiver<anyhow::Result<nyzhi_core::updater::UpdateResult>>>,
+    update_done_rx:
+        Option<tokio::sync::mpsc::Receiver<anyhow::Result<nyzhi_core::updater::UpdateResult>>>,
     pub thinking_level: Option<String>,
     pub pending_command_dispatch: bool,
     pub pending_oauth: Option<(String, String)>,
-    oauth_rx: Option<tokio::sync::oneshot::Receiver<(String, Result<nyzhi_auth::token_store::StoredToken>)>>,
+    oauth_rx: Option<
+        tokio::sync::oneshot::Receiver<(String, Result<nyzhi_auth::token_store::StoredToken>)>,
+    >,
     oauth_msg_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
     pub pending_provider_reload: Option<String>,
     pub pending_user_question:
@@ -170,6 +176,8 @@ pub struct App {
     pub todo_panel: Option<crate::components::todo_panel::TodoPanelState>,
     pub message_queue: VecDeque<TurnRequest>,
     pub model_cache: nyzhi_provider::ModelCacheHandle,
+    pub codebase_index: Option<nyzhi_core::tools::IndexHandle>,
+    pub index_progress: Option<(usize, usize, bool)>,
 }
 
 impl App {
@@ -249,6 +257,8 @@ impl App {
             todo_panel: None,
             message_queue: VecDeque::new(),
             model_cache: nyzhi_provider::ModelCache::handle(),
+            codebase_index: None,
+            index_progress: None,
         }
     }
 
@@ -344,35 +354,37 @@ impl App {
         let mut terminal = Terminal::new(backend)?;
 
         let (event_tx, mut event_rx) = broadcast::channel::<AgentEvent>(256);
-        let mut thread: Option<Thread> = Some(if let Some((loaded_thread, loaded_meta)) = self.initial_session.take() {
-            for msg in loaded_thread.messages() {
-                let role = match msg.role {
-                    nyzhi_provider::Role::User => "user",
-                    nyzhi_provider::Role::Assistant => "assistant",
-                    _ => "system",
-                };
-                let mut text = msg.content.as_text().to_string();
-                if msg.content.has_images() {
-                    text.push_str("\n[image attached]");
+        let mut thread: Option<Thread> = Some(
+            if let Some((loaded_thread, loaded_meta)) = self.initial_session.take() {
+                for msg in loaded_thread.messages() {
+                    let role = match msg.role {
+                        nyzhi_provider::Role::User => "user",
+                        nyzhi_provider::Role::Assistant => "assistant",
+                        _ => "system",
+                    };
+                    let mut text = msg.content.as_text().to_string();
+                    if msg.content.has_images() {
+                        text.push_str("\n[image attached]");
+                    }
+                    if !text.is_empty() {
+                        self.items.push(DisplayItem::Message {
+                            role: role.to_string(),
+                            content: text,
+                        });
+                    }
                 }
-                if !text.is_empty() {
-                    self.items.push(DisplayItem::Message {
-                        role: role.to_string(),
-                        content: text,
-                    });
-                }
-            }
-            self.items.push(DisplayItem::Message {
-                role: "system".to_string(),
-                content: format!(
-                    "Resumed session: {} ({} messages)",
-                    loaded_meta.title, loaded_meta.message_count,
-                ),
-            });
-            loaded_thread
-        } else {
-            Thread::new()
-        });
+                self.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!(
+                        "Resumed session: {} ({} messages)",
+                        loaded_meta.title, loaded_meta.message_count,
+                    ),
+                });
+                loaded_thread
+            } else {
+                Thread::new()
+            },
+        );
 
         let mcp_tool_summaries = if let Some(mgr) = &self.mcp_manager {
             let mut summaries = Vec::new();
@@ -409,8 +421,8 @@ impl App {
                 .unwrap_or(false)
         });
 
-        let skills = nyzhi_core::skills::load_skills(&self.workspace.project_root)
-            .unwrap_or_default();
+        let skills =
+            nyzhi_core::skills::load_skills(&self.workspace.project_root).unwrap_or_default();
         let skills_text = nyzhi_core::skills::format_skills_for_prompt(&skills);
 
         let mut agent_config = AgentConfig {
@@ -451,18 +463,27 @@ impl App {
             team_name: None,
             agent_name: None,
             is_team_lead: false,
-            todo_store: Some(self.todo_store.clone().unwrap_or_else(|| nyzhi_core::tools::todo::shared_store())),
+            todo_store: Some(
+                self.todo_store
+                    .clone()
+                    .unwrap_or_else(|| nyzhi_core::tools::todo::shared_store()),
+            ),
+            index: self.codebase_index.clone(),
         };
 
         let agent_manager = if let Some(ref p) = provider {
-            let agent_registry = std::sync::Arc::new(nyzhi_core::tools::default_registry().registry);
-            Some(std::sync::Arc::new(nyzhi_core::agent_manager::AgentManager::new(
-                p.clone(),
-                agent_registry,
-                event_tx.clone(),
-                config.agent.agents.max_threads,
-                config.agent.agents.max_depth,
-            )))
+            let agent_registry = std::sync::Arc::new(
+                nyzhi_core::tools::default_registry(self.codebase_index.clone()).registry,
+            );
+            Some(std::sync::Arc::new(
+                nyzhi_core::agent_manager::AgentManager::new(
+                    p.clone(),
+                    agent_registry,
+                    event_tx.clone(),
+                    config.agent.agents.max_threads,
+                    config.agent.agents.max_depth,
+                ),
+            ))
         } else {
             None
         };
@@ -481,32 +502,34 @@ impl App {
                     all_user_roles,
                 ),
             ));
-            registry.register(Box::new(
-                nyzhi_core::tools::send_input::SendInputTool::new(agent_manager.clone()),
-            ));
-            registry.register(Box::new(
-                nyzhi_core::tools::wait_tool::WaitTool::new(agent_manager.clone()),
-            ));
+            registry.register(Box::new(nyzhi_core::tools::send_input::SendInputTool::new(
+                agent_manager.clone(),
+            )));
+            registry.register(Box::new(nyzhi_core::tools::wait_tool::WaitTool::new(
+                agent_manager.clone(),
+            )));
             registry.register(Box::new(
                 nyzhi_core::tools::close_agent::CloseAgentTool::new(agent_manager.clone()),
             ));
             registry.register(Box::new(
                 nyzhi_core::tools::resume_agent::ResumeAgentTool::new(agent_manager.clone()),
             ));
-            registry.register(Box::new(
-                nyzhi_core::tools::team::SpawnTeammateTool::new(agent_manager.clone()),
-            ));
+            registry.register(Box::new(nyzhi_core::tools::team::SpawnTeammateTool::new(
+                agent_manager.clone(),
+            )));
         }
 
         let registry = Arc::new(registry);
 
         // Background update check
         let update_config = config.update.clone();
-        let (update_tx, mut update_rx) = tokio::sync::mpsc::channel::<nyzhi_core::updater::UpdateInfo>(1);
+        let (update_tx, mut update_rx) =
+            tokio::sync::mpsc::channel::<nyzhi_core::updater::UpdateInfo>(1);
         if update_config.enabled {
             self.update_status = UpdateStatus::Checking;
             tokio::spawn(async move {
-                if let Ok(Some(info)) = nyzhi_core::updater::check_for_update(&update_config).await {
+                if let Ok(Some(info)) = nyzhi_core::updater::check_for_update(&update_config).await
+                {
                     let _ = update_tx.send(info).await;
                 }
             });
@@ -535,10 +558,7 @@ impl App {
                                 ur.new_version
                             );
                             if let Some(ref bp) = ur.backup_path {
-                                msg.push_str(&format!(
-                                    "\n  Backup saved to: {}",
-                                    bp.display()
-                                ));
+                                msg.push_str(&format!("\n  Backup saved to: {}", bp.display()));
                             }
                             if ur.verified {
                                 msg.push_str("\n  Post-flight verification: passed");
@@ -567,179 +587,191 @@ impl App {
 
             if event::poll(std::time::Duration::from_millis(16))? {
                 match event::read()? {
-                Event::Paste(text) => {
-                    if let Some(ref mut sel) = self.selector {
-                        if matches!(sel.kind, SelectorKind::ApiKeyInput | SelectorKind::CustomModelInput) {
-                            sel.search.push_str(&text);
+                    Event::Paste(text) => {
+                        if let Some(ref mut sel) = self.selector {
+                            if matches!(
+                                sel.kind,
+                                SelectorKind::ApiKeyInput | SelectorKind::CustomModelInput
+                            ) {
+                                sel.search.push_str(&text);
+                            }
+                        } else if matches!(self.mode, AppMode::Input) {
+                            self.input.insert_str(self.cursor_pos, &text);
+                            self.cursor_pos += text.len();
                         }
-                    } else if matches!(self.mode, AppMode::Input) {
-                        self.input.insert_str(self.cursor_pos, &text);
-                        self.cursor_pos += text.len();
                     }
-                }
-                Event::Key(key) => {
-                    let update_key_handled = self.handle_update_key(key);
-                    if update_key_handled {
-                        // handled by update banner
-                    } else if self.todo_panel.is_some() {
-                        match key.code {
-                            KeyCode::Esc | KeyCode::Char('q') => { self.todo_panel = None; }
-                            KeyCode::Up | KeyCode::Char('k') => {
-                                if let Some(ref mut tp) = self.todo_panel { tp.scroll_up(); }
-                            }
-                            KeyCode::Down | KeyCode::Char('j') => {
-                                if let Some(ref mut tp) = self.todo_panel { tp.scroll_down(); }
-                            }
-                            _ => {}
-                        }
-                    } else if self.text_prompt.is_some() {
-                        self.handle_text_prompt_key(key, config).await;
-                    } else if self.selector.is_some() {
-                        self.handle_selector_key(key, &mut model_info_idx, &mut agent_config).await;
-                    } else if key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        self.should_quit = true;
-                    } else if key.code == KeyCode::Char('k')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        self.open_command_selector();
-                    } else if key.code == KeyCode::Char('t')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        self.open_theme_selector();
-                    } else if key.code == KeyCode::Char('l')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        self.items.clear();
-                        if let Some(t) = thread.as_mut() {
-                            t.clear();
-                        }
-                        self.input.clear();
-                        self.cursor_pos = 0;
-                    } else if key.code == KeyCode::Char('b')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                        && matches!(self.mode, AppMode::Streaming)
-                    {
-                        if let Some(fg) = self.foreground_task.take() {
-                            thread = Some(fg.thread_snapshot);
-                            let id = self.background_next_id;
-                            self.background_next_id += 1;
-                            let label = fg.label.clone();
-                            self.background_tasks.push(BackgroundTask {
-                                id,
-                                label: fg.label,
-                                join_handle: fg.join_handle,
-                                started: std::time::Instant::now(),
-                            });
-                            if !self.current_stream.is_empty() {
-                                self.current_stream.clear();
-                            }
-                            self.thinking_stream.clear();
-                            self.stream_start = None;
-                            self.stream_token_count = 0;
-                            self.turn_start = None;
-                            self.mode = AppMode::Input;
-                            self.items.push(DisplayItem::Message {
-                                role: "system".to_string(),
-                                content: format!("Task moved to background (#{id}: {label})"),
-                            });
-                        }
-                    } else if key.code == KeyCode::Esc
-                        && matches!(self.mode, AppMode::Streaming)
-                    {
-                        if let Some(fg) = self.foreground_task.take() {
-                            fg.join_handle.abort();
-                            thread = Some(fg.thread_snapshot);
-                            if !self.current_stream.is_empty() {
-                                self.items.push(DisplayItem::Message {
-                                    role: "assistant".to_string(),
-                                    content: std::mem::take(&mut self.current_stream),
-                                });
-                            }
-                            self.thinking_stream.clear();
-                            self.stream_start = None;
-                            self.stream_token_count = 0;
-                            self.turn_start = None;
-                            self.mode = AppMode::Input;
-                            if self.autopilot.is_some() {
-                                if let Some(ref mut ap) = self.autopilot {
-                                    ap.cancel();
-                                    let _ = nyzhi_core::autopilot::save_state(&tool_ctx.project_root, ap);
+                    Event::Key(key) => {
+                        let update_key_handled = self.handle_update_key(key);
+                        if update_key_handled {
+                            // handled by update banner
+                        } else if self.todo_panel.is_some() {
+                            match key.code {
+                                KeyCode::Esc | KeyCode::Char('q') => {
+                                    self.todo_panel = None;
                                 }
-                                self.autopilot = None;
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    if let Some(ref mut tp) = self.todo_panel {
+                                        tp.scroll_up();
+                                    }
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    if let Some(ref mut tp) = self.todo_panel {
+                                        tp.scroll_down();
+                                    }
+                                }
+                                _ => {}
+                            }
+                        } else if self.text_prompt.is_some() {
+                            self.handle_text_prompt_key(key, config).await;
+                        } else if self.selector.is_some() {
+                            self.handle_selector_key(key, &mut model_info_idx, &mut agent_config)
+                                .await;
+                        } else if key.code == KeyCode::Char('c')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                        {
+                            self.should_quit = true;
+                        } else if key.code == KeyCode::Char('k')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                        {
+                            self.open_command_selector();
+                        } else if key.code == KeyCode::Char('t')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                        {
+                            self.open_theme_selector();
+                        } else if key.code == KeyCode::Char('l')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                        {
+                            self.items.clear();
+                            if let Some(t) = thread.as_mut() {
+                                t.clear();
+                            }
+                            self.input.clear();
+                            self.cursor_pos = 0;
+                        } else if key.code == KeyCode::Char('b')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                            && matches!(self.mode, AppMode::Streaming)
+                        {
+                            if let Some(fg) = self.foreground_task.take() {
+                                thread = Some(fg.thread_snapshot);
+                                let id = self.background_next_id;
+                                self.background_next_id += 1;
+                                let label = fg.label.clone();
+                                self.background_tasks.push(BackgroundTask {
+                                    id,
+                                    label: fg.label,
+                                    join_handle: fg.join_handle,
+                                    started: std::time::Instant::now(),
+                                });
+                                if !self.current_stream.is_empty() {
+                                    self.current_stream.clear();
+                                }
+                                self.thinking_stream.clear();
+                                self.stream_start = None;
+                                self.stream_token_count = 0;
+                                self.turn_start = None;
+                                self.mode = AppMode::Input;
                                 self.items.push(DisplayItem::Message {
                                     role: "system".to_string(),
-                                    content: "Autopilot cancelled.".to_string(),
+                                    content: format!("Task moved to background (#{id}: {label})"),
+                                });
+                            }
+                        } else if key.code == KeyCode::Esc
+                            && matches!(self.mode, AppMode::Streaming)
+                        {
+                            if let Some(fg) = self.foreground_task.take() {
+                                fg.join_handle.abort();
+                                thread = Some(fg.thread_snapshot);
+                                if !self.current_stream.is_empty() {
+                                    self.items.push(DisplayItem::Message {
+                                        role: "assistant".to_string(),
+                                        content: std::mem::take(&mut self.current_stream),
+                                    });
+                                }
+                                self.thinking_stream.clear();
+                                self.stream_start = None;
+                                self.stream_token_count = 0;
+                                self.turn_start = None;
+                                self.mode = AppMode::Input;
+                                if self.autopilot.is_some() {
+                                    if let Some(ref mut ap) = self.autopilot {
+                                        ap.cancel();
+                                        let _ = nyzhi_core::autopilot::save_state(
+                                            &tool_ctx.project_root,
+                                            ap,
+                                        );
+                                    }
+                                    self.autopilot = None;
+                                    self.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: "Autopilot cancelled.".to_string(),
+                                    });
+                                } else {
+                                    self.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: "Cancelled.".to_string(),
+                                    });
+                                }
+                            }
+                        } else if key.code == KeyCode::Char('f')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                            && matches!(self.mode, AppMode::Input)
+                            && !self.background_tasks.is_empty()
+                        {
+                            if self.ctrl_f_pending {
+                                let count = self.background_tasks.len();
+                                for bg in self.background_tasks.drain(..) {
+                                    bg.join_handle.abort();
+                                }
+                                self.ctrl_f_pending = false;
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Killed {count} background task(s)"),
                                 });
                             } else {
+                                self.ctrl_f_pending = true;
                                 self.items.push(DisplayItem::Message {
                                     role: "system".to_string(),
-                                    content: "Cancelled.".to_string(),
+                                    content: format!(
+                                        "Press Ctrl+F again to kill {} background task(s)",
+                                        self.background_tasks.len()
+                                    ),
                                 });
                             }
-                        }
-                    } else if key.code == KeyCode::Char('f')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                        && matches!(self.mode, AppMode::Input)
-                        && !self.background_tasks.is_empty()
-                    {
-                        if self.ctrl_f_pending {
-                            let count = self.background_tasks.len();
-                            for bg in self.background_tasks.drain(..) {
-                                bg.join_handle.abort();
+                        } else if matches!(self.mode, AppMode::AwaitingApproval) {
+                            match key.code {
+                                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                    self.respond_approval(true).await;
+                                }
+                                KeyCode::Char('n') | KeyCode::Char('N') => {
+                                    self.respond_approval(false).await;
+                                }
+                                _ => {}
                             }
-                            self.ctrl_f_pending = false;
-                            self.items.push(DisplayItem::Message {
-                                role: "system".to_string(),
-                                content: format!("Killed {count} background task(s)"),
-                            });
                         } else {
-                            self.ctrl_f_pending = true;
-                            self.items.push(DisplayItem::Message {
-                                role: "system".to_string(),
-                                content: format!(
-                                    "Press Ctrl+F again to kill {} background task(s)",
-                                    self.background_tasks.len()
-                                ),
-                            });
-                        }
-                    } else if matches!(self.mode, AppMode::AwaitingApproval) {
-                        match key.code {
-                            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                                self.respond_approval(true).await;
+                            if key.code != KeyCode::Char('f')
+                                || !key.modifiers.contains(KeyModifiers::CONTROL)
+                            {
+                                self.ctrl_f_pending = false;
                             }
-                            KeyCode::Char('n') | KeyCode::Char('N') => {
-                                self.respond_approval(false).await;
-                            }
-                            _ => {}
+                            let mi = provider
+                                .as_ref()
+                                .and_then(|p| model_info_idx.map(|i| &p.supported_models()[i]));
+                            handle_key(
+                                self,
+                                key,
+                                provider.as_deref(),
+                                thread.as_mut(),
+                                &mut agent_config,
+                                &event_tx,
+                                &registry,
+                                &tool_ctx,
+                                mi,
+                                &mut model_info_idx,
+                            )
+                            .await;
                         }
-                    } else {
-                        if key.code != KeyCode::Char('f')
-                            || !key.modifiers.contains(KeyModifiers::CONTROL)
-                        {
-                            self.ctrl_f_pending = false;
-                        }
-                        let mi = provider.as_ref().and_then(|p| {
-                            model_info_idx.map(|i| &p.supported_models()[i])
-                        });
-                        handle_key(
-                            self,
-                            key,
-                            provider.as_deref(),
-                            thread.as_mut(),
-                            &mut agent_config,
-                            &event_tx,
-                            &registry,
-                            &tool_ctx,
-                            mi,
-                            &mut model_info_idx,
-                        )
-                        .await;
                     }
-                }
-                Event::Mouse(mouse) => {
-                    match mouse.kind {
+                    Event::Mouse(mouse) => match mouse.kind {
                         crossterm::event::MouseEventKind::ScrollUp => {
                             if let Some(ref mut tp) = self.todo_panel {
                                 tp.scroll_up();
@@ -755,26 +787,33 @@ impl App {
                             }
                         }
                         _ => {}
-                    }
-                }
-                _ => {}
+                    },
+                    _ => {}
                 }
             }
 
             if self.pending_command_dispatch {
                 self.pending_command_dispatch = false;
-                let mi = provider.as_ref().and_then(|p| {
-                    model_info_idx.map(|i| &p.supported_models()[i])
-                });
+                let mi = provider
+                    .as_ref()
+                    .and_then(|p| model_info_idx.map(|i| &p.supported_models()[i]));
                 let enter = crossterm::event::KeyEvent::new(
                     KeyCode::Enter,
                     crossterm::event::KeyModifiers::NONE,
                 );
                 handle_key(
-                    self, enter, provider.as_deref(), thread.as_mut(),
-                    &mut agent_config, &event_tx, &registry,
-                    &tool_ctx, mi, &mut model_info_idx,
-                ).await;
+                    self,
+                    enter,
+                    provider.as_deref(),
+                    thread.as_mut(),
+                    &mut agent_config,
+                    &event_tx,
+                    &registry,
+                    &tool_ctx,
+                    mi,
+                    &mut model_info_idx,
+                )
+                .await;
             }
 
             if let Some((provider_id, method)) = self.pending_oauth.take() {
@@ -783,9 +822,8 @@ impl App {
                 self.oauth_rx = Some(rx);
                 self.oauth_msg_rx = Some(msg_rx);
                 tokio::spawn(async move {
-                    let result = nyzhi_auth::oauth::login_interactive(
-                        &provider_id, &method, msg_tx,
-                    ).await;
+                    let result =
+                        nyzhi_auth::oauth::login_interactive(&provider_id, &method, msg_tx).await;
                     let _ = tx.send((provider_id, result));
                 });
             }
@@ -837,11 +875,13 @@ impl App {
                 match nyzhi_provider::create_provider_async(&reload_provider_id, config).await {
                     Ok(new_prov) => {
                         let new_prov: std::sync::Arc<dyn Provider> = new_prov.into();
-                        let default_model = new_prov.supported_models()
+                        let default_model = new_prov
+                            .supported_models()
                             .first()
                             .map(|m| m.id.clone())
                             .unwrap_or_default();
-                        model_info_idx = new_prov.supported_models()
+                        model_info_idx = new_prov
+                            .supported_models()
                             .iter()
                             .position(|m| m.id == default_model)
                             .or(Some(0));
@@ -895,18 +935,36 @@ impl App {
                         let mut u = bg_usage;
                         let result = if let Some(content) = req.content {
                             nyzhi_core::agent::run_turn_with_content(
-                                &*provider_c, &mut t, content, &config_c,
-                                &bg_event_tx, &registry_c, &tool_ctx_c,
-                                mi_c.as_ref(), &mut u,
-                            ).await
+                                &*provider_c,
+                                &mut t,
+                                content,
+                                &config_c,
+                                &bg_event_tx,
+                                &registry_c,
+                                &tool_ctx_c,
+                                mi_c.as_ref(),
+                                &mut u,
+                            )
+                            .await
                         } else {
                             nyzhi_core::agent::run_turn(
-                                &*provider_c, &mut t, &req.input, &config_c,
-                                &bg_event_tx, &registry_c, &tool_ctx_c,
-                                mi_c.as_ref(), &mut u,
-                            ).await
+                                &*provider_c,
+                                &mut t,
+                                &req.input,
+                                &config_c,
+                                &bg_event_tx,
+                                &registry_c,
+                                &tool_ctx_c,
+                                mi_c.as_ref(),
+                                &mut u,
+                            )
+                            .await
                         };
-                        TurnResult { thread: t, session_usage: u, result }
+                        TurnResult {
+                            thread: t,
+                            session_usage: u,
+                            result,
+                        }
                     });
                     let id = self.background_next_id;
                     self.background_next_id += 1;
@@ -936,18 +994,36 @@ impl App {
                         let mut u = fg_usage;
                         let result = if let Some(content) = req.content {
                             nyzhi_core::agent::run_turn_with_content(
-                                &*provider_c, &mut t, content, &config_c,
-                                &event_tx_c, &registry_c, &tool_ctx_c,
-                                mi_c.as_ref(), &mut u,
-                            ).await
+                                &*provider_c,
+                                &mut t,
+                                content,
+                                &config_c,
+                                &event_tx_c,
+                                &registry_c,
+                                &tool_ctx_c,
+                                mi_c.as_ref(),
+                                &mut u,
+                            )
+                            .await
                         } else {
                             nyzhi_core::agent::run_turn(
-                                &*provider_c, &mut t, &req.input, &config_c,
-                                &event_tx_c, &registry_c, &tool_ctx_c,
-                                mi_c.as_ref(), &mut u,
-                            ).await
+                                &*provider_c,
+                                &mut t,
+                                &req.input,
+                                &config_c,
+                                &event_tx_c,
+                                &registry_c,
+                                &tool_ctx_c,
+                                mi_c.as_ref(),
+                                &mut u,
+                            )
+                            .await
                         };
-                        TurnResult { thread: t, session_usage: u, result }
+                        TurnResult {
+                            thread: t,
+                            session_usage: u,
+                            result,
+                        }
                     });
                     self.foreground_task = Some(ForegroundTask {
                         join_handle,
@@ -958,7 +1034,11 @@ impl App {
             }
 
             // --- Foreground task completion ---
-            if self.foreground_task.as_ref().is_some_and(|f| f.join_handle.is_finished()) {
+            if self
+                .foreground_task
+                .as_ref()
+                .is_some_and(|f| f.join_handle.is_finished())
+            {
                 let fg = self.foreground_task.take().unwrap();
                 match fg.join_handle.await {
                     Ok(result) => {
@@ -1003,21 +1083,36 @@ impl App {
                 let elapsed = bg.started.elapsed();
                 match bg.join_handle.await {
                     Ok(result) => {
-                        let last_msg = result.thread.messages().last().map(|m| {
-                            let text = m.content.as_text().to_string();
-                            if text.len() > 500 {
-                                format!("{}...", &text[..500])
-                            } else {
-                                text
-                            }
-                        }).unwrap_or_default();
-                        let status = if result.result.is_ok() { "completed" } else { "failed" };
+                        let last_msg = result
+                            .thread
+                            .messages()
+                            .last()
+                            .map(|m| {
+                                let text = m.content.as_text().to_string();
+                                if text.len() > 500 {
+                                    format!("{}...", &text[..500])
+                                } else {
+                                    text
+                                }
+                            })
+                            .unwrap_or_default();
+                        let status = if result.result.is_ok() {
+                            "completed"
+                        } else {
+                            "failed"
+                        };
                         self.items.push(DisplayItem::Message {
                             role: "system".to_string(),
                             content: format!(
                                 "Background task #{} {status} ({:.1}s): {}\n{}",
-                                bg.id, elapsed.as_secs_f64(), bg.label,
-                                if last_msg.is_empty() { "(no output)".to_string() } else { last_msg },
+                                bg.id,
+                                elapsed.as_secs_f64(),
+                                bg.label,
+                                if last_msg.is_empty() {
+                                    "(no output)".to_string()
+                                } else {
+                                    last_msg
+                                },
                             ),
                         });
                         if let Err(e) = &result.result {
@@ -1071,9 +1166,9 @@ impl App {
                             self.turn_start = Some(std::time::Instant::now());
                         }
                         if !self.thinking_stream.is_empty() {
-                            self.items.push(DisplayItem::Thinking(
-                                std::mem::take(&mut self.thinking_stream),
-                            ));
+                            self.items.push(DisplayItem::Thinking(std::mem::take(
+                                &mut self.thinking_stream,
+                            )));
                         }
                         if !self.current_stream.is_empty() {
                             self.items.push(DisplayItem::Message {
@@ -1127,24 +1222,28 @@ impl App {
                         if name == "todowrite" || name == "todoread" {
                             if let Some(ref store) = self.todo_store {
                                 let store_c = store.clone();
-                                let sid = thread.as_ref()
-                                    .map(|t| t.id.clone())
-                                    .unwrap_or_default();
+                                let sid = thread.as_ref().map(|t| t.id.clone()).unwrap_or_default();
                                 self.todo_progress = futures::executor::block_on(
                                     nyzhi_core::tools::todo_progress(&store_c, &sid),
                                 );
                                 if self.todo_panel.is_some() {
-                                    use crate::components::todo_panel::{TodoPanelItem, TodoPanelState};
+                                    use crate::components::todo_panel::{
+                                        TodoPanelItem, TodoPanelState,
+                                    };
                                     let items = store_c.blocking_lock();
-                                    let panel_items: Vec<TodoPanelItem> = items.values().flat_map(|todos| {
-                                        todos.iter().map(|t| TodoPanelItem {
-                                            id: t.id.clone(),
-                                            content: t.content.clone(),
-                                            status: t.status.clone(),
-                                            blocked_by: t.blocked_by.clone(),
+                                    let panel_items: Vec<TodoPanelItem> = items
+                                        .values()
+                                        .flat_map(|todos| {
+                                            todos.iter().map(|t| TodoPanelItem {
+                                                id: t.id.clone(),
+                                                content: t.content.clone(),
+                                                status: t.status.clone(),
+                                                blocked_by: t.blocked_by.clone(),
+                                            })
                                         })
-                                    }).collect();
-                                    let old_scroll = self.todo_panel.as_ref().map(|p| p.scroll).unwrap_or(0);
+                                        .collect();
+                                    let old_scroll =
+                                        self.todo_panel.as_ref().map(|p| p.scroll).unwrap_or(0);
                                     self.todo_panel = Some(TodoPanelState {
                                         items: panel_items,
                                         scroll: old_scroll,
@@ -1162,9 +1261,8 @@ impl App {
                                 self.last_plan_name = Some(plan_name.to_string());
                             }
                         }
-                        const FILE_TOOLS: &[&str] = &[
-                            "edit", "write", "delete_file", "move_file", "copy_file",
-                        ];
+                        const FILE_TOOLS: &[&str] =
+                            &["edit", "write", "delete_file", "move_file", "copy_file"];
                         if FILE_TOOLS.contains(&name.as_str()) && !self.hooks_config.is_empty() {
                             let tracker = change_tracker.clone();
                             let hooks = self.hooks_config.clone();
@@ -1178,7 +1276,8 @@ impl App {
                                     if let Some(file) = changed_file {
                                         let results = nyzhi_core::hooks::run_after_edit_hooks(
                                             &hooks, &file, &hook_cwd,
-                                        ).await;
+                                        )
+                                        .await;
                                         for r in results {
                                             let _ = tx.send(r.summary());
                                         }
@@ -1241,7 +1340,10 @@ impl App {
                             ),
                         });
                     }
-                    AgentEvent::AutoCompacting { estimated_tokens, context_window } => {
+                    AgentEvent::AutoCompacting {
+                        estimated_tokens,
+                        context_window,
+                    } => {
                         self.items.push(DisplayItem::Message {
                             role: "system".to_string(),
                             content: format!(
@@ -1268,13 +1370,19 @@ impl App {
                             content: format!("Spawned sub-agent {nickname} (role: {role_str})"),
                         });
                     }
-                    AgentEvent::SubAgentStatusChanged { nickname, status, .. } => {
+                    AgentEvent::SubAgentStatusChanged {
+                        nickname, status, ..
+                    } => {
                         self.items.push(DisplayItem::Message {
                             role: "system".to_string(),
                             content: format!("Agent {nickname}: {status}"),
                         });
                     }
-                    AgentEvent::SubAgentCompleted { nickname, final_message, .. } => {
+                    AgentEvent::SubAgentCompleted {
+                        nickname,
+                        final_message,
+                        ..
+                    } => {
                         let preview = final_message
                             .as_deref()
                             .map(|m| {
@@ -1296,7 +1404,9 @@ impl App {
                         allow_custom,
                         respond,
                     } => {
-                        use crate::components::selector::{SelectorItem, SelectorState, SelectorKind as SK};
+                        use crate::components::selector::{
+                            SelectorItem, SelectorKind as SK, SelectorState,
+                        };
 
                         let mut items: Vec<SelectorItem> = options
                             .iter()
@@ -1317,7 +1427,10 @@ impl App {
                             content: format!("Agent asks: {}", question),
                         });
                     }
-                    AgentEvent::ContextUpdate { estimated_tokens, context_window } => {
+                    AgentEvent::ContextUpdate {
+                        estimated_tokens,
+                        context_window,
+                    } => {
                         self.context_used_tokens = estimated_tokens;
                         self.context_window = context_window;
                     }
@@ -1326,9 +1439,9 @@ impl App {
                     }
                     AgentEvent::TurnComplete => {
                         if !self.thinking_stream.is_empty() {
-                            self.items.push(DisplayItem::Thinking(
-                                std::mem::take(&mut self.thinking_stream),
-                            ));
+                            self.items.push(DisplayItem::Thinking(std::mem::take(
+                                &mut self.thinking_stream,
+                            )));
                         }
                         if !self.current_stream.is_empty() {
                             self.items.push(DisplayItem::Message {
@@ -1391,11 +1504,20 @@ impl App {
                         }
 
                         if let Some(ref mut ap) = self.autopilot {
-                            let last_output = self.items.iter().rev()
+                            let last_output = self
+                                .items
+                                .iter()
+                                .rev()
                                 .find_map(|item| {
                                     if let DisplayItem::Message { role, content } = item {
-                                        if role == "assistant" { Some(content.clone()) } else { None }
-                                    } else { None }
+                                        if role == "assistant" {
+                                            Some(content.clone())
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
                                 })
                                 .unwrap_or_default();
 
@@ -1419,9 +1541,7 @@ impl App {
                             }
 
                             ap.advance();
-                            let _ = nyzhi_core::autopilot::save_state(
-                                &tool_ctx.project_root, ap,
-                            );
+                            let _ = nyzhi_core::autopilot::save_state(&tool_ctx.project_root, ap);
 
                             if ap.is_terminal() {
                                 self.items.push(DisplayItem::Message {
@@ -1437,13 +1557,16 @@ impl App {
                                     }
                                     nyzhi_core::autopilot::AutopilotPhase::Execution => {
                                         let plan = ap.plan.as_deref().unwrap_or("");
-                                        nyzhi_core::autopilot::build_execution_prompt(plan, &ap.idea)
+                                        nyzhi_core::autopilot::build_execution_prompt(
+                                            plan, &ap.idea,
+                                        )
                                     }
                                     nyzhi_core::autopilot::AutopilotPhase::Qa => {
                                         nyzhi_core::autopilot::build_qa_prompt(&ap.idea)
                                     }
                                     nyzhi_core::autopilot::AutopilotPhase::Validation => {
-                                        let qa = ap.qa_results.last().map(|s| s.as_str()).unwrap_or("");
+                                        let qa =
+                                            ap.qa_results.last().map(|s| s.as_str()).unwrap_or("");
                                         nyzhi_core::autopilot::build_validation_prompt(qa, &ap.idea)
                                     }
                                     _ => String::new(),
@@ -1452,7 +1575,10 @@ impl App {
                                 if !next_prompt.is_empty() {
                                     self.items.push(DisplayItem::Message {
                                         role: "system".to_string(),
-                                        content: format!("Autopilot advancing to phase: {}", ap.phase),
+                                        content: format!(
+                                            "Autopilot advancing to phase: {}",
+                                            ap.phase
+                                        ),
                                     });
                                     self.turn_request = Some(TurnRequest {
                                         input: next_prompt,
@@ -1467,9 +1593,7 @@ impl App {
 
                         if let Some(ref store) = self.todo_store {
                             let store_c = store.clone();
-                            let sid = thread.as_ref()
-                                .map(|t| t.id.clone())
-                                .unwrap_or_default();
+                            let sid = thread.as_ref().map(|t| t.id.clone()).unwrap_or_default();
 
                             self.todo_progress = futures::executor::block_on(
                                 nyzhi_core::tools::todo_progress(&store_c, &sid),
@@ -1514,9 +1638,7 @@ impl App {
                             }
                         }
 
-                        if self.turn_request.is_none()
-                            && !self.message_queue.is_empty()
-                        {
+                        if self.turn_request.is_none() && !self.message_queue.is_empty() {
                             if let Some(next) = self.message_queue.pop_front() {
                                 let remaining = self.message_queue.len();
                                 self.items.push(DisplayItem::Message {
@@ -1526,7 +1648,9 @@ impl App {
                                 if remaining > 0 {
                                     self.items.push(DisplayItem::Message {
                                         role: "system".to_string(),
-                                        content: format!("Queued message submitted ({remaining} remaining)"),
+                                        content: format!(
+                                            "Queued message submitted ({remaining} remaining)"
+                                        ),
                                     });
                                 }
                                 self.turn_request = Some(next);
@@ -1587,8 +1711,9 @@ impl App {
             KeyCode::Char('u') | KeyCode::Char('U') => {
                 if let Some(info) = self.update_info.take() {
                     self.update_status = UpdateStatus::Downloading { progress: None };
-                    let (done_tx, done_rx) =
-                        tokio::sync::mpsc::channel::<anyhow::Result<nyzhi_core::updater::UpdateResult>>(1);
+                    let (done_tx, done_rx) = tokio::sync::mpsc::channel::<
+                        anyhow::Result<nyzhi_core::updater::UpdateResult>,
+                    >(1);
                     self.update_done_rx = Some(done_rx);
                     tokio::spawn(async move {
                         let result = nyzhi_core::updater::download_and_apply(&info).await;
@@ -1607,7 +1732,10 @@ impl App {
                 true
             }
             KeyCode::Char('i') | KeyCode::Char('I') => {
-                if let UpdateStatus::Available { ref new_version, .. } = self.update_status {
+                if let UpdateStatus::Available {
+                    ref new_version, ..
+                } = self.update_status
+                {
                     nyzhi_core::updater::skip_version(new_version);
                 }
                 self.update_status = UpdateStatus::None;
@@ -1618,7 +1746,12 @@ impl App {
         }
     }
 
-    async fn handle_selector_key(&mut self, key: crossterm::event::KeyEvent, model_info_idx: &mut Option<usize>, agent_config: &mut AgentConfig) {
+    async fn handle_selector_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        model_info_idx: &mut Option<usize>,
+        agent_config: &mut AgentConfig,
+    ) {
         use crate::components::selector::{SelectorAction, SelectorKind};
         use crate::theme::{Accent, ThemePreset};
 
@@ -1649,18 +1782,29 @@ impl App {
                         );
                     }
                     SelectorKind::Model => {
-                        let is_thinking = self.selector.as_ref()
+                        let is_thinking = self
+                            .selector
+                            .as_ref()
                             .and_then(|s| s.context_value.as_deref())
                             == Some("thinking");
                         if is_thinking {
-                            let label = if value == "off" { "off".to_string() } else { value.clone() };
-                            self.thinking_level = if value == "off" { None } else { Some(value.clone()) };
+                            let label = if value == "off" {
+                                "off".to_string()
+                            } else {
+                                value.clone()
+                            };
+                            self.thinking_level = if value == "off" {
+                                None
+                            } else {
+                                Some(value.clone())
+                            };
                             self.items.push(DisplayItem::Message {
                                 role: "system".to_string(),
                                 content: format!("Thinking level set to: {}", label),
                             });
                         } else if value.starts_with("__custom__/") {
-                            let provider_id = value.strip_prefix("__custom__/").unwrap().to_string();
+                            let provider_id =
+                                value.strip_prefix("__custom__/").unwrap().to_string();
                             self.selector = None;
                             self.open_custom_model_input(&provider_id);
                             return;
@@ -1690,7 +1834,9 @@ impl App {
                         return;
                     }
                     SelectorKind::ConnectMethod => {
-                        let provider_id = self.selector.as_ref()
+                        let provider_id = self
+                            .selector
+                            .as_ref()
                             .and_then(|s| s.context_value.clone())
                             .unwrap_or_default();
                         self.selector = None;
@@ -1704,13 +1850,34 @@ impl App {
                     SelectorKind::Command => {
                         self.selector = None;
                         match value.as_str() {
-                            "/style" => { self.open_style_selector(); return; }
-                            "/trust" => { self.open_trust_selector(); return; }
-                            "/resume" | "/sessions" => { self.open_session_selector(); return; }
-                            "/theme" => { self.open_theme_selector(); return; }
-                            "/accent" => { self.open_accent_selector(); return; }
-                            "/model" => { self.open_model_selector(); return; }
-                            "/connect" => { self.open_provider_selector(); return; }
+                            "/style" => {
+                                self.open_style_selector();
+                                return;
+                            }
+                            "/trust" => {
+                                self.open_trust_selector();
+                                return;
+                            }
+                            "/resume" | "/sessions" => {
+                                self.open_session_selector();
+                                return;
+                            }
+                            "/theme" => {
+                                self.open_theme_selector();
+                                return;
+                            }
+                            "/accent" => {
+                                self.open_accent_selector();
+                                return;
+                            }
+                            "/model" => {
+                                self.open_model_selector();
+                                return;
+                            }
+                            "/connect" => {
+                                self.open_provider_selector();
+                                return;
+                            }
                             _ => {
                                 self.input = value;
                                 self.cursor_pos = self.input.len();
@@ -1724,7 +1891,9 @@ impl App {
                             "normal" => self.output_style = nyzhi_config::OutputStyle::Normal,
                             "verbose" => self.output_style = nyzhi_config::OutputStyle::Verbose,
                             "minimal" => self.output_style = nyzhi_config::OutputStyle::Minimal,
-                            "structured" => self.output_style = nyzhi_config::OutputStyle::Structured,
+                            "structured" => {
+                                self.output_style = nyzhi_config::OutputStyle::Structured
+                            }
                             _ => {}
                         }
                         self.items.push(DisplayItem::Message {
@@ -1750,10 +1919,14 @@ impl App {
                         return;
                     }
                     SelectorKind::CustomModelInput => {
-                        let provider_id = self.selector.as_ref()
+                        let provider_id = self
+                            .selector
+                            .as_ref()
                             .and_then(|s| s.context_value.clone())
                             .unwrap_or_default();
-                        let model_id = self.selector.as_ref()
+                        let model_id = self
+                            .selector
+                            .as_ref()
                             .map(|s| s.search.trim().to_string())
                             .unwrap_or_default();
                         if !model_id.is_empty() {
@@ -1767,10 +1940,14 @@ impl App {
                         }
                     }
                     SelectorKind::ApiKeyInput => {
-                        let provider_id = self.selector.as_ref()
+                        let provider_id = self
+                            .selector
+                            .as_ref()
                             .and_then(|s| s.context_value.clone())
                             .unwrap_or_default();
-                        let api_key = self.selector.as_ref()
+                        let api_key = self
+                            .selector
+                            .as_ref()
                             .map(|s| s.search.clone())
                             .unwrap_or_default();
                         if !api_key.is_empty() {
@@ -1793,7 +1970,9 @@ impl App {
                     }
                     SelectorKind::UserQuestion => {
                         if value == "__custom__" {
-                            let custom_text = self.selector.as_ref()
+                            let custom_text = self
+                                .selector
+                                .as_ref()
                                 .map(|s| s.search.trim().to_string())
                                 .unwrap_or_default();
                             self.selector = None;
@@ -1817,7 +1996,9 @@ impl App {
                                     nyzhi_core::planning::load_plan(
                                         &std::env::current_dir().unwrap_or_default(),
                                         name,
-                                    ).ok().flatten()
+                                    )
+                                    .ok()
+                                    .flatten()
                                 });
 
                                 let msg = if let Some(ref content) = plan_content {
@@ -1861,18 +2042,23 @@ impl App {
                 self.selector = None;
             }
             SelectorAction::Cancel => {
-                let was_user_question = self.selector.as_ref()
+                let was_user_question = self
+                    .selector
+                    .as_ref()
                     .map(|s| s.kind == SelectorKind::UserQuestion)
                     .unwrap_or(false);
                 self.selector = None;
                 if was_user_question {
-                    self.respond_user_question("__cancelled__".to_string()).await;
+                    self.respond_user_question("__cancelled__".to_string())
+                        .await;
                 }
             }
             SelectorAction::Tab => {
                 let kind = self.selector.as_ref().map(|s| s.kind);
                 if kind == Some(SelectorKind::Model) {
-                    let is_thinking = self.selector.as_ref()
+                    let is_thinking = self
+                        .selector
+                        .as_ref()
                         .and_then(|s| s.context_value.as_deref())
                         == Some("thinking");
                     if !is_thinking {
@@ -1916,7 +2102,8 @@ impl App {
                 let kind = self.text_prompt.as_ref().map(|p| p.kind);
                 self.text_prompt = None;
                 if kind == Some(TextPromptKind::UserQuestionCustom) {
-                    self.respond_user_question("__cancelled__".to_string()).await;
+                    self.respond_user_question("__cancelled__".to_string())
+                        .await;
                 } else {
                     self.items.push(DisplayItem::Message {
                         role: "system".to_string(),
@@ -2013,7 +2200,10 @@ impl App {
 
         let items: Vec<SelectorItem> = Accent::ALL
             .iter()
-            .map(|a| SelectorItem::entry(&capitalize(a.name()), a.name()).with_color(a.color_preview(self.theme.mode)))
+            .map(|a| {
+                SelectorItem::entry(&capitalize(a.name()), a.name())
+                    .with_color(a.color_preview(self.theme.mode))
+            })
             .collect();
         self.selector = Some(SelectorState::new(
             SelectorKind::Accent,
@@ -2028,7 +2218,10 @@ impl App {
 
         let mut items = vec![];
         items.push(SelectorItem::entry("Build -- execute the plan", "build"));
-        items.push(SelectorItem::entry("Keep editing -- switch to Act, prompt yourself", "keep-editing"));
+        items.push(SelectorItem::entry(
+            "Keep editing -- switch to Act, prompt yourself",
+            "keep-editing",
+        ));
         items.push(SelectorItem::entry("Stay in Plan", "stay"));
 
         self.selector = Some(SelectorState::new(
@@ -2045,11 +2238,21 @@ impl App {
         let registry = nyzhi_provider::ModelRegistry::new();
         let mut all_providers = registry.providers();
         let priority = [
-            "openai", "anthropic", "gemini", "cursor", "openrouter",
-            "deepseek", "groq", "together", "ollama",
+            "openai",
+            "anthropic",
+            "gemini",
+            "cursor",
+            "openrouter",
+            "deepseek",
+            "groq",
+            "together",
+            "ollama",
         ];
         all_providers.sort_by_key(|p| {
-            priority.iter().position(|&x| x == *p).unwrap_or(priority.len())
+            priority
+                .iter()
+                .position(|&x| x == *p)
+                .unwrap_or(priority.len())
         });
         let mut items = Vec::new();
 
@@ -2064,7 +2267,10 @@ impl App {
             let display_name = nyzhi_config::find_provider_def(provider_id)
                 .map(|d| d.name)
                 .unwrap_or(provider_id);
-            items.push(SelectorItem::header(&format!("{} ({})", display_name, status)));
+            items.push(SelectorItem::header(&format!(
+                "{} ({})",
+                display_name, status
+            )));
             for m in &models {
                 let thinking_badge = if m.has_thinking() {
                     if m.id == self.model_name && *provider_id == self.provider_name {
@@ -2092,16 +2298,26 @@ impl App {
         }
 
         let current = format!("{}/{}", self.provider_name, self.model_name);
-        self.selector = Some(SelectorState::new(SelectorKind::Model, "Model", items, &current));
+        self.selector = Some(SelectorState::new(
+            SelectorKind::Model,
+            "Model",
+            items,
+            &current,
+        ));
     }
 
     pub fn open_provider_selector(&mut self) {
         use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
 
         let mut items = Vec::new();
-        let categories = [("popular", "Popular"), ("agents", "Agents"), ("other", "Other")];
+        let categories = [
+            ("popular", "Popular"),
+            ("agents", "Agents"),
+            ("other", "Other"),
+        ];
         for (cat_id, cat_name) in &categories {
-            let providers: Vec<_> = nyzhi_config::BUILT_IN_PROVIDERS.iter()
+            let providers: Vec<_> = nyzhi_config::BUILT_IN_PROVIDERS
+                .iter()
                 .filter(|d| d.category == *cat_id)
                 .collect();
             if providers.is_empty() {
@@ -2144,9 +2360,7 @@ impl App {
 
         let items: Vec<SelectorItem> = levels
             .iter()
-            .map(|(value, desc)| {
-                SelectorItem::entry(&format!("{:<12} {}", value, desc), value)
-            })
+            .map(|(value, desc)| SelectorItem::entry(&format!("{:<12} {}", value, desc), value))
             .collect();
 
         let current = self.thinking_level.as_deref().unwrap_or("off");
@@ -2179,50 +2393,35 @@ impl App {
                     "Codex subscription (device code login)",
                     "codex",
                 ));
-                items.push(SelectorItem::entry(
-                    "Enter API key manually",
-                    "apikey",
-                ));
+                items.push(SelectorItem::entry("Enter API key manually", "apikey"));
             }
             "gemini" => {
                 items.push(SelectorItem::entry(
                     "Gemini CLI OAuth (free tier / paid plan)",
                     "gemini-cli",
                 ));
-                items.push(SelectorItem::entry(
-                    "Enter API key manually",
-                    "apikey",
-                ));
+                items.push(SelectorItem::entry("Enter API key manually", "apikey"));
             }
             "cursor" => {
                 items.push(SelectorItem::entry(
                     "Import from Cursor IDE (auto)",
                     "cursor-auto",
                 ));
-                items.push(SelectorItem::entry(
-                    "Paste token manually",
-                    "apikey",
-                ));
+                items.push(SelectorItem::entry("Paste token manually", "apikey"));
             }
             "anthropic" => {
                 items.push(SelectorItem::entry(
                     "Claude Pro/Max subscription (OAuth)",
                     "oauth",
                 ));
-                items.push(SelectorItem::entry(
-                    "Enter API key manually",
-                    "apikey",
-                ));
+                items.push(SelectorItem::entry("Enter API key manually", "apikey"));
             }
             _ => {
                 items.push(SelectorItem::entry(
                     "Login with OAuth (opens browser)",
                     "oauth",
                 ));
-                items.push(SelectorItem::entry(
-                    "Enter API key manually",
-                    "apikey",
-                ));
+                items.push(SelectorItem::entry("Enter API key manually", "apikey"));
             }
         }
 
@@ -2243,9 +2442,10 @@ impl App {
             .map(|d| d.name)
             .unwrap_or(provider_id);
 
-        let items = vec![
-            SelectorItem::entry(&format!("Paste your {} API key and press Enter", display_name), "submit"),
-        ];
+        let items = vec![SelectorItem::entry(
+            &format!("Paste your {} API key and press Enter", display_name),
+            "submit",
+        )];
         let mut state = SelectorState::new(
             SelectorKind::ApiKeyInput,
             &format!("{} API Key", display_name),
@@ -2261,12 +2461,53 @@ impl App {
 
         let categories: &[(&str, &[&str])] = &[
             ("Provider", &["/model", "/connect", "/login"]),
-            ("Agent", &["/autopilot", "/team", "/qa", "/persist", "/think", "/style", "/trust"]),
-            ("Session", &["/clear", "/compact", "/resume", "/sessions", "/export", "/search", "/retry"]),
-            ("Project", &["/init", "/doctor", "/verify", "/hooks", "/mcp", "/commands", "/learn"]),
-            ("View", &["/status", "/context", "/changes", "/todo", "/plan", "/notepad", "/bg"]),
+            (
+                "Agent",
+                &[
+                    "/autopilot",
+                    "/team",
+                    "/qa",
+                    "/persist",
+                    "/think",
+                    "/style",
+                    "/trust",
+                ],
+            ),
+            (
+                "Session",
+                &[
+                    "/clear",
+                    "/compact",
+                    "/resume",
+                    "/sessions",
+                    "/export",
+                    "/search",
+                    "/retry",
+                ],
+            ),
+            (
+                "Project",
+                &[
+                    "/init",
+                    "/doctor",
+                    "/verify",
+                    "/hooks",
+                    "/mcp",
+                    "/commands",
+                    "/learn",
+                ],
+            ),
+            (
+                "View",
+                &[
+                    "/status", "/context", "/changes", "/todo", "/plan", "/notepad", "/bg",
+                ],
+            ),
             ("UI", &["/theme", "/accent", "/notify", "/image"]),
-            ("System", &["/help", "/bug", "/editor", "/enable_exa", "/undo", "/exit"]),
+            (
+                "System",
+                &["/help", "/bug", "/editor", "/enable_exa", "/undo", "/exit"],
+            ),
         ];
 
         let cmd_defs: std::collections::HashMap<&str, &str> = crate::completion::SLASH_COMMANDS
@@ -2302,10 +2543,13 @@ impl App {
             ("minimal", "Hide tool details"),
             ("structured", "JSON output"),
         ];
-        let items: Vec<SelectorItem> = options.iter().map(|(id, desc)| {
-            let marker = if *id == current { " ●" } else { "" };
-            SelectorItem::entry(&format!("{:<14} {}{}", id, desc, marker), id)
-        }).collect();
+        let items: Vec<SelectorItem> = options
+            .iter()
+            .map(|(id, desc)| {
+                let marker = if *id == current { " ●" } else { "" };
+                SelectorItem::entry(&format!("{:<14} {}{}", id, desc, marker), id)
+            })
+            .collect();
 
         self.selector = Some(SelectorState::new(
             SelectorKind::Style,
@@ -2325,10 +2569,13 @@ impl App {
             ("autoedit", "Auto-approve reads + edits"),
             ("full", "Auto-approve everything"),
         ];
-        let items: Vec<SelectorItem> = options.iter().map(|(id, desc)| {
-            let marker = if *id == current { " ●" } else { "" };
-            SelectorItem::entry(&format!("{:<14} {}{}", id, desc, marker), id)
-        }).collect();
+        let items: Vec<SelectorItem> = options
+            .iter()
+            .map(|(id, desc)| {
+                let marker = if *id == current { " ●" } else { "" };
+                SelectorItem::entry(&format!("{:<14} {}{}", id, desc, marker), id)
+            })
+            .collect();
 
         self.selector = Some(SelectorState::new(
             SelectorKind::Trust,
@@ -2345,12 +2592,10 @@ impl App {
             .map(|d| d.name)
             .unwrap_or(provider_id);
 
-        let items = vec![
-            SelectorItem::entry(
-                &format!("Type a model ID for {} and press Enter", display_name),
-                "submit",
-            ),
-        ];
+        let items = vec![SelectorItem::entry(
+            &format!("Type a model ID for {} and press Enter", display_name),
+            "submit",
+        )];
         let mut state = SelectorState::new(
             SelectorKind::CustomModelInput,
             &format!("{} Model ID", display_name),
@@ -2374,15 +2619,19 @@ impl App {
                     });
                     return;
                 }
-                let items: Vec<SelectorItem> = sessions.iter().take(20).map(|s| {
-                    let label = format!(
-                        "{} ({} msgs, {})",
-                        s.title,
-                        s.message_count,
-                        s.updated_at.format("%m/%d %H:%M"),
-                    );
-                    SelectorItem::entry(&label, &s.id)
-                }).collect();
+                let items: Vec<SelectorItem> = sessions
+                    .iter()
+                    .take(20)
+                    .map(|s| {
+                        let label = format!(
+                            "{} ({} msgs, {})",
+                            s.title,
+                            s.message_count,
+                            s.updated_at.format("%m/%d %H:%M"),
+                        );
+                        SelectorItem::entry(&label, &s.id)
+                    })
+                    .collect();
 
                 self.selector = Some(SelectorState::new(
                     SelectorKind::Session,
@@ -2450,7 +2699,9 @@ impl App {
     }
 
     fn handle_model_tab(&mut self, _model_info_idx: &mut Option<usize>) {
-        let cursor_model = self.selector.as_ref()
+        let cursor_model = self
+            .selector
+            .as_ref()
             .and_then(|s| s.items.get(s.cursor))
             .map(|item| item.value.clone())
             .unwrap_or_default();
@@ -2477,10 +2728,7 @@ impl App {
     ) -> Result<()> {
         use std::io::Write;
 
-        let tmp_path = std::env::temp_dir().join(format!(
-            "nyzhi_edit_{}.md",
-            std::process::id()
-        ));
+        let tmp_path = std::env::temp_dir().join(format!("nyzhi_edit_{}.md", std::process::id()));
         std::fs::write(&tmp_path, &self.input)?;
 
         io::stdout().execute(DisableMouseCapture)?;

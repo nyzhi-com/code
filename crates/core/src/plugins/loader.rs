@@ -80,9 +80,10 @@ pub fn load_plugin(plugin_root: &Path) -> Result<LoadedPlugin> {
         }
     }
 
-    let hook_file = manifest.hooks.as_ref().map(|h| {
-        manifest.resolve_path(plugin_root, h).display().to_string()
-    });
+    let hook_file = manifest
+        .hooks
+        .as_ref()
+        .map(|h| manifest.resolve_path(plugin_root, h).display().to_string());
 
     let mcp_config = manifest.mcp_servers.as_ref().and_then(|m| {
         let path = manifest.resolve_path(plugin_root, m);

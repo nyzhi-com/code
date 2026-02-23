@@ -210,8 +210,7 @@ enum McpAction {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("nyzhi=info".parse()?),
+            tracing_subscriber::EnvFilter::from_default_env().add_directive("nyzhi=info".parse()?),
         )
         .with_target(false)
         .init();
@@ -326,7 +325,11 @@ async fn main() -> Result<()> {
             for def in nyzhi_config::BUILT_IN_PROVIDERS {
                 seen.insert(def.id.to_string());
                 let status = nyzhi_auth::auth_status(def.id);
-                let marker = if status != "not connected" { "✓" } else { "✗" };
+                let marker = if status != "not connected" {
+                    "✓"
+                } else {
+                    "✗"
+                };
                 let mut line = format!("  {marker} {}: {status}", def.name);
                 if let Ok(accounts) = nyzhi_auth::token_store::list_accounts(def.id) {
                     if accounts.len() > 1 {
@@ -346,9 +349,15 @@ async fn main() -> Result<()> {
                 println!("{line}");
             }
             for (name, _entry) in &config.provider.providers {
-                if seen.contains(name) { continue; }
+                if seen.contains(name) {
+                    continue;
+                }
                 let status = nyzhi_auth::auth_status(name);
-                let marker = if status != "not connected" { "✓" } else { "✗" };
+                let marker = if status != "not connected" {
+                    "✓"
+                } else {
+                    "✗"
+                };
                 println!("  {marker} {name} (custom): {status}");
             }
             return Ok(());
@@ -420,10 +429,8 @@ async fn main() -> Result<()> {
                 usage: nyzhi_core::agent::SessionUsage::default(),
                 timestamp: session_meta.updated_at,
             };
-            let markdown = nyzhi_tui::export::export_thread_markdown(
-                thread.messages(),
-                &export_meta,
-            );
+            let markdown =
+                nyzhi_tui::export::export_thread_markdown(thread.messages(), &export_meta);
             let path = output.unwrap_or_else(nyzhi_tui::export::default_export_path);
             std::fs::write(&path, &markdown)?;
             println!(
@@ -451,9 +458,7 @@ async fn main() -> Result<()> {
                             println!("Deleted session [{}] \"{}\"", &s.id[..8], s.title);
                         }
                         n => {
-                            eprintln!(
-                                "Ambiguous: {n} sessions match '{id}'. Be more specific."
-                            );
+                            eprintln!("Ambiguous: {n} sessions match '{id}'. Be more specific.");
                             for s in matches.iter().take(10) {
                                 eprintln!("  [{}] {}", &s.id[..8], s.title);
                             }
@@ -471,16 +476,10 @@ async fn main() -> Result<()> {
                         1 => {
                             let s = &matches[0];
                             nyzhi_core::session::rename_session(&s.id, &title)?;
-                            println!(
-                                "Renamed session [{}] to \"{}\"",
-                                &s.id[..8],
-                                title,
-                            );
+                            println!("Renamed session [{}] to \"{}\"", &s.id[..8], title,);
                         }
                         n => {
-                            eprintln!(
-                                "Ambiguous: {n} sessions match '{id}'. Be more specific."
-                            );
+                            eprintln!("Ambiguous: {n} sessions match '{id}'. Be more specific.");
                             for s in matches.iter().take(10) {
                                 eprintln!("  [{}] {}", &s.id[..8], s.title);
                             }
@@ -496,12 +495,11 @@ async fn main() -> Result<()> {
             if entries.is_empty() {
                 println!("No usage data recorded yet.");
             } else {
-                let report = nyzhi_core::analytics::generate_report(
-                    &entries, "All-time", 0,
-                );
+                let report = nyzhi_core::analytics::generate_report(&entries, "All-time", 0);
                 println!("{}", report.display());
                 println!("\nTotal sessions: {}", {
-                    let mut ids: Vec<&str> = entries.iter().map(|e| e.session_id.as_str()).collect();
+                    let mut ids: Vec<&str> =
+                        entries.iter().map(|e| e.session_id.as_str()).collect();
                     ids.sort();
                     ids.dedup();
                     ids.len()
@@ -520,8 +518,14 @@ async fn main() -> Result<()> {
                         println!("Agent teams:\n");
                         for name in &teams {
                             if let Ok(config) = nyzhi_core::teams::config::TeamConfig::load(name) {
-                                let member_names: Vec<&str> = config.members.iter().map(|m| m.name.as_str()).collect();
-                                println!("  {} ({} members: {})", name, config.members.len(), member_names.join(", "));
+                                let member_names: Vec<&str> =
+                                    config.members.iter().map(|m| m.name.as_str()).collect();
+                                println!(
+                                    "  {} ({} members: {})",
+                                    name,
+                                    config.members.len(),
+                                    member_names.join(", ")
+                                );
                             } else {
                                 println!("  {} (config error)", name);
                             }
@@ -538,12 +542,16 @@ async fn main() -> Result<()> {
                                 let id = m.agent_id.as_deref().unwrap_or("n/a");
                                 println!("  {} [{}] role={} id={}", m.name, m.agent_type, role, id);
                             }
-                            let tasks = nyzhi_core::teams::tasks::list_tasks(&name, None).unwrap_or_default();
+                            let tasks = nyzhi_core::teams::tasks::list_tasks(&name, None)
+                                .unwrap_or_default();
                             if !tasks.is_empty() {
                                 println!("\nTasks ({}):", tasks.len());
                                 for t in &tasks {
                                     let owner = t.owner.as_deref().unwrap_or("unassigned");
-                                    println!("  #{} [{}] {} ({})", t.id, t.status, t.subject, owner);
+                                    println!(
+                                        "  #{} [{}] {} ({})",
+                                        t.id, t.status, t.subject, owner
+                                    );
                                 }
                             }
                         }
@@ -587,7 +595,9 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Wait) => {
             println!("Rate limit daemon not yet active.");
-            println!("If you hit rate limits during a session, nyzhi will auto-retry with backoff.");
+            println!(
+                "If you hit rate limits during a session, nyzhi will auto-retry with backoff."
+            );
             println!("Configure retry in .nyzhi/config.toml:\n");
             println!("  [agent.retry]");
             println!("  max_retries = 3");
@@ -600,14 +610,18 @@ async fn main() -> Result<()> {
             if events.is_empty() {
                 println!("No replay data for session '{id}'");
             } else {
-                println!("{}", nyzhi_core::replay::format_replay(
-                    &events,
-                    filter.as_deref(),
-                ));
+                println!(
+                    "{}",
+                    nyzhi_core::replay::format_replay(&events, filter.as_deref(),)
+                );
             }
             return Ok(());
         }
-        Some(Commands::Update { force, rollback: rollback_target, list_backups: show_backups }) => {
+        Some(Commands::Update {
+            force,
+            rollback: rollback_target,
+            list_backups: show_backups,
+        }) => {
             if show_backups {
                 let backups = nyzhi_core::updater::list_backups();
                 if backups.is_empty() {
@@ -783,10 +797,7 @@ async fn main() -> Result<()> {
                                         path.display(),
                                         shell
                                     )),
-                                    Err(e) => errors.push(format!(
-                                        "  ✗ {}: {e}",
-                                        path.display()
-                                    )),
+                                    Err(e) => errors.push(format!("  ✗ {}: {e}", path.display())),
                                 }
                             }
                         }
@@ -849,7 +860,7 @@ async fn main() -> Result<()> {
                 None
             }
         };
-    let bundle = nyzhi_core::tools::default_registry();
+    let bundle = nyzhi_core::tools::default_registry(None);
     let mut registry = bundle.registry;
     let todo_store = bundle.todo_store;
     let deferred_index = bundle.deferred_index;
@@ -871,15 +882,13 @@ async fn main() -> Result<()> {
                         .to_string();
                     let schema: serde_json::Value =
                         serde_json::to_value(&*tool_def.input_schema).unwrap_or_default();
-                    let tool = Box::new(
-                        nyzhi_core::mcp::tool_adapter::McpTool::new(
-                            server_name,
-                            &tool_def.name,
-                            &desc,
-                            schema,
-                            mgr.clone(),
-                        ),
-                    );
+                    let tool = Box::new(nyzhi_core::mcp::tool_adapter::McpTool::new(
+                        server_name,
+                        &tool_def.name,
+                        &desc,
+                        schema,
+                        mgr.clone(),
+                    ));
                     if defer_mcp {
                         registry.register_deferred(tool);
                     } else {
@@ -891,7 +900,11 @@ async fn main() -> Result<()> {
                     if let Ok(mut idx) = deferred_index.write() {
                         *idx = registry.deferred_index();
                     }
-                    let index_dir = workspace.project_root.join(".nyzhi").join("context").join("tools");
+                    let index_dir = workspace
+                        .project_root
+                        .join(".nyzhi")
+                        .join("context")
+                        .join("tools");
                     std::fs::create_dir_all(&index_dir).ok();
                     let mut index_content = String::from("# MCP Tool Index\n\n");
                     for (server_name, tool_def) in &all_tools {
@@ -915,24 +928,19 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mcp_summaries: Vec<nyzhi_core::prompt::McpToolSummary> =
-        if let Some(mgr) = &mcp_manager {
-            let mut s = Vec::new();
-            for (server, td) in mgr.all_tools().await {
-                s.push(nyzhi_core::prompt::McpToolSummary {
-                    server_name: server,
-                    tool_name: td.name.to_string(),
-                    description: td
-                        .description
-                        .as_deref()
-                        .unwrap_or("MCP tool")
-                        .to_string(),
-                });
-            }
-            s
-        } else {
-            Vec::new()
-        };
+    let mcp_summaries: Vec<nyzhi_core::prompt::McpToolSummary> = if let Some(mgr) = &mcp_manager {
+        let mut s = Vec::new();
+        for (server, td) in mgr.all_tools().await {
+            s.push(nyzhi_core::prompt::McpToolSummary {
+                server_name: server,
+                tool_name: td.name.to_string(),
+                description: td.description.as_deref().unwrap_or("MCP tool").to_string(),
+            });
+        }
+        s
+    } else {
+        Vec::new()
+    };
 
     // Multi-agent tools will be registered per-session with access to the event_tx.
     // The old single-shot `task` tool is replaced by spawn_agent/send_input/wait/close_agent/resume_agent.
@@ -991,8 +999,7 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                     1 => {
-                        let (thread, meta) =
-                            nyzhi_core::session::load_session(&matches[0].id)?;
+                        let (thread, meta) = nyzhi_core::session::load_session(&matches[0].id)?;
                         Some((thread, meta))
                     }
                     n => {
@@ -1021,7 +1028,11 @@ async fn main() -> Result<()> {
             app.todo_store = Some(todo_store.clone());
             app.run(provider.clone(), registry, &config).await?;
         }
-        Some(Commands::CiFix { log_file, format, commit }) => {
+        Some(Commands::CiFix {
+            log_file,
+            format,
+            commit,
+        }) => {
             let ci_log = if let Some(path) = &log_file {
                 std::fs::read_to_string(path)?
             } else {
@@ -1134,6 +1145,7 @@ async fn run_once(
         agent_name: team_name.map(|_| "team-lead".to_string()),
         is_team_lead: team_name.is_some(),
         todo_store: None,
+        index: None,
     };
 
     let tx = event_tx.clone();
@@ -1167,9 +1179,7 @@ async fn run_once(
                     wait_ms,
                     reason,
                 } => {
-                    eprintln!(
-                        "\n[retry {attempt}/{max_retries}] waiting {wait_ms}ms: {reason}"
-                    );
+                    eprintln!("\n[retry {attempt}/{max_retries}] waiting {wait_ms}ms: {reason}");
                 }
                 AgentEvent::TurnComplete => break,
                 AgentEvent::Error(e) => {
@@ -1243,10 +1253,7 @@ async fn run_once(
     let notify = &config.tui.notify;
     if turn_elapsed.as_millis() as u64 >= notify.min_duration_ms {
         if notify.bell {
-            let _ = crossterm::execute!(
-                std::io::stdout(),
-                crossterm::style::Print("\x07")
-            );
+            let _ = crossterm::execute!(std::io::stdout(), crossterm::style::Print("\x07"));
         }
         if notify.desktop {
             let elapsed_str = format!("{:.1}s", turn_elapsed.as_secs_f64());
@@ -1259,8 +1266,7 @@ async fn run_once(
 
     if !config.agent.hooks.is_empty() {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let results =
-            nyzhi_core::hooks::run_after_turn_hooks(&config.agent.hooks, &cwd).await;
+        let results = nyzhi_core::hooks::run_after_turn_hooks(&config.agent.hooks, &cwd).await;
         for r in results {
             eprintln!("{}", r.summary());
         }
@@ -1335,9 +1341,7 @@ async fn handle_mcp_command(
                 println!("MCP servers ({}):", all_servers.len());
                 for (name, cfg) in &all_servers {
                     match cfg {
-                        nyzhi_config::McpServerConfig::Stdio {
-                            command, args, ..
-                        } => {
+                        nyzhi_config::McpServerConfig::Stdio { command, args, .. } => {
                             println!("  {name}  stdio  {command} {}", args.join(" "));
                         }
                         nyzhi_config::McpServerConfig::Http { url, .. } => {

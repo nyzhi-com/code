@@ -1,7 +1,9 @@
 use ratatui::prelude::*;
 
 use crate::app::App;
-use crate::components::{chat, footer, input_box, plan_banner, selector, text_prompt, todo_panel, update_banner, welcome};
+use crate::components::{
+    chat, footer, input_box, plan_banner, selector, text_prompt, todo_panel, update_banner, welcome,
+};
 use crate::spinner::SpinnerState;
 use crate::theme::Theme;
 

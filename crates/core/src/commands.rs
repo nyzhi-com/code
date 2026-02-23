@@ -100,10 +100,7 @@ pub fn load_all_commands(
 }
 
 pub fn expand_template(template: &str, arguments: &str) -> String {
-    template
-        .replace("$ARGUMENTS", arguments)
-        .trim()
-        .to_string()
+    template.replace("$ARGUMENTS", arguments).trim().to_string()
 }
 
 #[cfg(test)]
@@ -146,7 +143,11 @@ mod tests {
         std::fs::create_dir_all(&nyzhi_cmds).unwrap();
         std::fs::create_dir_all(&claude_cmds).unwrap();
         std::fs::write(nyzhi_cmds.join("review.md"), "# Nyzhi review\nReview nyzhi").unwrap();
-        std::fs::write(claude_cmds.join("review.md"), "# Claude review\nReview claude").unwrap();
+        std::fs::write(
+            claude_cmds.join("review.md"),
+            "# Claude review\nReview claude",
+        )
+        .unwrap();
         std::fs::write(claude_cmds.join("deploy.md"), "# Deploy\nDeploy $ARGUMENTS").unwrap();
 
         let cmds = load_commands_from_dir(dir.path());

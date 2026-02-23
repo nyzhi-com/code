@@ -4,9 +4,7 @@ const FRAME_DURATION: Duration = Duration::from_millis(133);
 
 /// Braille-based spinner frames evoking a rotating three-point pattern.
 /// 12 frames cycling at ~133ms each = 1.6s full rotation.
-const FRAMES: &[&str] = &[
-    "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "⠛", "⠿",
-];
+const FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "⠛", "⠿"];
 
 pub struct SpinnerState {
     frame: usize,

@@ -69,14 +69,20 @@ pub fn shared_store() -> TodoStore {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
-pub async fn progress_summary(store: &TodoStore, session_id: &str) -> Option<(usize, usize, usize)> {
+pub async fn progress_summary(
+    store: &TodoStore,
+    session_id: &str,
+) -> Option<(usize, usize, usize)> {
     let store = store.lock().await;
     let items = store.get(session_id)?;
     if items.is_empty() {
         return None;
     }
     let total = items.len();
-    let done = items.iter().filter(|t| t.status == "completed" || t.status == "cancelled").count();
+    let done = items
+        .iter()
+        .filter(|t| t.status == "completed" || t.status == "cancelled")
+        .count();
     let active = items.iter().filter(|t| t.status == "in_progress").count();
     Some((done, active, total))
 }
@@ -86,7 +92,9 @@ pub async fn has_incomplete_todos(store: &TodoStore, session_id: &str) -> bool {
     store
         .get(session_id)
         .map(|items| {
-            items.iter().any(|t| t.status == "pending" || t.status == "in_progress")
+            items
+                .iter()
+                .any(|t| t.status == "pending" || t.status == "in_progress")
         })
         .unwrap_or(false)
 }
@@ -111,10 +119,15 @@ pub async fn incomplete_summary(store: &TodoStore, session_id: &str) -> Option<S
         .iter()
         .map(|t| {
             let is_blocked = !t.blocked_by.is_empty()
-                && !t.blocked_by.iter().all(|dep| completed_ids.contains(dep.as_str()));
+                && !t
+                    .blocked_by
+                    .iter()
+                    .all(|dep| completed_ids.contains(dep.as_str()));
             let mut line = format!("[{}] {}: {}", t.status, t.id, t.content);
             if is_blocked {
-                let pending_deps: Vec<&str> = t.blocked_by.iter()
+                let pending_deps: Vec<&str> = t
+                    .blocked_by
+                    .iter()
                     .filter(|dep| !completed_ids.contains(dep.as_str()))
                     .map(|s| s.as_str())
                     .collect();
@@ -242,22 +255,20 @@ impl Tool for TodoReadTool {
         let todos = store.get(&ctx.session_id);
 
         let output = match todos {
-            Some(items) if !items.is_empty() => {
-                items
-                    .iter()
-                    .map(|t| {
-                        let mut line = format!("[{}] {}: {}", t.status, t.id, t.content);
-                        if !t.blocked_by.is_empty() {
-                            line.push_str(&format!(" (blocked by: {})", t.blocked_by.join(", ")));
-                        }
-                        if !t.blocks.is_empty() {
-                            line.push_str(&format!(" (blocks: {})", t.blocks.join(", ")));
-                        }
-                        line
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            }
+            Some(items) if !items.is_empty() => items
+                .iter()
+                .map(|t| {
+                    let mut line = format!("[{}] {}: {}", t.status, t.id, t.content);
+                    if !t.blocked_by.is_empty() {
+                        line.push_str(&format!(" (blocked by: {})", t.blocked_by.join(", ")));
+                    }
+                    if !t.blocks.is_empty() {
+                        line.push_str(&format!(" (blocks: {})", t.blocks.join(", ")));
+                    }
+                    line
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
             _ => "No todos found".to_string(),
         };
 

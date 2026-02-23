@@ -75,9 +75,15 @@ pub fn scan_for_secrets(text: &str) -> Vec<String> {
     let patterns = [
         ("AWS Access Key", r"AKIA[0-9A-Z]{16}"),
         ("GitHub Token", r"gh[pousr]_[A-Za-z0-9_]{36,}"),
-        ("Generic API Key", r#"(?i)(api[_-]?key|apikey|secret[_-]?key)\s*[:=]\s*["'][A-Za-z0-9+/=]{20,}["']"#),
+        (
+            "Generic API Key",
+            r#"(?i)(api[_-]?key|apikey|secret[_-]?key)\s*[:=]\s*["'][A-Za-z0-9+/=]{20,}["']"#,
+        ),
         ("Bearer Token", r"Bearer\s+[A-Za-z0-9\-._~+/]+=*"),
-        ("Private Key Header", r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+        (
+            "Private Key Header",
+            r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----",
+        ),
     ];
 
     for (name, pattern) in &patterns {
@@ -128,17 +134,32 @@ pub fn wrap_command_sandboxed(
 
     if has_bwrap {
         let mut args = vec![
-            "--ro-bind".to_string(), "/usr".to_string(), "/usr".to_string(),
-            "--ro-bind".to_string(), "/lib".to_string(), "/lib".to_string(),
-            "--ro-bind".to_string(), "/lib64".to_string(), "/lib64".to_string(),
-            "--ro-bind".to_string(), "/bin".to_string(), "/bin".to_string(),
-            "--ro-bind".to_string(), "/sbin".to_string(), "/sbin".to_string(),
-            "--proc".to_string(), "/proc".to_string(),
-            "--dev".to_string(), "/dev".to_string(),
-            "--tmpfs".to_string(), "/tmp".to_string(),
-            "--bind".to_string(), project_root.to_string_lossy().to_string(),
+            "--ro-bind".to_string(),
+            "/usr".to_string(),
+            "/usr".to_string(),
+            "--ro-bind".to_string(),
+            "/lib".to_string(),
+            "/lib".to_string(),
+            "--ro-bind".to_string(),
+            "/lib64".to_string(),
+            "/lib64".to_string(),
+            "--ro-bind".to_string(),
+            "/bin".to_string(),
+            "/bin".to_string(),
+            "--ro-bind".to_string(),
+            "/sbin".to_string(),
+            "/sbin".to_string(),
+            "--proc".to_string(),
+            "/proc".to_string(),
+            "--dev".to_string(),
+            "/dev".to_string(),
+            "--tmpfs".to_string(),
+            "/tmp".to_string(),
+            "--bind".to_string(),
             project_root.to_string_lossy().to_string(),
-            "--chdir".to_string(), project_root.to_string_lossy().to_string(),
+            project_root.to_string_lossy().to_string(),
+            "--chdir".to_string(),
+            project_root.to_string_lossy().to_string(),
         ];
 
         for path in &config.allow_read {
@@ -180,9 +201,7 @@ fn generate_seatbelt_profile(project_root: &Path, config: &SandboxConfig) -> Str
     profile.push_str("(allow sysctl-read)\n");
     profile.push_str("(allow mach-lookup)\n");
 
-    profile.push_str(&format!(
-        "(allow file-read* (subpath \"{project_dir}\"))\n"
-    ));
+    profile.push_str(&format!("(allow file-read* (subpath \"{project_dir}\"))\n"));
     profile.push_str(&format!(
         "(allow file-write* (subpath \"{project_dir}\"))\n"
     ));

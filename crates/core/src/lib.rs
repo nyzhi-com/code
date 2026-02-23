@@ -11,13 +11,13 @@ pub mod context_files;
 pub mod deepinit;
 pub mod diagnostics;
 pub mod hooks;
-pub mod index;
+
+pub mod conversation;
 pub mod judging;
 pub mod keywords;
 pub mod lsp;
 pub mod mcp;
 pub mod memory;
-pub mod conversation;
 pub mod notepad;
 pub mod notify;
 pub mod persistence;

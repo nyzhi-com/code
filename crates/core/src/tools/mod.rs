@@ -1,4 +1,3 @@
-pub mod permission;
 pub mod apply_patch;
 pub mod ask_user;
 pub mod bash;
@@ -18,6 +17,7 @@ pub mod load_skill;
 pub mod lsp;
 pub mod memory;
 pub mod notepad;
+pub mod permission;
 pub mod pr;
 pub mod read;
 pub mod resume_agent;
@@ -28,9 +28,9 @@ pub mod tail_file;
 pub mod task;
 pub mod team;
 pub mod think;
+pub mod todo;
 pub mod tool_search;
 pub mod update_plan;
-pub mod todo;
 pub mod verify;
 pub mod wait_tool;
 pub mod web;
@@ -45,6 +45,8 @@ use async_trait::async_trait;
 use permission::ToolPermission;
 use serde_json::Value;
 use tokio::sync::broadcast;
+
+pub type IndexHandle = Arc<nyzhi_index::CodebaseIndex>;
 
 #[async_trait]
 pub trait Tool: Send + Sync {
@@ -76,6 +78,8 @@ pub struct ToolContext {
     pub is_team_lead: bool,
     /// Shared todo store for rehydration during compaction.
     pub todo_store: Option<TodoStoreHandle>,
+    /// Codebase index for semantic search and auto-context.
+    pub index: Option<IndexHandle>,
 }
 
 pub struct ToolResult {
@@ -172,10 +176,12 @@ impl ToolRegistry {
             .iter()
             .filter(|name| !self.expanded.contains(name.as_str()))
             .filter_map(|name| {
-                self.tools.get(name).map(|t| tool_search::DeferredToolEntry {
-                    name: t.name().to_string(),
-                    description: t.description().to_string(),
-                })
+                self.tools
+                    .get(name)
+                    .map(|t| tool_search::DeferredToolEntry {
+                        name: t.name().to_string(),
+                        description: t.description().to_string(),
+                    })
             })
             .collect()
     }
@@ -231,7 +237,10 @@ impl ToolRegistry {
     }
 
     /// Return tool definitions filtered to only the given tool names.
-    pub fn definitions_filtered(&self, allowed_names: &[String]) -> Vec<nyzhi_provider::ToolDefinition> {
+    pub fn definitions_filtered(
+        &self,
+        allowed_names: &[String],
+    ) -> Vec<nyzhi_provider::ToolDefinition> {
         let allow_set: std::collections::HashSet<&str> =
             allowed_names.iter().map(|s| s.as_str()).collect();
         let mut defs: Vec<_> = self
@@ -249,7 +258,8 @@ impl ToolRegistry {
     }
 }
 
-pub type TodoStoreHandle = Arc<tokio::sync::Mutex<std::collections::HashMap<String, Vec<todo::TodoItem>>>>;
+pub type TodoStoreHandle =
+    Arc<tokio::sync::Mutex<std::collections::HashMap<String, Vec<todo::TodoItem>>>>;
 
 pub async fn todo_has_incomplete(store: &TodoStoreHandle, session_id: &str) -> bool {
     todo::has_incomplete_todos(store, session_id).await
@@ -259,7 +269,10 @@ pub async fn todo_incomplete_summary(store: &TodoStoreHandle, session_id: &str) 
     todo::incomplete_summary(store, session_id).await
 }
 
-pub async fn todo_progress(store: &TodoStoreHandle, session_id: &str) -> Option<(usize, usize, usize)> {
+pub async fn todo_progress(
+    store: &TodoStoreHandle,
+    session_id: &str,
+) -> Option<(usize, usize, usize)> {
     todo::progress_summary(store, session_id).await
 }
 
@@ -269,10 +282,9 @@ pub struct RegistryBundle {
     pub deferred_index: tool_search::DeferredToolIndex,
 }
 
-pub fn default_registry() -> RegistryBundle {
+pub fn default_registry(codebase_index: Option<IndexHandle>) -> RegistryBundle {
     let todo_store = todo::shared_store();
     let deferred_index = tool_search::shared_deferred_index();
-    let semantic_index = Arc::new(tokio::sync::Mutex::new(crate::index::SemanticIndex::new()));
     let instrument_store = instrument::shared_store();
     let mut registry = ToolRegistry::new();
 
@@ -294,7 +306,9 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(git::GitCheckoutTool));
 
     // Task management
-    registry.register(Box::new(todo::TodoWriteTool::with_store(todo_store.clone())));
+    registry.register(Box::new(todo::TodoWriteTool::with_store(
+        todo_store.clone(),
+    )));
     registry.register(Box::new(todo::TodoReadTool::with_store(todo_store.clone())));
 
     // Filesystem
@@ -323,7 +337,9 @@ pub fn default_registry() -> RegistryBundle {
     // Misc
     registry.register(Box::new(tail_file::TailFileTool));
     registry.register(Box::new(load_skill::LoadSkillTool));
-    registry.register(Box::new(tool_search::ToolSearchTool::new(deferred_index.clone())));
+    registry.register(Box::new(tool_search::ToolSearchTool::new(
+        deferred_index.clone(),
+    )));
     registry.register(Box::new(memory::MemoryReadTool));
     registry.register(Box::new(memory::MemoryWriteTool));
 
@@ -339,7 +355,9 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(batch::BatchApplyTool));
 
     // Phase 1.1: Semantic search & fuzzy find
-    registry.register(Box::new(semantic_search::SemanticSearchTool::new(semantic_index)));
+    if let Some(idx) = codebase_index {
+        registry.register(Box::new(semantic_search::SemanticSearchTool::new(idx)));
+    }
     registry.register(Box::new(fuzzy_find::FuzzyFindTool));
 
     // Phase 1.2: Plan-execute mode
@@ -356,8 +374,12 @@ pub fn default_registry() -> RegistryBundle {
     registry.register(Box::new(apply_patch::MultiEditTool));
 
     // Phase 3.3: Debug instrumentation
-    registry.register(Box::new(instrument::InstrumentTool::new(instrument_store.clone())));
-    registry.register(Box::new(instrument::RemoveInstrumentationTool::new(instrument_store)));
+    registry.register(Box::new(instrument::InstrumentTool::new(
+        instrument_store.clone(),
+    )));
+    registry.register(Box::new(instrument::RemoveInstrumentationTool::new(
+        instrument_store,
+    )));
 
     // Phase 4.2: Browser automation
     registry.register(Box::new(browser::BrowserOpenTool));
@@ -370,5 +392,9 @@ pub fn default_registry() -> RegistryBundle {
 
     // NOTE: SpawnTeammateTool requires Arc<AgentManager> and is registered
     // separately in the TUI/CLI after the manager is created.
-    RegistryBundle { registry, todo_store, deferred_index }
+    RegistryBundle {
+        registry,
+        todo_store,
+        deferred_index,
+    }
 }

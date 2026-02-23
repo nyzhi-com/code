@@ -19,7 +19,13 @@ pub fn save_skill(project_root: &Path, name: &str, content: &str) -> Result<Path
 
     let safe_name: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let path = dir.join(format!("{safe_name}.md"));
     std::fs::write(&path, content)?;
@@ -45,7 +51,12 @@ fn scan_skills_dir(dir: &Path) -> Vec<Skill> {
                 .to_string();
             if let Ok(content) = std::fs::read_to_string(&path) {
                 let description = extract_description(&content);
-                skills.push(Skill { name, content, path, description });
+                skills.push(Skill {
+                    name,
+                    content,
+                    path,
+                    description,
+                });
             }
         }
     }
@@ -102,10 +113,7 @@ pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
          The following skills are available. Use `load_skill` or `read_file` to read their full content when needed.\n\n"
     );
     for skill in skills {
-        let desc = skill
-            .description
-            .as_deref()
-            .unwrap_or("(no description)");
+        let desc = skill.description.as_deref().unwrap_or("(no description)");
         out.push_str(&format!("- **{}**: {}\n", skill.name, desc));
     }
     out
@@ -118,7 +126,11 @@ pub fn format_skills_full(skills: &[Skill]) -> String {
     }
     let mut out = String::from("\n\n# Skills\n\n");
     for skill in skills {
-        out.push_str(&format!("## {}\n\n{}\n\n", skill.name, skill.content.trim()));
+        out.push_str(&format!(
+            "## {}\n\n{}\n\n",
+            skill.name,
+            skill.content.trim()
+        ));
     }
     out
 }

@@ -45,7 +45,14 @@ impl Tool for MemoryReadTool {
                 let index = crate::memory::read_index(&ctx.project_root)?;
                 let topics = crate::memory::list_topics(&ctx.project_root);
                 Ok(ToolResult {
-                    output: format!("{index}\n\nAvailable topics: {}", if topics.is_empty() { "(none)".to_string() } else { topics.join(", ") }),
+                    output: format!(
+                        "{index}\n\nAvailable topics: {}",
+                        if topics.is_empty() {
+                            "(none)".to_string()
+                        } else {
+                            topics.join(", ")
+                        }
+                    ),
                     title: "memory_read (index)".to_string(),
                     metadata: serde_json::json!({"topics": topics}),
                 })

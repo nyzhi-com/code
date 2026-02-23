@@ -68,7 +68,10 @@ impl Tool for ToolSearchTool {
             .and_then(|v| v.as_str())
             .unwrap_or("keyword");
 
-        let index = self.index.read().map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
+        let index = self
+            .index
+            .read()
+            .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
 
         if index.is_empty() {
             return Ok(ToolResult {
@@ -80,8 +83,8 @@ impl Tool for ToolSearchTool {
 
         let matches: Vec<&DeferredToolEntry> = match search_type {
             "regex" => {
-                let re = regex::Regex::new(query)
-                    .map_err(|e| anyhow::anyhow!("Invalid regex: {e}"))?;
+                let re =
+                    regex::Regex::new(query).map_err(|e| anyhow::anyhow!("Invalid regex: {e}"))?;
                 index
                     .iter()
                     .filter(|e| re.is_match(&e.name) || re.is_match(&e.description))
@@ -112,7 +115,9 @@ impl Tool for ToolSearchTool {
         for entry in &matches {
             output.push_str(&format!("- **{}**: {}\n", entry.name, entry.description));
         }
-        output.push_str("\nUse these tools by calling them directly. They will be loaded on first use.");
+        output.push_str(
+            "\nUse these tools by calling them directly. They will be loaded on first use.",
+        );
 
         Ok(ToolResult {
             output,

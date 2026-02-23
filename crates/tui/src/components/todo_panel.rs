@@ -22,8 +22,16 @@ pub struct TodoPanelState {
 impl TodoPanelState {
     pub fn progress(&self) -> (usize, usize, usize) {
         let total = self.items.len();
-        let done = self.items.iter().filter(|t| t.status == "completed" || t.status == "cancelled").count();
-        let active = self.items.iter().filter(|t| t.status == "in_progress").count();
+        let done = self
+            .items
+            .iter()
+            .filter(|t| t.status == "completed" || t.status == "cancelled")
+            .count();
+        let active = self
+            .items
+            .iter()
+            .filter(|t| t.status == "in_progress")
+            .count();
         (done, active, total)
     }
 
@@ -66,16 +74,28 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.border_strong))
-        .title(Line::from(Span::styled(title, Style::default().fg(theme.accent).bold())).alignment(Alignment::Center))
+        .title(
+            Line::from(Span::styled(
+                title,
+                Style::default().fg(theme.accent).bold(),
+            ))
+            .alignment(Alignment::Center),
+        )
         .title_bottom(
             Line::from(vec![
-                Span::styled(format!(" {enforcer_label} "), Style::default().fg(
-                    if state.enforcer_active { theme.success } else { theme.text_disabled }
-                )),
+                Span::styled(
+                    format!(" {enforcer_label} "),
+                    Style::default().fg(if state.enforcer_active {
+                        theme.success
+                    } else {
+                        theme.text_disabled
+                    }),
+                ),
                 Span::raw(" "),
                 Span::styled("esc", Style::default().fg(theme.accent)),
                 Span::styled(": close ", Style::default().fg(theme.text_disabled)),
-            ]).alignment(Alignment::Right)
+            ])
+            .alignment(Alignment::Right),
         )
         .style(Style::default().bg(theme.bg_elevated));
 
@@ -86,21 +106,35 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
     if total == 0 {
         let empty = Paragraph::new(Line::from(vec![
             Span::styled("  No todos yet. ", Style::default().fg(theme.text_disabled)),
-            Span::styled("The agent creates todos for multi-step tasks.", Style::default().fg(theme.text_disabled).italic()),
-        ])).style(Style::default().bg(theme.bg_elevated));
+            Span::styled(
+                "The agent creates todos for multi-step tasks.",
+                Style::default().fg(theme.text_disabled).italic(),
+            ),
+        ]))
+        .style(Style::default().bg(theme.bg_elevated));
         frame.render_widget(empty, inner);
         return;
     }
 
     let bar_width = inner.width.saturating_sub(4) as usize;
-    let filled = if total > 0 { (done * bar_width) / total } else { 0 };
+    let filled = if total > 0 {
+        (done * bar_width) / total
+    } else {
+        0
+    };
     let empty_bar = bar_width.saturating_sub(filled);
 
     let bar_line = Line::from(vec![
         Span::raw("  "),
         Span::styled("█".repeat(filled), Style::default().fg(theme.success)),
-        Span::styled("░".repeat(empty_bar), Style::default().fg(theme.text_disabled)),
-        Span::styled(format!(" {done}/{total}"), Style::default().fg(theme.text_secondary)),
+        Span::styled(
+            "░".repeat(empty_bar),
+            Style::default().fg(theme.text_disabled),
+        ),
+        Span::styled(
+            format!(" {done}/{total}"),
+            Style::default().fg(theme.text_secondary),
+        ),
     ]);
 
     let sep = Line::from(Span::styled(
@@ -110,14 +144,19 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
 
     let mut lines: Vec<Line> = vec![bar_line, sep];
 
-    let completed_ids: std::collections::HashSet<&str> = state.items.iter()
+    let completed_ids: std::collections::HashSet<&str> = state
+        .items
+        .iter()
         .filter(|t| t.status == "completed")
         .map(|t| t.id.as_str())
         .collect();
 
     for item in state.items.iter().skip(state.scroll as usize) {
         let is_blocked = !item.blocked_by.is_empty()
-            && !item.blocked_by.iter().all(|dep| completed_ids.contains(dep.as_str()));
+            && !item
+                .blocked_by
+                .iter()
+                .all(|dep| completed_ids.contains(dep.as_str()));
 
         let (marker, marker_color) = match item.status.as_str() {
             "completed" => ("✓", theme.success),
@@ -149,7 +188,9 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
         ];
 
         if is_blocked {
-            let pending_deps: Vec<&str> = item.blocked_by.iter()
+            let pending_deps: Vec<&str> = item
+                .blocked_by
+                .iter()
                 .filter(|dep| !completed_ids.contains(dep.as_str()))
                 .map(|s| s.as_str())
                 .collect();

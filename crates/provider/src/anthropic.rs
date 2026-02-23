@@ -14,28 +14,52 @@ const API_VERSION: &str = "2023-06-01";
 pub fn default_models() -> Vec<ModelInfo> {
     vec![
         ModelInfo {
-            id: "claude-opus-4-6-20260205".into(), name: "Claude Opus 4.6".into(), provider: "anthropic".into(),
-            context_window: 1_000_000, max_output_tokens: 128_000,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 15.0, output_price_per_m: 75.0,
-            cache_read_price_per_m: 1.5, cache_write_price_per_m: 18.75,
-            tier: ModelTier::High, thinking: Some(ThinkingSupport::anthropic_adaptive()),
+            id: "claude-opus-4-6-20260205".into(),
+            name: "Claude Opus 4.6".into(),
+            provider: "anthropic".into(),
+            context_window: 1_000_000,
+            max_output_tokens: 128_000,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 15.0,
+            output_price_per_m: 75.0,
+            cache_read_price_per_m: 1.5,
+            cache_write_price_per_m: 18.75,
+            tier: ModelTier::High,
+            thinking: Some(ThinkingSupport::anthropic_adaptive()),
         },
         ModelInfo {
-            id: "claude-sonnet-4-6-20260217".into(), name: "Claude Sonnet 4.6".into(), provider: "anthropic".into(),
-            context_window: 1_000_000, max_output_tokens: 16_384,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 3.0, output_price_per_m: 15.0,
-            cache_read_price_per_m: 0.3, cache_write_price_per_m: 3.75,
-            tier: ModelTier::Medium, thinking: Some(ThinkingSupport::anthropic_adaptive()),
+            id: "claude-sonnet-4-6-20260217".into(),
+            name: "Claude Sonnet 4.6".into(),
+            provider: "anthropic".into(),
+            context_window: 1_000_000,
+            max_output_tokens: 16_384,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 3.0,
+            output_price_per_m: 15.0,
+            cache_read_price_per_m: 0.3,
+            cache_write_price_per_m: 3.75,
+            tier: ModelTier::Medium,
+            thinking: Some(ThinkingSupport::anthropic_adaptive()),
         },
         ModelInfo {
-            id: "claude-haiku-4-5-20251022".into(), name: "Claude Haiku 4.5".into(), provider: "anthropic".into(),
-            context_window: 200_000, max_output_tokens: 8_192,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 0.8, output_price_per_m: 4.0,
-            cache_read_price_per_m: 0.08, cache_write_price_per_m: 1.0,
-            tier: ModelTier::Low, thinking: None,
+            id: "claude-haiku-4-5-20251022".into(),
+            name: "Claude Haiku 4.5".into(),
+            provider: "anthropic".into(),
+            context_window: 200_000,
+            max_output_tokens: 8_192,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 0.8,
+            output_price_per_m: 4.0,
+            cache_read_price_per_m: 0.08,
+            cache_write_price_per_m: 1.0,
+            tier: ModelTier::Low,
+            thinking: None,
         },
     ]
 }
@@ -71,10 +95,8 @@ impl AnthropicProvider {
 
     pub fn from_config(config: &nyzhi_config::Config) -> Result<Self> {
         let entry = config.provider.entry("anthropic");
-        let cred = nyzhi_auth::resolve_credential(
-            "anthropic",
-            entry.and_then(|e| e.api_key.as_deref()),
-        )?;
+        let cred =
+            nyzhi_auth::resolve_credential("anthropic", entry.and_then(|e| e.api_key.as_deref()))?;
         Ok(Self::new(
             cred.header_value(),
             entry.and_then(|e| e.base_url.clone()),
@@ -352,14 +374,11 @@ impl Provider for AnthropicProvider {
                     match event_type {
                         "message_start" => {
                             let usage = &data["message"]["usage"];
-                            let uncached =
-                                usage["input_tokens"].as_u64().unwrap_or(0) as u32;
-                            let cache_read = usage["cache_read_input_tokens"]
-                                .as_u64()
-                                .unwrap_or(0) as u32;
-                            let cache_creation = usage["cache_creation_input_tokens"]
-                                .as_u64()
-                                .unwrap_or(0) as u32;
+                            let uncached = usage["input_tokens"].as_u64().unwrap_or(0) as u32;
+                            let cache_read =
+                                usage["cache_read_input_tokens"].as_u64().unwrap_or(0) as u32;
+                            let cache_creation =
+                                usage["cache_creation_input_tokens"].as_u64().unwrap_or(0) as u32;
                             let total = uncached + cache_read + cache_creation;
                             if total > 0 {
                                 vec![Ok(StreamEvent::Usage(Usage {
@@ -408,9 +427,8 @@ impl Provider for AnthropicProvider {
                         }
                         "message_delta" => {
                             let mut evts = Vec::new();
-                            let output = data["usage"]["output_tokens"]
-                                .as_u64()
-                                .unwrap_or(0) as u32;
+                            let output =
+                                data["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32;
                             if output > 0 {
                                 evts.push(Ok(StreamEvent::Usage(Usage {
                                     input_tokens: 0,

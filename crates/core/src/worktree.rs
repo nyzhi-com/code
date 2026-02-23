@@ -29,9 +29,7 @@ fn generate_name() -> String {
 
 /// Create a git worktree for isolated agent work.
 pub fn create_worktree(project_root: &Path, name: Option<&str>) -> Result<WorktreeInfo> {
-    let worktree_name = name
-        .map(String::from)
-        .unwrap_or_else(generate_name);
+    let worktree_name = name.map(String::from).unwrap_or_else(generate_name);
     let worktree_path = project_root.join(WORKTREE_DIR).join(&worktree_name);
     let branch = format!("worktree-{worktree_name}");
 
@@ -81,9 +79,7 @@ pub fn remove_worktree(project_root: &Path, name: &str, force: bool) -> Result<b
             .args(["status", "--porcelain"])
             .current_dir(&worktree_path)
             .output();
-        output
-            .map(|o| !o.stdout.is_empty())
-            .unwrap_or(false)
+        output.map(|o| !o.stdout.is_empty()).unwrap_or(false)
     } else {
         false
     };
@@ -169,9 +165,7 @@ fn ensure_gitignore(project_root: &Path) -> Result<()> {
         if content.contains(pattern) {
             return Ok(());
         }
-        let mut file = std::fs::OpenOptions::new()
-            .append(true)
-            .open(&gitignore)?;
+        let mut file = std::fs::OpenOptions::new().append(true).open(&gitignore)?;
         use std::io::Write;
         writeln!(file, "\n# nyzhi worktrees\n{pattern}")?;
     } else {

@@ -54,7 +54,12 @@ impl Thread {
     /// Compact with post-compaction file restoration.
     /// After summarizing, re-reads the given files and injects their contents
     /// plus a continuation instruction so the agent picks up seamlessly.
-    pub fn compact_with_restore(&mut self, summary: &str, keep_recent: usize, restore_files: &[PathBuf]) {
+    pub fn compact_with_restore(
+        &mut self,
+        summary: &str,
+        keep_recent: usize,
+        restore_files: &[PathBuf],
+    ) {
         self.compact_with_rehydration(summary, keep_recent, restore_files, None, None, None);
     }
 
@@ -113,7 +118,9 @@ impl Thread {
         if !state_block.is_empty() {
             self.messages.push(Message {
                 role: Role::User,
-                content: MessageContent::Text(format!("[Working state restored after compaction]{state_block}")),
+                content: MessageContent::Text(format!(
+                    "[Working state restored after compaction]{state_block}"
+                )),
             });
         }
 
@@ -125,11 +132,7 @@ impl Thread {
                 } else {
                     content
                 };
-                restoration.push_str(&format!(
-                    "\n--- {} ---\n{}\n",
-                    path.display(),
-                    truncated
-                ));
+                restoration.push_str(&format!("\n--- {} ---\n{}\n", path.display(), truncated));
             }
         }
 

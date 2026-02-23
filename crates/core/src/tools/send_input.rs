@@ -68,10 +68,7 @@ impl Tool for SendInputTool {
         match self.manager.send_input(id, message.to_string()).await {
             Ok(()) => {
                 let info = self.manager.get_agent_info(id).await;
-                let nickname = info
-                    .as_ref()
-                    .map(|(n, _)| n.as_str())
-                    .unwrap_or("unknown");
+                let nickname = info.as_ref().map(|(n, _)| n.as_str()).unwrap_or("unknown");
                 Ok(ToolResult {
                     output: json!({ "status": "sent", "agent_nickname": nickname }).to_string(),
                     title: format!("send_input -> {nickname}"),

@@ -89,15 +89,12 @@ impl Tool for SpawnAgentTool {
 
         let mut agent_config = AgentConfig {
             name: format!("sub-agent/{}", role.name),
-            system_prompt: role
-                .system_prompt_override
-                .clone()
-                .unwrap_or_else(|| {
-                    "You are a focused sub-agent. Complete the assigned task \
+            system_prompt: role.system_prompt_override.clone().unwrap_or_else(|| {
+                "You are a focused sub-agent. Complete the assigned task \
                      thoroughly and return your findings. Be concise but complete. \
                      You have access to all standard tools."
-                        .to_string()
-                }),
+                    .to_string()
+            }),
             max_steps: 50,
             max_tokens: None,
             trust: nyzhi_config::TrustConfig {
@@ -171,15 +168,37 @@ impl Tool for SpawnAgentTool {
 /// Returns None (no filtering) if neither list is set.
 fn compute_tool_filter(role: &AgentRoleConfig) -> Option<Vec<String>> {
     let all_tools: Vec<String> = vec![
-        "bash", "read", "write", "edit", "glob", "grep",
-        "git_status", "git_diff", "git_log", "git_show", "git_branch",
-        "git_commit", "git_checkout",
-        "list_dir", "directory_tree", "file_info",
-        "delete_file", "move_file", "copy_file", "create_dir",
-        "todowrite", "todoread",
-        "verify", "notepad_write", "notepad_read",
-        "lsp_diagnostics", "ast_search",
-    ].into_iter().map(String::from).collect();
+        "bash",
+        "read",
+        "write",
+        "edit",
+        "glob",
+        "grep",
+        "git_status",
+        "git_diff",
+        "git_log",
+        "git_show",
+        "git_branch",
+        "git_commit",
+        "git_checkout",
+        "list_dir",
+        "directory_tree",
+        "file_info",
+        "delete_file",
+        "move_file",
+        "copy_file",
+        "create_dir",
+        "todowrite",
+        "todoread",
+        "verify",
+        "notepad_write",
+        "notepad_read",
+        "lsp_diagnostics",
+        "ast_search",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
 
     match (&role.allowed_tools, &role.disallowed_tools) {
         (Some(allowed), _) => {

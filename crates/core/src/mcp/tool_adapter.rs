@@ -4,9 +4,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
+use super::McpManager;
 use crate::tools::permission::ToolPermission;
 use crate::tools::{Tool, ToolContext, ToolResult};
-use super::McpManager;
 
 /// Bridges an MCP server tool into the local `ToolRegistry`.
 pub struct McpTool {

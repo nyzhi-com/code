@@ -42,8 +42,16 @@ pub struct TurnFlags {
 
 impl TurnFlags {
     pub fn any(&self) -> bool {
-        self.plan || self.persist || self.parallel || self.tdd || self.eco
-            || self.review || self.think || self.deep || self.ultra || self.debug
+        self.plan
+            || self.persist
+            || self.parallel
+            || self.tdd
+            || self.eco
+            || self.review
+            || self.think
+            || self.deep
+            || self.ultra
+            || self.debug
             || self.ultrawork
     }
 }

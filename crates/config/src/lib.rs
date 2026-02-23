@@ -410,7 +410,9 @@ impl std::str::FromStr for TrustMode {
             "limited" => Ok(TrustMode::Limited),
             "autoedit" | "auto_edit" | "auto-edit" => Ok(TrustMode::AutoEdit),
             "full" => Ok(TrustMode::Full),
-            other => Err(format!("unknown trust mode: {other} (use off, limited, autoedit, or full)")),
+            other => Err(format!(
+                "unknown trust mode: {other} (use off, limited, autoedit, or full)"
+            )),
         }
     }
 }
@@ -427,57 +429,159 @@ pub struct ProviderDef {
 }
 
 pub const BUILT_IN_PROVIDERS: &[ProviderDef] = &[
-    ProviderDef { id: "openai", name: "OpenAI", env_var: "OPENAI_API_KEY",
-                  default_base_url: "https://api.openai.com/v1",
-                  api_style: "openai", category: "popular", supports_oauth: true },
-    ProviderDef { id: "anthropic", name: "Anthropic", env_var: "ANTHROPIC_API_KEY",
-                  default_base_url: "https://api.anthropic.com/v1",
-                  api_style: "anthropic", category: "popular", supports_oauth: true },
-    ProviderDef { id: "gemini", name: "Google Gemini", env_var: "GEMINI_API_KEY",
-                  default_base_url: "https://generativelanguage.googleapis.com/v1beta",
-                  api_style: "gemini", category: "popular", supports_oauth: true },
-    ProviderDef { id: "cursor", name: "Cursor", env_var: "CURSOR_API_KEY",
-                  default_base_url: "https://api2.cursor.sh",
-                  api_style: "cursor", category: "popular", supports_oauth: true },
-    ProviderDef { id: "openrouter", name: "OpenRouter", env_var: "OPENROUTER_API_KEY",
-                  default_base_url: "https://openrouter.ai/api/v1",
-                  api_style: "openai", category: "popular", supports_oauth: false },
-    ProviderDef { id: "claude-sdk", name: "Claude Agent SDK", env_var: "ANTHROPIC_API_KEY",
-                  default_base_url: "",
-                  api_style: "claude-sdk", category: "agents", supports_oauth: false },
-    ProviderDef { id: "codex", name: "OpenAI Codex CLI", env_var: "CODEX_API_KEY",
-                  default_base_url: "",
-                  api_style: "codex", category: "agents", supports_oauth: true },
-    ProviderDef { id: "groq", name: "Groq", env_var: "GROQ_API_KEY",
-                  default_base_url: "https://api.groq.com/openai/v1",
-                  api_style: "openai", category: "other", supports_oauth: false },
-    ProviderDef { id: "together", name: "Together AI", env_var: "TOGETHER_API_KEY",
-                  default_base_url: "https://api.together.xyz/v1",
-                  api_style: "openai", category: "other", supports_oauth: false },
-    ProviderDef { id: "deepseek", name: "DeepSeek", env_var: "DEEPSEEK_API_KEY",
-                  default_base_url: "https://api.deepseek.com/v1",
-                  api_style: "openai", category: "other", supports_oauth: false },
-    ProviderDef { id: "ollama", name: "Ollama (local)", env_var: "OLLAMA_API_KEY",
-                  default_base_url: "http://localhost:11434/v1",
-                  api_style: "openai", category: "other", supports_oauth: false },
-    ProviderDef { id: "kimi", name: "Kimi (Moonshot)", env_var: "MOONSHOT_API_KEY",
-                  default_base_url: "https://api.moonshot.ai/v1",
-                  api_style: "openai", category: "other", supports_oauth: false },
-    ProviderDef { id: "kimi-coding", name: "Kimi Coding Plan", env_var: "KIMI_CODING_API_KEY",
-                  default_base_url: "https://api.kimi.com/coding",
-                  api_style: "anthropic", category: "other", supports_oauth: false },
-    ProviderDef { id: "minimax", name: "MiniMax", env_var: "MINIMAX_API_KEY",
-                  default_base_url: "https://api.minimax.io/v1",
-                  api_style: "openai", category: "other", supports_oauth: false },
-    ProviderDef { id: "minimax-coding", name: "MiniMax Coding Plan", env_var: "MINIMAX_CODING_API_KEY",
-                  default_base_url: "https://api.minimax.io/anthropic",
-                  api_style: "anthropic", category: "other", supports_oauth: false },
-    ProviderDef { id: "glm", name: "GLM (Z.ai)", env_var: "ZHIPU_API_KEY",
-                  default_base_url: "https://api.z.ai/api/paas/v4",
-                  api_style: "openai", category: "other", supports_oauth: false },
-    ProviderDef { id: "glm-coding", name: "GLM Coding Plan", env_var: "ZHIPU_CODING_API_KEY",
-                  default_base_url: "https://api.z.ai/api/coding/paas/v4",
-                  api_style: "openai", category: "other", supports_oauth: false },
+    ProviderDef {
+        id: "openai",
+        name: "OpenAI",
+        env_var: "OPENAI_API_KEY",
+        default_base_url: "https://api.openai.com/v1",
+        api_style: "openai",
+        category: "popular",
+        supports_oauth: true,
+    },
+    ProviderDef {
+        id: "anthropic",
+        name: "Anthropic",
+        env_var: "ANTHROPIC_API_KEY",
+        default_base_url: "https://api.anthropic.com/v1",
+        api_style: "anthropic",
+        category: "popular",
+        supports_oauth: true,
+    },
+    ProviderDef {
+        id: "gemini",
+        name: "Google Gemini",
+        env_var: "GEMINI_API_KEY",
+        default_base_url: "https://generativelanguage.googleapis.com/v1beta",
+        api_style: "gemini",
+        category: "popular",
+        supports_oauth: true,
+    },
+    ProviderDef {
+        id: "cursor",
+        name: "Cursor",
+        env_var: "CURSOR_API_KEY",
+        default_base_url: "https://api2.cursor.sh",
+        api_style: "cursor",
+        category: "popular",
+        supports_oauth: true,
+    },
+    ProviderDef {
+        id: "openrouter",
+        name: "OpenRouter",
+        env_var: "OPENROUTER_API_KEY",
+        default_base_url: "https://openrouter.ai/api/v1",
+        api_style: "openai",
+        category: "popular",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "claude-sdk",
+        name: "Claude Agent SDK",
+        env_var: "ANTHROPIC_API_KEY",
+        default_base_url: "",
+        api_style: "claude-sdk",
+        category: "agents",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "codex",
+        name: "OpenAI Codex CLI",
+        env_var: "CODEX_API_KEY",
+        default_base_url: "",
+        api_style: "codex",
+        category: "agents",
+        supports_oauth: true,
+    },
+    ProviderDef {
+        id: "groq",
+        name: "Groq",
+        env_var: "GROQ_API_KEY",
+        default_base_url: "https://api.groq.com/openai/v1",
+        api_style: "openai",
+        category: "other",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "together",
+        name: "Together AI",
+        env_var: "TOGETHER_API_KEY",
+        default_base_url: "https://api.together.xyz/v1",
+        api_style: "openai",
+        category: "other",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "deepseek",
+        name: "DeepSeek",
+        env_var: "DEEPSEEK_API_KEY",
+        default_base_url: "https://api.deepseek.com/v1",
+        api_style: "openai",
+        category: "other",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "ollama",
+        name: "Ollama (local)",
+        env_var: "OLLAMA_API_KEY",
+        default_base_url: "http://localhost:11434/v1",
+        api_style: "openai",
+        category: "other",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "kimi",
+        name: "Kimi (Moonshot)",
+        env_var: "MOONSHOT_API_KEY",
+        default_base_url: "https://api.moonshot.ai/v1",
+        api_style: "openai",
+        category: "other",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "kimi-coding",
+        name: "Kimi Coding Plan",
+        env_var: "KIMI_CODING_API_KEY",
+        default_base_url: "https://api.kimi.com/coding",
+        api_style: "anthropic",
+        category: "other",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "minimax",
+        name: "MiniMax",
+        env_var: "MINIMAX_API_KEY",
+        default_base_url: "https://api.minimax.io/v1",
+        api_style: "openai",
+        category: "other",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "minimax-coding",
+        name: "MiniMax Coding Plan",
+        env_var: "MINIMAX_CODING_API_KEY",
+        default_base_url: "https://api.minimax.io/anthropic",
+        api_style: "anthropic",
+        category: "other",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "glm",
+        name: "GLM (Z.ai)",
+        env_var: "ZHIPU_API_KEY",
+        default_base_url: "https://api.z.ai/api/paas/v4",
+        api_style: "openai",
+        category: "other",
+        supports_oauth: false,
+    },
+    ProviderDef {
+        id: "glm-coding",
+        name: "GLM Coding Plan",
+        env_var: "ZHIPU_CODING_API_KEY",
+        default_base_url: "https://api.z.ai/api/coding/paas/v4",
+        api_style: "openai",
+        category: "other",
+        supports_oauth: false,
+    },
 ];
 
 pub fn find_provider_def(id: &str) -> Option<&'static ProviderDef> {
@@ -655,8 +759,7 @@ impl Config {
     pub fn load() -> Result<Self> {
         let path = Self::config_path();
         if path.exists() {
-            let content =
-                std::fs::read_to_string(&path).context("Failed to read config file")?;
+            let content = std::fs::read_to_string(&path).context("Failed to read config file")?;
             toml::from_str(&content).context("Failed to parse config file")
         } else {
             Ok(Self::default())
@@ -716,8 +819,7 @@ impl Config {
     pub fn load_local(project_root: &std::path::Path) -> Result<Option<Self>> {
         let path = project_root.join(".nyzhi").join("config.local.toml");
         if path.exists() {
-            let content =
-                std::fs::read_to_string(&path).context("Failed to read local config")?;
+            let content = std::fs::read_to_string(&path).context("Failed to read local config")?;
             let config: Config =
                 toml::from_str(&content).context("Failed to parse local config")?;
             Ok(Some(config))
@@ -859,19 +961,38 @@ impl Config {
                 servers: mcp_servers,
             },
             external_notify: ExternalNotifyConfig {
-                webhook_url: project.external_notify.webhook_url.clone()
+                webhook_url: project
+                    .external_notify
+                    .webhook_url
+                    .clone()
                     .or_else(|| global.external_notify.webhook_url.clone()),
-                telegram_bot_token: project.external_notify.telegram_bot_token.clone()
+                telegram_bot_token: project
+                    .external_notify
+                    .telegram_bot_token
+                    .clone()
                     .or_else(|| global.external_notify.telegram_bot_token.clone()),
-                telegram_chat_id: project.external_notify.telegram_chat_id.clone()
+                telegram_chat_id: project
+                    .external_notify
+                    .telegram_chat_id
+                    .clone()
                     .or_else(|| global.external_notify.telegram_chat_id.clone()),
-                discord_webhook_url: project.external_notify.discord_webhook_url.clone()
+                discord_webhook_url: project
+                    .external_notify
+                    .discord_webhook_url
+                    .clone()
                     .or_else(|| global.external_notify.discord_webhook_url.clone()),
-                slack_webhook_url: project.external_notify.slack_webhook_url.clone()
+                slack_webhook_url: project
+                    .external_notify
+                    .slack_webhook_url
+                    .clone()
                     .or_else(|| global.external_notify.slack_webhook_url.clone()),
             },
             shell: ShellConfig {
-                path: project.shell.path.clone().or_else(|| global.shell.path.clone()),
+                path: project
+                    .shell
+                    .path
+                    .clone()
+                    .or_else(|| global.shell.path.clone()),
                 env: {
                     let mut env = global.shell.env.clone();
                     env.extend(project.shell.env.clone());
@@ -890,7 +1011,10 @@ impl Config {
             },
             browser: BrowserConfig {
                 enabled: project.browser.enabled || global.browser.enabled,
-                executable_path: project.browser.executable_path.clone()
+                executable_path: project
+                    .browser
+                    .executable_path
+                    .clone()
                     .or_else(|| global.browser.executable_path.clone()),
                 headless: project.browser.headless && global.browser.headless,
             },
@@ -899,7 +1023,9 @@ impl Config {
             },
             update: UpdateConfig {
                 enabled: global.update.enabled && project.update.enabled,
-                check_interval_hours: if project.update.check_interval_hours != default_check_interval_hours() {
+                check_interval_hours: if project.update.check_interval_hours
+                    != default_check_interval_hours()
+                {
                     project.update.check_interval_hours
                 } else {
                     global.update.check_interval_hours
@@ -917,7 +1043,10 @@ fn merge_provider_entry(global: &ProviderEntry, project: &ProviderEntry) -> Prov
         api_key: project.api_key.clone().or_else(|| global.api_key.clone()),
         base_url: project.base_url.clone().or_else(|| global.base_url.clone()),
         model: project.model.clone().or_else(|| global.model.clone()),
-        api_style: project.api_style.clone().or_else(|| global.api_style.clone()),
+        api_style: project
+            .api_style
+            .clone()
+            .or_else(|| global.api_style.clone()),
         max_tokens: project.max_tokens.or(global.max_tokens),
         temperature: project.temperature.or(global.temperature),
     }

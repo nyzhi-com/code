@@ -33,7 +33,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
             if !app.input.is_empty() {
                 let prompt = "> ";
                 let queue_hint = format!(" (queued: {})", app.message_queue.len() + 1);
-                let lines: Vec<Line> = app.input
+                let lines: Vec<Line> = app
+                    .input
                     .split('\n')
                     .enumerate()
                     .map(|(i, line_text)| {
@@ -44,8 +45,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
                         ])
                     })
                     .collect();
-                let paragraph = Paragraph::new(lines)
-                    .style(Style::default().bg(theme.bg_page));
+                let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_page));
                 frame.render_widget(paragraph, inner);
 
                 let status_area = Rect::new(
@@ -55,7 +55,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
                     1,
                 );
                 frame.render_widget(
-                    Paragraph::new(Span::styled(queue_hint, Style::default().fg(theme.text_disabled))),
+                    Paragraph::new(Span::styled(
+                        queue_hint,
+                        Style::default().fg(theme.text_disabled),
+                    )),
                     status_area,
                 );
 
@@ -120,7 +123,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
         AppMode::AwaitingUserQuestion => {
             let content = Line::from(vec![
                 Span::styled("? ", Style::default().fg(theme.accent).bold()),
-                Span::styled("select an option above", Style::default().fg(theme.text_secondary)),
+                Span::styled(
+                    "select an option above",
+                    Style::default().fg(theme.text_secondary),
+                ),
             ]);
             frame.render_widget(
                 Paragraph::new(content).style(Style::default().bg(theme.bg_page)),
@@ -147,7 +153,10 @@ fn render_normal_input(frame: &mut Frame, inner: Rect, app: &App, theme: &Theme)
     let lines: Vec<Line> = if app.input.is_empty() {
         vec![Line::from(vec![
             Span::styled(prompt, Style::default().fg(theme.accent).bold()),
-            Span::styled("Ask anything, Ctrl+K for commands", Style::default().fg(theme.text_disabled)),
+            Span::styled(
+                "Ask anything, Ctrl+K for commands",
+                Style::default().fg(theme.text_disabled),
+            ),
         ])]
     } else {
         app.input
@@ -204,12 +213,7 @@ fn render_completion_popup(
     let has_descriptions = state.context == CompletionContext::SlashCommand
         && state.descriptions.iter().any(|d| !d.is_empty());
 
-    let max_name_width = state
-        .candidates
-        .iter()
-        .map(|c| c.len())
-        .max()
-        .unwrap_or(10);
+    let max_name_width = state.candidates.iter().map(|c| c.len()).max().unwrap_or(10);
 
     let popup_width = if has_descriptions {
         let max_desc_width = state
@@ -267,10 +271,7 @@ fn render_completion_popup(
 
             if has_descriptions {
                 let name_display = if candidate.len() > name_col_width {
-                    format!(
-                        "{}...",
-                        &candidate[..name_col_width.saturating_sub(3)]
-                    )
+                    format!("{}...", &candidate[..name_col_width.saturating_sub(3)])
                 } else {
                     format!("{:<width$}", candidate, width = name_col_width)
                 };
@@ -295,14 +296,8 @@ fn render_completion_popup(
                     ])
                 } else {
                     Line::from(vec![
-                        Span::styled(
-                            name_display,
-                            Style::default().fg(theme.accent),
-                        ),
-                        Span::styled(
-                            desc_display,
-                            Style::default().fg(theme.text_tertiary),
-                        ),
+                        Span::styled(name_display, Style::default().fg(theme.accent)),
+                        Span::styled(desc_display, Style::default().fg(theme.text_tertiary)),
                     ])
                 }
             } else {
@@ -347,7 +342,10 @@ fn render_history_search(
 
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::from(vec![
-        Span::styled("(reverse-search): ", Style::default().fg(theme.accent).bold()),
+        Span::styled(
+            "(reverse-search): ",
+            Style::default().fg(theme.accent).bold(),
+        ),
         Span::styled(&search.query, Style::default().fg(theme.text_primary)),
     ]));
 

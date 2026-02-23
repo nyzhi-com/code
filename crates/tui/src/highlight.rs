@@ -8,7 +8,10 @@ use syntect::util::LinesWithEndings;
 #[derive(Debug)]
 pub enum Segment<'a> {
     Prose(&'a str),
-    CodeBlock { lang: Option<&'a str>, code: &'a str },
+    CodeBlock {
+        lang: Option<&'a str>,
+        code: &'a str,
+    },
 }
 
 /// Split markdown text into alternating prose / fenced-code-block segments.
@@ -31,9 +34,7 @@ pub fn parse_segments(text: &str) -> Vec<Segment<'_>> {
                 }
 
                 let after_fence = &rest[fence_start + 3..];
-                let lang_end = after_fence
-                    .find('\n')
-                    .unwrap_or(after_fence.len());
+                let lang_end = after_fence.find('\n').unwrap_or(after_fence.len());
                 let lang_tag = after_fence[..lang_end].trim();
                 let lang = if lang_tag.is_empty() {
                     None
@@ -128,10 +129,8 @@ impl SyntaxHighlighter {
                 Ok(ranges) => {
                     for segment in ranges {
                         if let Ok(span) = syntect_tui::into_span(segment) {
-                            line_spans.push(Span::styled(
-                                span.content.to_string(),
-                                span.style.bg(bg),
-                            ));
+                            line_spans
+                                .push(Span::styled(span.content.to_string(), span.style.bg(bg)));
                         }
                     }
                 }
@@ -150,12 +149,7 @@ impl SyntaxHighlighter {
 
 /// Format a single prose line with inline markdown:
 /// **bold**, *italic*, `inline code`, # headings, - list items
-pub fn format_prose_line<'a>(
-    raw: &str,
-    base_fg: Color,
-    accent: Color,
-    code_bg: Color,
-) -> Line<'a> {
+pub fn format_prose_line<'a>(raw: &str, base_fg: Color, accent: Color, code_bg: Color) -> Line<'a> {
     let trimmed = raw.trim_end();
 
     if trimmed.starts_with("###") {
@@ -226,10 +220,7 @@ fn parse_inline_markdown<'a>(
                 i += 1;
             }
             let code: String = chars[start..i].iter().collect();
-            spans.push(Span::styled(
-                code,
-                Style::default().fg(accent).bg(code_bg),
-            ));
+            spans.push(Span::styled(code, Style::default().fg(accent).bg(code_bg)));
             if i < len {
                 i += 1;
             }
@@ -246,10 +237,7 @@ fn parse_inline_markdown<'a>(
                 i += 1;
             }
             let bold: String = chars[start..i].iter().collect();
-            spans.push(Span::styled(
-                bold,
-                Style::default().fg(base_fg).bold(),
-            ));
+            spans.push(Span::styled(bold, Style::default().fg(base_fg).bold()));
             if i + 1 < len {
                 i += 2;
             }
@@ -266,10 +254,7 @@ fn parse_inline_markdown<'a>(
                 i += 1;
             }
             let italic: String = chars[start..i].iter().collect();
-            spans.push(Span::styled(
-                italic,
-                Style::default().fg(base_fg).italic(),
-            ));
+            spans.push(Span::styled(italic, Style::default().fg(base_fg).italic()));
             if i < len {
                 i += 1;
             }
@@ -318,16 +303,19 @@ mod tests {
         let text = "```\nplain code\n```";
         let segs = parse_segments(text);
         assert_eq!(segs.len(), 1);
-        assert!(matches!(
-            segs[0],
-            Segment::CodeBlock { lang: None, .. }
-        ));
+        assert!(matches!(segs[0], Segment::CodeBlock { lang: None, .. }));
     }
 
     #[test]
     fn highlighter_does_not_panic() {
         let hl = SyntaxHighlighter::new();
-        let lines = hl.highlight_code("fn main() {}", Some("rust"), true, Color::Gray, Color::Black);
+        let lines = hl.highlight_code(
+            "fn main() {}",
+            Some("rust"),
+            true,
+            Color::Gray,
+            Color::Black,
+        );
         assert!(!lines.is_empty());
     }
 }

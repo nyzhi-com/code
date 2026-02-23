@@ -8,9 +8,8 @@ use crate::token_store::{self, StoredToken};
 fn cursor_db_path() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        dirs::home_dir().map(|h| {
-            h.join("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
-        })
+        dirs::home_dir()
+            .map(|h| h.join("Library/Application Support/Cursor/User/globalStorage/state.vscdb"))
     }
     #[cfg(target_os = "linux")]
     {
@@ -28,8 +27,8 @@ pub struct CursorCredentials {
 }
 
 pub fn read_cursor_credentials() -> Result<CursorCredentials> {
-    let db_path = cursor_db_path()
-        .context("Could not determine Cursor data directory for this platform")?;
+    let db_path =
+        cursor_db_path().context("Could not determine Cursor data directory for this platform")?;
 
     if !db_path.exists() {
         anyhow::bail!(
@@ -100,7 +99,10 @@ pub async fn login_interactive(msg_tx: mpsc::UnboundedSender<String>) -> Result<
         }
         Err(e) => {
             let _ = msg_tx.send(format!("Auto-import failed: {e}"));
-            let _ = msg_tx.send("Paste your Cursor access token manually via /connect -> Cursor -> API key.".to_string());
+            let _ = msg_tx.send(
+                "Paste your Cursor access token manually via /connect -> Cursor -> API key."
+                    .to_string(),
+            );
             Err(e)
         }
     }

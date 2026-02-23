@@ -382,10 +382,7 @@ impl Provider for CursorProvider {
             "stream_options": {"include_usage": true},
         });
 
-        let thinking_enabled = request
-            .thinking
-            .as_ref()
-            .is_some_and(|t| t.enabled);
+        let thinking_enabled = request.thinking.as_ref().is_some_and(|t| t.enabled);
 
         if let Some(max_tokens) = request.max_tokens {
             body["max_tokens"] = json!(max_tokens);
@@ -396,7 +393,11 @@ impl Provider for CursorProvider {
             }
         }
         if thinking_enabled {
-            if let Some(ref effort) = request.thinking.as_ref().and_then(|t| t.reasoning_effort.clone()) {
+            if let Some(ref effort) = request
+                .thinking
+                .as_ref()
+                .and_then(|t| t.reasoning_effort.clone())
+            {
                 body["reasoning_effort"] = json!(effort);
             }
         }

@@ -10,7 +10,9 @@ pub async fn fetch_models(
     api_key: Option<&str>,
 ) -> Result<Vec<ModelInfo>> {
     match provider_id {
-        "openai" | "codex" => fetch_openai_compat(provider_id, base_url, api_key, openai_filter).await,
+        "openai" | "codex" => {
+            fetch_openai_compat(provider_id, base_url, api_key, openai_filter).await
+        }
         "anthropic" | "claude-sdk" => fetch_anthropic(provider_id, base_url, api_key).await,
         "gemini" => fetch_gemini(base_url, api_key).await,
         "openrouter" => fetch_openrouter(base_url).await,
@@ -33,7 +35,17 @@ fn client() -> reqwest::Client {
 fn openai_filter(id: &str) -> bool {
     let dominated_prefixes = ["gpt-", "o1-", "o3-", "o4-", "codex-", "chatgpt-"];
     let dominated = dominated_prefixes.iter().any(|p| id.starts_with(p));
-    let excluded_contains = ["dall-e", "whisper", "tts", "embedding", "moderation", "davinci", "babbage", "curie", "ada"];
+    let excluded_contains = [
+        "dall-e",
+        "whisper",
+        "tts",
+        "embedding",
+        "moderation",
+        "davinci",
+        "babbage",
+        "curie",
+        "ada",
+    ];
     let excluded = excluded_contains.iter().any(|e| id.contains(e));
     dominated && !excluded
 }
@@ -75,10 +87,7 @@ async fn fetch_openai_compat(
     }
 
     let data: Value = resp.json().await?;
-    let models = data["data"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let models = data["data"].as_array().cloned().unwrap_or_default();
 
     Ok(models
         .iter()
@@ -209,7 +218,11 @@ async fn fetch_gemini(base_url: &str, api_key: Option<&str>) -> Result<Vec<Model
                 output_price_per_m: 0.0,
                 cache_read_price_per_m: 0.0,
                 cache_write_price_per_m: 0.0,
-                tier: if id.contains("pro") { ModelTier::High } else { ModelTier::Medium },
+                tier: if id.contains("pro") {
+                    ModelTier::High
+                } else {
+                    ModelTier::Medium
+                },
                 thinking: None,
             })
         })
@@ -271,7 +284,11 @@ async fn fetch_openrouter(base_url: &str) -> Result<Vec<ModelInfo>> {
                 output_price_per_m: output_price,
                 cache_read_price_per_m: 0.0,
                 cache_write_price_per_m: 0.0,
-                tier: if ctx >= 200_000 { ModelTier::High } else { ModelTier::Medium },
+                tier: if ctx >= 200_000 {
+                    ModelTier::High
+                } else {
+                    ModelTier::Medium
+                },
                 thinking: None,
             })
         })
@@ -316,7 +333,11 @@ async fn fetch_ollama(base_url: &str) -> Result<Vec<ModelInfo>> {
                 output_price_per_m: 0.0,
                 cache_read_price_per_m: 0.0,
                 cache_write_price_per_m: 0.0,
-                tier: if size_gb > 20.0 { ModelTier::High } else { ModelTier::Medium },
+                tier: if size_gb > 20.0 {
+                    ModelTier::High
+                } else {
+                    ModelTier::Medium
+                },
                 thinking: None,
             })
         })
@@ -359,7 +380,11 @@ async fn fetch_together(base_url: &str, api_key: Option<&str>) -> Result<Vec<Mod
         .filter_map(|m| {
             let id = m["id"].as_str()?;
             let mtype = m["type"].as_str().unwrap_or("");
-            if mtype == "embedding" || mtype == "rerank" || mtype == "image" || mtype == "moderation" {
+            if mtype == "embedding"
+                || mtype == "rerank"
+                || mtype == "image"
+                || mtype == "moderation"
+            {
                 return None;
             }
             let display = m["display_name"].as_str().unwrap_or(id);
@@ -378,7 +403,11 @@ async fn fetch_together(base_url: &str, api_key: Option<&str>) -> Result<Vec<Mod
                 output_price_per_m: 0.0,
                 cache_read_price_per_m: 0.0,
                 cache_write_price_per_m: 0.0,
-                tier: if ctx >= 100_000 { ModelTier::High } else { ModelTier::Medium },
+                tier: if ctx >= 100_000 {
+                    ModelTier::High
+                } else {
+                    ModelTier::Medium
+                },
                 thinking: None,
             })
         })

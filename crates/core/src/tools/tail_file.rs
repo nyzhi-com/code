@@ -40,13 +40,10 @@ impl Tool for TailFileTool {
             .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: path"))?;
-        let n = args
-            .get("lines")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(50) as usize;
+        let n = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
 
-        let file = std::fs::File::open(path)
-            .map_err(|e| anyhow::anyhow!("Failed to open {path}: {e}"))?;
+        let file =
+            std::fs::File::open(path).map_err(|e| anyhow::anyhow!("Failed to open {path}: {e}"))?;
 
         let metadata = file.metadata()?;
         let file_size = metadata.len();

@@ -155,7 +155,10 @@ pub fn rules_source(root: &Path) -> Option<String> {
     let candidates: &[(&str, PathBuf)] = &[
         ("AGENTS.md", root.join("AGENTS.md")),
         (".nyzhi/rules.md", root.join(".nyzhi").join("rules.md")),
-        (".nyzhi/instructions.md", root.join(".nyzhi").join("instructions.md")),
+        (
+            ".nyzhi/instructions.md",
+            root.join(".nyzhi").join("instructions.md"),
+        ),
         ("CLAUDE.md", root.join("CLAUDE.md")),
         (".cursorrules", root.join(".cursorrules")),
     ];

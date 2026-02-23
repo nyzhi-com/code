@@ -29,7 +29,13 @@ pub enum TextPromptAction {
 }
 
 impl TextPromptState {
-    pub fn new(kind: TextPromptKind, title: &str, description: &[&str], placeholder: &str, masked: bool) -> Self {
+    pub fn new(
+        kind: TextPromptKind,
+        title: &str,
+        description: &[&str],
+        placeholder: &str,
+        masked: bool,
+    ) -> Self {
         Self {
             kind,
             title: title.to_string(),
@@ -142,8 +148,8 @@ pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
     for desc in &state.description {
         if y_offset < inner.height {
             let desc_area = Rect::new(inner.x, inner.y + y_offset, inner.width, 1);
-            let text = Paragraph::new(desc.as_str())
-                .style(Style::default().fg(theme.text_secondary));
+            let text =
+                Paragraph::new(desc.as_str()).style(Style::default().fg(theme.text_secondary));
             frame.render_widget(text, desc_area);
             y_offset += 1;
         }
@@ -160,8 +166,7 @@ pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
             TextPromptKind::UserQuestionCustom => "Your answer:",
             _ => "API Key:",
         };
-        let label = Paragraph::new(label_text)
-            .style(Style::default().fg(theme.text_primary));
+        let label = Paragraph::new(label_text).style(Style::default().fg(theme.text_primary));
         frame.render_widget(label, label_area);
         y_offset += 1;
     }

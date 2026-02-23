@@ -60,15 +60,20 @@ impl JudgeSession {
     }
 
     pub fn rank(&mut self) -> Vec<&CandidateResult> {
-        self.results
-            .sort_by(|a, b| b.total_score.partial_cmp(&a.total_score).unwrap_or(std::cmp::Ordering::Equal));
+        self.results.sort_by(|a, b| {
+            b.total_score
+                .partial_cmp(&a.total_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         self.results.iter().collect()
     }
 
     pub fn best(&self) -> Option<&CandidateResult> {
-        self.results
-            .iter()
-            .max_by(|a, b| a.total_score.partial_cmp(&b.total_score).unwrap_or(std::cmp::Ordering::Equal))
+        self.results.iter().max_by(|a, b| {
+            a.total_score
+                .partial_cmp(&b.total_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     pub fn format_comparison(&self) -> String {
@@ -76,11 +81,19 @@ impl JudgeSession {
             return "No candidates to compare.".to_string();
         }
 
-        let mut lines = vec![format!("Judging {} candidates for: {}", self.results.len(), self.prompt)];
+        let mut lines = vec![format!(
+            "Judging {} candidates for: {}",
+            self.results.len(),
+            self.prompt
+        )];
         lines.push(String::new());
 
         let mut sorted = self.results.clone();
-        sorted.sort_by(|a, b| b.total_score.partial_cmp(&a.total_score).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.sort_by(|a, b| {
+            b.total_score
+                .partial_cmp(&a.total_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         for (rank, candidate) in sorted.iter().enumerate() {
             let status = if candidate.success { "PASS" } else { "FAIL" };
@@ -107,7 +120,10 @@ impl JudgeSession {
 
 pub fn score_test_output(output: &str) -> f64 {
     let lower = output.to_lowercase();
-    if lower.contains("test result: ok") || lower.contains("tests passed") || lower.contains("0 failed") {
+    if lower.contains("test result: ok")
+        || lower.contains("tests passed")
+        || lower.contains("0 failed")
+    {
         1.0
     } else if lower.contains("failed") || lower.contains("error") {
         let fail_count = lower.matches("failed").count() + lower.matches("error").count();

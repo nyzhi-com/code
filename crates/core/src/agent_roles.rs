@@ -58,11 +58,19 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             max_steps_override: Some(30),
             read_only: true,
             allowed_tools: Some(vec![
-                "read".into(), "glob".into(), "grep".into(),
-                "list_dir".into(), "directory_tree".into(), "file_info".into(),
-                "git_status".into(), "git_diff".into(), "git_log".into(),
-                "git_show".into(), "git_branch".into(),
-                "lsp_diagnostics".into(), "ast_search".into(),
+                "read".into(),
+                "glob".into(),
+                "grep".into(),
+                "list_dir".into(),
+                "directory_tree".into(),
+                "file_info".into(),
+                "git_status".into(),
+                "git_diff".into(),
+                "git_log".into(),
+                "git_show".into(),
+                "git_branch".into(),
+                "lsp_diagnostics".into(),
+                "ast_search".into(),
             ]),
             disallowed_tools: None,
             config_file: None,
@@ -105,11 +113,19 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
-                "read".into(), "glob".into(), "grep".into(),
-                "list_dir".into(), "directory_tree".into(), "file_info".into(),
-                "git_status".into(), "git_diff".into(), "git_log".into(),
-                "git_show".into(), "git_branch".into(),
-                "lsp_diagnostics".into(), "ast_search".into(),
+                "read".into(),
+                "glob".into(),
+                "grep".into(),
+                "list_dir".into(),
+                "directory_tree".into(),
+                "file_info".into(),
+                "git_status".into(),
+                "git_diff".into(),
+                "git_log".into(),
+                "git_show".into(),
+                "git_branch".into(),
+                "lsp_diagnostics".into(),
+                "ast_search".into(),
                 "bash".into(),
             ]),
             disallowed_tools: None,
@@ -132,12 +148,21 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
-                "read".into(), "glob".into(), "grep".into(),
-                "list_dir".into(), "directory_tree".into(), "file_info".into(),
-                "git_status".into(), "git_diff".into(), "git_log".into(),
-                "git_show".into(), "git_branch".into(),
-                "lsp_diagnostics".into(), "ast_search".into(),
-                "todowrite".into(), "todoread".into(),
+                "read".into(),
+                "glob".into(),
+                "grep".into(),
+                "list_dir".into(),
+                "directory_tree".into(),
+                "file_info".into(),
+                "git_status".into(),
+                "git_diff".into(),
+                "git_log".into(),
+                "git_show".into(),
+                "git_branch".into(),
+                "lsp_diagnostics".into(),
+                "ast_search".into(),
+                "todowrite".into(),
+                "todoread".into(),
             ]),
             disallowed_tools: None,
             config_file: None,
@@ -159,11 +184,19 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
-                "read".into(), "glob".into(), "grep".into(),
-                "list_dir".into(), "directory_tree".into(), "file_info".into(),
-                "git_status".into(), "git_diff".into(), "git_log".into(),
-                "git_show".into(), "git_branch".into(),
-                "lsp_diagnostics".into(), "ast_search".into(),
+                "read".into(),
+                "glob".into(),
+                "grep".into(),
+                "list_dir".into(),
+                "directory_tree".into(),
+                "file_info".into(),
+                "git_status".into(),
+                "git_diff".into(),
+                "git_log".into(),
+                "git_show".into(),
+                "git_branch".into(),
+                "lsp_diagnostics".into(),
+                "ast_search".into(),
                 "bash".into(),
             ]),
             disallowed_tools: None,
@@ -206,11 +239,19 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
-                "read".into(), "glob".into(), "grep".into(),
-                "list_dir".into(), "directory_tree".into(), "file_info".into(),
-                "git_status".into(), "git_diff".into(), "git_log".into(),
-                "git_show".into(), "git_branch".into(),
-                "lsp_diagnostics".into(), "ast_search".into(),
+                "read".into(),
+                "glob".into(),
+                "grep".into(),
+                "list_dir".into(),
+                "directory_tree".into(),
+                "file_info".into(),
+                "git_status".into(),
+                "git_diff".into(),
+                "git_log".into(),
+                "git_show".into(),
+                "git_branch".into(),
+                "lsp_diagnostics".into(),
+                "ast_search".into(),
                 "bash".into(),
             ]),
             disallowed_tools: None,
@@ -234,11 +275,19 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
-                "read".into(), "glob".into(), "grep".into(),
-                "list_dir".into(), "directory_tree".into(), "file_info".into(),
-                "git_status".into(), "git_diff".into(), "git_log".into(),
-                "git_show".into(), "git_branch".into(),
-                "lsp_diagnostics".into(), "ast_search".into(),
+                "read".into(),
+                "glob".into(),
+                "grep".into(),
+                "list_dir".into(),
+                "directory_tree".into(),
+                "file_info".into(),
+                "git_status".into(),
+                "git_diff".into(),
+                "git_log".into(),
+                "git_show".into(),
+                "git_branch".into(),
+                "lsp_diagnostics".into(),
+                "ast_search".into(),
             ]),
             disallowed_tools: None,
             config_file: None,
@@ -406,28 +455,20 @@ pub fn apply_role(config: &mut AgentConfig, role: &AgentRoleConfig) {
     config.name = format!("sub-agent/{}", role.name);
 }
 
-pub fn build_spawn_tool_description(
-    user_roles: &HashMap<String, AgentRoleConfig>,
-) -> String {
+pub fn build_spawn_tool_description(user_roles: &HashMap<String, AgentRoleConfig>) -> String {
     let built_in = built_in_roles();
     let mut seen = std::collections::HashSet::new();
     let mut lines = Vec::new();
 
     for (name, role) in user_roles {
         seen.insert(name.clone());
-        let desc = role
-            .description
-            .as_deref()
-            .unwrap_or("no description");
+        let desc = role.description.as_deref().unwrap_or("no description");
         lines.push(format!("- `{name}`: {desc}"));
     }
 
     for (name, role) in &built_in {
         if seen.insert(name.clone()) {
-            let desc = role
-                .description
-                .as_deref()
-                .unwrap_or("no description");
+            let desc = role.description.as_deref().unwrap_or("no description");
             lines.push(format!("- `{name}`: {desc}"));
         }
     }

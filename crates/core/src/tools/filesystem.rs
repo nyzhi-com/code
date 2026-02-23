@@ -127,10 +127,7 @@ impl Tool for DirectoryTreeTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: path"))?;
 
-        let max_depth = args
-            .get("depth")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3) as usize;
+        let max_depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
 
         let path = resolve_path(dir_path, &ctx.cwd);
 
@@ -247,9 +244,9 @@ impl Tool for FileInfoTool {
 
         let path = resolve_path(file_path, &ctx.cwd);
 
-        let meta = tokio::fs::metadata(&path).await.map_err(|e| {
-            anyhow::anyhow!("Cannot stat {}: {e}", path.display())
-        })?;
+        let meta = tokio::fs::metadata(&path)
+            .await
+            .map_err(|e| anyhow::anyhow!("Cannot stat {}: {e}", path.display()))?;
 
         let file_type = if meta.is_dir() {
             "directory"

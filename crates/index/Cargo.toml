@@ -1,0 +1,22 @@
+[package]
+name = "nyzhi-index"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Codebase indexing and semantic search engine for nyzhi"
+
+[dependencies]
+nyzhi-config.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha2 = "0.10"
+hex = "0.4"
+dirs = "6"

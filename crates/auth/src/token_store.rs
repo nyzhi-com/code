@@ -114,10 +114,7 @@ pub fn store_account(provider: &str, token: &StoredToken, label: Option<&str>) -
     let mut store = load_store()?;
     let accounts = store.entries.entry(provider.to_string()).or_default();
 
-    if let Some(existing) = accounts
-        .iter_mut()
-        .find(|e| e.label.as_deref() == label)
-    {
+    if let Some(existing) = accounts.iter_mut().find(|e| e.label.as_deref() == label) {
         existing.token = token.clone();
         return save_store(&store);
     }
@@ -143,14 +140,16 @@ pub fn load_token(provider: &str) -> Result<Option<StoredToken>> {
         .unwrap_or_default()
         .as_secs();
 
-    if let Some(entry) = accounts.iter().find(|e| {
-        e.active && e.rate_limited_until.map_or(true, |until| now >= until)
-    }) {
+    if let Some(entry) = accounts
+        .iter()
+        .find(|e| e.active && e.rate_limited_until.map_or(true, |until| now >= until))
+    {
         return Ok(Some(entry.token.clone()));
     }
-    if let Some(entry) = accounts.iter().find(|e| {
-        e.rate_limited_until.map_or(true, |until| now >= until)
-    }) {
+    if let Some(entry) = accounts
+        .iter()
+        .find(|e| e.rate_limited_until.map_or(true, |until| now >= until))
+    {
         return Ok(Some(entry.token.clone()));
     }
     Ok(accounts.first().map(|e| e.token.clone()))
@@ -166,11 +165,7 @@ pub fn active_account(provider: &str) -> Result<Option<AccountEntry>> {
 
 pub fn list_accounts(provider: &str) -> Result<Vec<AccountEntry>> {
     let store = load_store()?;
-    Ok(store
-        .entries
-        .get(provider)
-        .cloned()
-        .unwrap_or_default())
+    Ok(store.entries.get(provider).cloned().unwrap_or_default())
 }
 
 pub fn remove_account(provider: &str, label: Option<&str>) -> Result<bool> {

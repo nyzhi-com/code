@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use rand::prelude::IndexedRandom;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, watch, Mutex, oneshot};
+use tokio::sync::{broadcast, oneshot, watch, Mutex};
 use tokio::task::JoinHandle;
 
 use crate::agent::{run_turn, AgentConfig, AgentEvent, SessionUsage};
@@ -15,18 +15,94 @@ use crate::tools::{ToolContext, ToolRegistry};
 pub type AgentId = String;
 
 const AGENT_NAMES: &[&str] = &[
-    "Pikachu", "Charizard", "Bulbasaur", "Squirtle", "Eevee", "Gengar", "Mewtwo", "Snorlax",
-    "Dragonite", "Alakazam", "Gyarados", "Arcanine", "Lucario", "Gardevoir", "Blaziken",
-    "Greninja", "Umbreon", "Espeon", "Jolteon", "Vaporeon", "Flareon", "Leafeon", "Glaceon",
-    "Sylveon", "Typhlosion", "Feraligatr", "Meganium", "Scizor", "Tyranitar", "Heracross",
-    "Ampharos", "Togekiss", "Salamence", "Metagross", "Absol", "Flygon", "Milotic", "Aggron",
-    "Swampert", "Sceptile", "Luxray", "Staraptor", "Garchomp", "Gallade", "Weavile", "Electivire",
-    "Magmortar", "Infernape", "Empoleon", "Torterra", "Zoroark", "Hydreigon", "Volcarona",
-    "Haxorus", "Krookodile", "Chandelure", "Excadrill", "Bisharp", "Braviary", "Golurk",
-    "Serperior", "Samurott", "Emboar", "Noivern", "Talonflame", "Hawlucha", "Goodra",
-    "Aegislash", "Dragalge", "Pangoro", "Decidueye", "Incineroar", "Primarina", "Mimikyu",
-    "Toxapex", "Golisopod", "Kommo", "Lycanroc", "Corviknight", "Dragapult", "Grimmsnarl",
-    "Cinderace", "Rillaboom", "Toxtricity", "Urshifu", "Ceruledge", "Kingambit", "Baxcalibur",
+    "Pikachu",
+    "Charizard",
+    "Bulbasaur",
+    "Squirtle",
+    "Eevee",
+    "Gengar",
+    "Mewtwo",
+    "Snorlax",
+    "Dragonite",
+    "Alakazam",
+    "Gyarados",
+    "Arcanine",
+    "Lucario",
+    "Gardevoir",
+    "Blaziken",
+    "Greninja",
+    "Umbreon",
+    "Espeon",
+    "Jolteon",
+    "Vaporeon",
+    "Flareon",
+    "Leafeon",
+    "Glaceon",
+    "Sylveon",
+    "Typhlosion",
+    "Feraligatr",
+    "Meganium",
+    "Scizor",
+    "Tyranitar",
+    "Heracross",
+    "Ampharos",
+    "Togekiss",
+    "Salamence",
+    "Metagross",
+    "Absol",
+    "Flygon",
+    "Milotic",
+    "Aggron",
+    "Swampert",
+    "Sceptile",
+    "Luxray",
+    "Staraptor",
+    "Garchomp",
+    "Gallade",
+    "Weavile",
+    "Electivire",
+    "Magmortar",
+    "Infernape",
+    "Empoleon",
+    "Torterra",
+    "Zoroark",
+    "Hydreigon",
+    "Volcarona",
+    "Haxorus",
+    "Krookodile",
+    "Chandelure",
+    "Excadrill",
+    "Bisharp",
+    "Braviary",
+    "Golurk",
+    "Serperior",
+    "Samurott",
+    "Emboar",
+    "Noivern",
+    "Talonflame",
+    "Hawlucha",
+    "Goodra",
+    "Aegislash",
+    "Dragalge",
+    "Pangoro",
+    "Decidueye",
+    "Incineroar",
+    "Primarina",
+    "Mimikyu",
+    "Toxapex",
+    "Golisopod",
+    "Kommo",
+    "Lycanroc",
+    "Corviknight",
+    "Dragapult",
+    "Grimmsnarl",
+    "Cinderace",
+    "Rillaboom",
+    "Toxtricity",
+    "Urshifu",
+    "Ceruledge",
+    "Kingambit",
+    "Baxcalibur",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -245,6 +321,7 @@ impl AgentManager {
             agent_name: agent_config.agent_name.clone(),
             is_team_lead: false,
             todo_store: None,
+            index: None,
         };
 
         let join_handle = tokio::spawn(async move {
@@ -371,7 +448,10 @@ impl AgentManager {
 
         let status = handle.status_rx.borrow().clone();
         if status.is_final() {
-            anyhow::bail!("Agent {agent_id} ({}) is in final state: {status}", handle.nickname);
+            anyhow::bail!(
+                "Agent {agent_id} ({}) is in final state: {status}",
+                handle.nickname
+            );
         }
 
         let mut thread = handle.thread.lock().await;
@@ -391,10 +471,7 @@ impl AgentManager {
         }
     }
 
-    pub async fn subscribe_status(
-        &self,
-        agent_id: &str,
-    ) -> Result<watch::Receiver<AgentStatus>> {
+    pub async fn subscribe_status(&self, agent_id: &str) -> Result<watch::Receiver<AgentStatus>> {
         let agents = self.agents.lock().await;
         let handle = agents
             .get(agent_id)
@@ -465,25 +542,23 @@ impl AgentManager {
 
         let mut futures: futures::stream::FuturesUnordered<_> = status_receivers
             .into_iter()
-            .map(move |(id, mut rx)| {
-                async move {
-                    loop {
-                        let status = rx.borrow().clone();
-                        if status.is_final() {
-                            return Some((id, status));
-                        }
-                        match tokio::time::timeout_at(deadline, rx.changed()).await {
-                            Ok(Ok(())) => {
-                                let s = rx.borrow().clone();
-                                if s.is_final() {
-                                    return Some((id, s));
-                                }
+            .map(move |(id, mut rx)| async move {
+                loop {
+                    let status = rx.borrow().clone();
+                    if status.is_final() {
+                        return Some((id, status));
+                    }
+                    match tokio::time::timeout_at(deadline, rx.changed()).await {
+                        Ok(Ok(())) => {
+                            let s = rx.borrow().clone();
+                            if s.is_final() {
+                                return Some((id, s));
                             }
-                            Ok(Err(_)) => {
-                                return Some((id, rx.borrow().clone()));
-                            }
-                            Err(_) => return None,
                         }
+                        Ok(Err(_)) => {
+                            return Some((id, rx.borrow().clone()));
+                        }
+                        Err(_) => return None,
                     }
                 }
             })

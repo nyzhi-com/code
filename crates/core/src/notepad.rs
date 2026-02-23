@@ -11,19 +11,31 @@ pub fn ensure_notepad(project_root: &Path, plan_name: &str) -> Result<PathBuf> {
     for file in &["learnings.md", "decisions.md", "issues.md"] {
         let path = dir.join(file);
         if !path.exists() {
-            std::fs::write(&path, format!("# {}\n\n", file.replace(".md", "").to_uppercase()))?;
+            std::fs::write(
+                &path,
+                format!("# {}\n\n", file.replace(".md", "").to_uppercase()),
+            )?;
         }
     }
     Ok(dir)
 }
 
-pub fn append_entry(project_root: &Path, plan_name: &str, category: &str, entry: &str) -> Result<String> {
+pub fn append_entry(
+    project_root: &Path,
+    plan_name: &str,
+    category: &str,
+    entry: &str,
+) -> Result<String> {
     let dir = ensure_notepad(project_root, plan_name)?;
     let file = match category {
         "learning" | "learnings" => "learnings.md",
         "decision" | "decisions" => "decisions.md",
         "issue" | "issues" => "issues.md",
-        _ => return Err(anyhow::anyhow!("Unknown category: {category} (use learnings, decisions, or issues)")),
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unknown category: {category} (use learnings, decisions, or issues)"
+            ))
+        }
     };
     let path = dir.join(file);
 

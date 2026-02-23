@@ -100,10 +100,7 @@ impl CheckpointManager {
         self.checkpoints.iter().collect()
     }
 
-    pub fn restore(
-        &mut self,
-        id: u32,
-    ) -> Result<Option<(Vec<Message>, Vec<(PathBuf, String)>)>> {
+    pub fn restore(&mut self, id: u32) -> Result<Option<(Vec<Message>, Vec<(PathBuf, String)>)>> {
         let idx = match self.checkpoints.iter().position(|c| c.id == id) {
             Some(i) => i,
             None => return Ok(None),

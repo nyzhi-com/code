@@ -126,7 +126,10 @@ fn fuzzy_score(query: &[char], target: &str) -> i64 {
     }
 
     let basename = target.rsplit('/').next().unwrap_or(target);
-    if basename.to_lowercase().contains(&query.iter().collect::<String>()) {
+    if basename
+        .to_lowercase()
+        .contains(&query.iter().collect::<String>())
+    {
         score += 10;
     }
 

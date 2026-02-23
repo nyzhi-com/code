@@ -10,9 +10,11 @@ pub fn check_deny(
     target_path: Option<&str>,
     trust: &nyzhi_config::TrustConfig,
 ) -> bool {
-    if trust.deny_tools.iter().any(|d| {
-        d.eq_ignore_ascii_case(tool_name) || d == "*"
-    }) {
+    if trust
+        .deny_tools
+        .iter()
+        .any(|d| d.eq_ignore_ascii_case(tool_name) || d == "*")
+    {
         return true;
     }
 
@@ -36,37 +38,47 @@ pub fn check_auto_approve(
     permission: ToolPermission,
     trust: &nyzhi_config::TrustConfig,
 ) -> Option<bool> {
-    if trust.always_ask.iter().any(|t| t.eq_ignore_ascii_case(tool_name)) {
+    if trust
+        .always_ask
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case(tool_name))
+    {
         return Some(false);
     }
-    if trust.auto_approve.iter().any(|t| t.eq_ignore_ascii_case(tool_name)) {
+    if trust
+        .auto_approve
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case(tool_name))
+    {
         return Some(true);
     }
 
     match trust.mode {
         nyzhi_config::TrustMode::Full => Some(true),
-        nyzhi_config::TrustMode::AutoEdit => {
-            match permission {
-                ToolPermission::ReadOnly => Some(true),
-                ToolPermission::NeedsApproval => {
-                    let write_tools = [
-                        "write", "edit", "multi_edit", "apply_patch",
-                        "delete_file", "move_file", "copy_file", "create_dir",
-                    ];
-                    if write_tools.contains(&tool_name) {
-                        Some(true)
-                    } else {
-                        None
-                    }
+        nyzhi_config::TrustMode::AutoEdit => match permission {
+            ToolPermission::ReadOnly => Some(true),
+            ToolPermission::NeedsApproval => {
+                let write_tools = [
+                    "write",
+                    "edit",
+                    "multi_edit",
+                    "apply_patch",
+                    "delete_file",
+                    "move_file",
+                    "copy_file",
+                    "create_dir",
+                ];
+                if write_tools.contains(&tool_name) {
+                    Some(true)
+                } else {
+                    None
                 }
             }
-        }
-        nyzhi_config::TrustMode::Limited => {
-            match permission {
-                ToolPermission::ReadOnly => Some(true),
-                ToolPermission::NeedsApproval => None,
-            }
-        }
+        },
+        nyzhi_config::TrustMode::Limited => match permission {
+            ToolPermission::ReadOnly => Some(true),
+            ToolPermission::NeedsApproval => None,
+        },
         nyzhi_config::TrustMode::Off => None,
     }
 }

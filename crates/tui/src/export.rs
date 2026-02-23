@@ -29,28 +29,26 @@ pub fn export_session_markdown(items: &[DisplayItem], meta: &ExportMeta) -> Stri
 
     for item in items {
         match item {
-            DisplayItem::Message { role, content } => {
-                match role.as_str() {
-                    "user" => {
-                        out.push_str("## You\n\n");
-                        out.push_str(content);
-                        out.push_str("\n\n");
-                    }
-                    "assistant" => {
-                        out.push_str("## Assistant\n\n");
-                        out.push_str(content);
-                        out.push_str("\n\n");
-                    }
-                    _ => {
-                        for line in content.lines() {
-                            out.push_str("> ");
-                            out.push_str(line);
-                            out.push('\n');
-                        }
+            DisplayItem::Message { role, content } => match role.as_str() {
+                "user" => {
+                    out.push_str("## You\n\n");
+                    out.push_str(content);
+                    out.push_str("\n\n");
+                }
+                "assistant" => {
+                    out.push_str("## Assistant\n\n");
+                    out.push_str(content);
+                    out.push_str("\n\n");
+                }
+                _ => {
+                    for line in content.lines() {
+                        out.push_str("> ");
+                        out.push_str(line);
                         out.push('\n');
                     }
+                    out.push('\n');
                 }
-            }
+            },
             DisplayItem::Thinking(content) => {
                 out.push_str("<details>\n<summary>Thinking</summary>\n\n");
                 out.push_str(content);
@@ -102,10 +100,7 @@ pub fn export_session_markdown(items: &[DisplayItem], meta: &ExportMeta) -> Stri
     out
 }
 
-pub fn export_thread_markdown(
-    messages: &[nyzhi_provider::Message],
-    meta: &ExportMeta,
-) -> String {
+pub fn export_thread_markdown(messages: &[nyzhi_provider::Message], meta: &ExportMeta) -> String {
     let mut out = String::with_capacity(4096);
 
     out.push_str("---\n");

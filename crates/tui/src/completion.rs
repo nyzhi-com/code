@@ -17,62 +17,286 @@ pub struct SlashCommandDef {
 }
 
 pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
-    SlashCommandDef { name: "/accent", description: "change accent color", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/agents", description: "list available agent roles", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/autopilot", description: "autonomous multi-step execution", kind: CommandKind::Prompt },
-    SlashCommandDef { name: "/background", description: "alias for /bg", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/bg", description: "manage background tasks", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/bug", description: "generate a bug report", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/changes", description: "list file changes this session", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/clear", description: "clear the session", kind: CommandKind::StreamingSafe },
-    SlashCommandDef { name: "/clear queue", description: "clear the message queue", kind: CommandKind::StreamingSafe },
-    SlashCommandDef { name: "/commands", description: "list custom commands", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/compact", description: "compress conversation history", kind: CommandKind::Prompt },
-    SlashCommandDef { name: "/connect", description: "connect a provider", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/context", description: "show context window usage", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/doctor", description: "run diagnostics", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/editor", description: "open $EDITOR for multi-line input", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/enable_exa", description: "set up Exa web search", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/exit", description: "exit nyzhi", kind: CommandKind::StreamingSafe },
-    SlashCommandDef { name: "/export", description: "export conversation as markdown", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/handoff", description: "create session handoff for continuation", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/help", description: "show all commands and shortcuts", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/hooks", description: "list configured hooks", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/image", description: "attach an image to next prompt", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/init", description: "initialize .nyzhi/ project config", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/init-deep", description: "generate AGENTS.md files across project", kind: CommandKind::Prompt },
-    SlashCommandDef { name: "/learn", description: "create or list learned skills", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/login", description: "show OAuth login status", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/mcp", description: "list connected MCP servers", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/model", description: "choose what model to use", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/notepad", description: "view saved notepads", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/notify", description: "configure notifications", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/persist", description: "enable verify-and-fix mode", kind: CommandKind::Prompt },
-    SlashCommandDef { name: "/plan", description: "view or create execution plans", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/qa", description: "run autonomous QA cycling", kind: CommandKind::Prompt },
-    SlashCommandDef { name: "/quit", description: "exit nyzhi", kind: CommandKind::StreamingSafe },
-    SlashCommandDef { name: "/refactor", description: "structured refactoring workflow", kind: CommandKind::Prompt },
-    SlashCommandDef { name: "/resume", description: "restore a saved session", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/retry", description: "resend the last prompt", kind: CommandKind::Prompt },
-    SlashCommandDef { name: "/search", description: "search session messages", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/session delete", description: "delete a saved session", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/session rename", description: "rename current session", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/sessions", description: "list saved sessions", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/status", description: "show session status and usage", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/stop", description: "stop all continuation mechanisms", kind: CommandKind::StreamingSafe },
-    SlashCommandDef { name: "/style", description: "change output verbosity", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/team", description: "spawn coordinated sub-agents", kind: CommandKind::Prompt },
-    SlashCommandDef { name: "/theme", description: "choose theme (dark/light)", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/think", description: "toggle extended thinking", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/thinking", description: "set thinking effort level", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/todo", description: "view todo list and progress", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/todo enforce on", description: "enable todo enforcer", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/todo enforce off", description: "pause todo enforcer", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/todo clear", description: "clear all todos", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/trust", description: "show or set trust mode", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/undo", description: "undo the last file change", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/undo all", description: "undo all changes this session", kind: CommandKind::Instant },
-    SlashCommandDef { name: "/verify", description: "detect and list project checks", kind: CommandKind::Prompt },
+    SlashCommandDef {
+        name: "/accent",
+        description: "change accent color",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/agents",
+        description: "list available agent roles",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/autopilot",
+        description: "autonomous multi-step execution",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/background",
+        description: "alias for /bg",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/bg",
+        description: "manage background tasks",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/bug",
+        description: "generate a bug report",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/changes",
+        description: "list file changes this session",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/clear",
+        description: "clear the session",
+        kind: CommandKind::StreamingSafe,
+    },
+    SlashCommandDef {
+        name: "/clear queue",
+        description: "clear the message queue",
+        kind: CommandKind::StreamingSafe,
+    },
+    SlashCommandDef {
+        name: "/commands",
+        description: "list custom commands",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/compact",
+        description: "compress conversation history",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/connect",
+        description: "connect a provider",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/context",
+        description: "show context window usage",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/doctor",
+        description: "run diagnostics",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/editor",
+        description: "open $EDITOR for multi-line input",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/enable_exa",
+        description: "set up Exa web search",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/exit",
+        description: "exit nyzhi",
+        kind: CommandKind::StreamingSafe,
+    },
+    SlashCommandDef {
+        name: "/export",
+        description: "export conversation as markdown",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/handoff",
+        description: "create session handoff for continuation",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/help",
+        description: "show all commands and shortcuts",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/hooks",
+        description: "list configured hooks",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/image",
+        description: "attach an image to next prompt",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/init",
+        description: "initialize .nyzhi/ project config",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/init-deep",
+        description: "generate AGENTS.md files across project",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/learn",
+        description: "create or list learned skills",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/login",
+        description: "show OAuth login status",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/mcp",
+        description: "list connected MCP servers",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/model",
+        description: "choose what model to use",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/notepad",
+        description: "view saved notepads",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/notify",
+        description: "configure notifications",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/persist",
+        description: "enable verify-and-fix mode",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/plan",
+        description: "view or create execution plans",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/qa",
+        description: "run autonomous QA cycling",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/quit",
+        description: "exit nyzhi",
+        kind: CommandKind::StreamingSafe,
+    },
+    SlashCommandDef {
+        name: "/refactor",
+        description: "structured refactoring workflow",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/resume",
+        description: "restore a saved session",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/retry",
+        description: "resend the last prompt",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/search",
+        description: "search session messages",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/session delete",
+        description: "delete a saved session",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/session rename",
+        description: "rename current session",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/sessions",
+        description: "list saved sessions",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/status",
+        description: "show session status and usage",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/stop",
+        description: "stop all continuation mechanisms",
+        kind: CommandKind::StreamingSafe,
+    },
+    SlashCommandDef {
+        name: "/style",
+        description: "change output verbosity",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/team",
+        description: "spawn coordinated sub-agents",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/theme",
+        description: "choose theme (dark/light)",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/think",
+        description: "toggle extended thinking",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/thinking",
+        description: "set thinking effort level",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/todo",
+        description: "view todo list and progress",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/todo enforce on",
+        description: "enable todo enforcer",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/todo enforce off",
+        description: "pause todo enforcer",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/todo clear",
+        description: "clear all todos",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/trust",
+        description: "show or set trust mode",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/undo",
+        description: "undo the last file change",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/undo all",
+        description: "undo all changes this session",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/verify",
+        description: "detect and list project checks",
+        kind: CommandKind::Prompt,
+    },
 ];
 
 pub fn classify_command(input: &str) -> CommandKind {
@@ -140,7 +364,10 @@ impl CompletionState {
     }
 }
 
-pub fn detect_context(input: &str, cursor_pos: usize) -> Option<(CompletionContext, String, usize)> {
+pub fn detect_context(
+    input: &str,
+    cursor_pos: usize,
+) -> Option<(CompletionContext, String, usize)> {
     let before = &input[..cursor_pos.min(input.len())];
 
     if let Some(at_pos) = find_at_mention_start(before) {
@@ -152,7 +379,11 @@ pub fn detect_context(input: &str, cursor_pos: usize) -> Option<(CompletionConte
     if trimmed.starts_with("/image ") {
         let after_cmd = before.find("/image ").unwrap() + 7;
         let path_part = &before[after_cmd..];
-        return Some((CompletionContext::FilePath, path_part.to_string(), after_cmd));
+        return Some((
+            CompletionContext::FilePath,
+            path_part.to_string(),
+            after_cmd,
+        ));
     }
 
     if trimmed.starts_with('/') {

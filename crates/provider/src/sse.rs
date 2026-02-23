@@ -2,9 +2,7 @@ use anyhow::Result;
 use futures::stream::{BoxStream, StreamExt};
 use reqwest::Response;
 
-pub fn parse_sse_stream(
-    response: Response,
-) -> BoxStream<'static, Result<SseEvent>> {
+pub fn parse_sse_stream(response: Response) -> BoxStream<'static, Result<SseEvent>> {
     let byte_stream = response.bytes_stream();
     let buffer = String::new();
 

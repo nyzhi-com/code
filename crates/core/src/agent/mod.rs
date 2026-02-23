@@ -153,7 +153,10 @@ impl std::fmt::Debug for AgentEvent {
                 .field("wait_ms", wait_ms)
                 .field("reason", reason)
                 .finish(),
-            Self::AutoCompacting { estimated_tokens, context_window } => f
+            Self::AutoCompacting {
+                estimated_tokens,
+                context_window,
+            } => f
                 .debug_struct("AutoCompacting")
                 .field("estimated_tokens", estimated_tokens)
                 .field("context_window", context_window)
@@ -169,24 +172,40 @@ impl std::fmt::Debug for AgentEvent {
                 .field("nickname", nickname)
                 .field("role", role)
                 .finish(),
-            Self::SubAgentStatusChanged { id, nickname, status } => f
+            Self::SubAgentStatusChanged {
+                id,
+                nickname,
+                status,
+            } => f
                 .debug_struct("SubAgentStatusChanged")
                 .field("id", id)
                 .field("nickname", nickname)
                 .field("status", status)
                 .finish(),
-            Self::SubAgentCompleted { id, nickname, final_message } => f
+            Self::SubAgentCompleted {
+                id,
+                nickname,
+                final_message,
+            } => f
                 .debug_struct("SubAgentCompleted")
                 .field("id", id)
                 .field("nickname", nickname)
                 .field("final_message", final_message)
                 .finish(),
-            Self::ContextUpdate { estimated_tokens, context_window } => f
+            Self::ContextUpdate {
+                estimated_tokens,
+                context_window,
+            } => f
                 .debug_struct("ContextUpdate")
                 .field("estimated_tokens", estimated_tokens)
                 .field("context_window", context_window)
                 .finish(),
-            Self::UserQuestion { question, options, allow_custom, .. } => f
+            Self::UserQuestion {
+                question,
+                options,
+                allow_custom,
+                ..
+            } => f
                 .debug_struct("UserQuestion")
                 .field("question", question)
                 .field("options_count", &options.len())
@@ -219,6 +238,7 @@ pub struct AgentConfig {
     pub agent_name: Option<String>,
     pub plan_mode: bool,
     pub act_after_plan: bool,
+    pub auto_context: bool,
 }
 
 impl Default for AgentConfig {
@@ -296,13 +316,23 @@ pub async fn run_turn_with_content(
         registry.definitions()
     };
     let system_prompt = if config.plan_mode {
-        format!("{}{}", config.system_prompt, crate::prompt::plan_mode_instructions())
+        format!(
+            "{}{}",
+            config.system_prompt,
+            crate::prompt::plan_mode_instructions()
+        )
     } else if config.act_after_plan {
-        format!("{}{}", config.system_prompt, crate::prompt::act_after_plan_instructions())
+        format!(
+            "{}{}",
+            config.system_prompt,
+            crate::prompt::act_after_plan_instructions()
+        )
     } else {
         config.system_prompt.clone()
     };
-    let max_tokens = config.max_tokens.or_else(|| model_info.map(|m| m.max_output_tokens));
+    let max_tokens = config
+        .max_tokens
+        .or_else(|| model_info.map(|m| m.max_output_tokens));
 
     session_usage.turn_input_tokens = 0;
     session_usage.turn_output_tokens = 0;
@@ -310,7 +340,9 @@ pub async fn run_turn_with_content(
     session_usage.turn_cache_creation_tokens = 0;
     session_usage.turn_cost_usd = 0.0;
 
-    let microcompact_dir = std::env::temp_dir().join("nyzhi_microcompact").join(&ctx.session_id);
+    let microcompact_dir = std::env::temp_dir()
+        .join("nyzhi_microcompact")
+        .join(&ctx.session_id);
     let context_dir = ctx.project_root.join(".nyzhi").join("context");
     let mut compact_count: u32 = 0;
 
@@ -346,15 +378,19 @@ pub async fn run_turn_with_content(
                 threshold,
             );
             for (desc, saved) in &savings {
-                let _ = event_tx.send(AgentEvent::SystemMessage(
-                    format!("compaction: {desc} (saved ~{saved} tokens)"),
-                ));
+                let _ = event_tx.send(AgentEvent::SystemMessage(format!(
+                    "compaction: {desc} (saved ~{saved} tokens)"
+                )));
             }
 
             // Phase 2: Full summarization if still over threshold
             let est_after = thread.estimated_tokens(&system_prompt);
-            if crate::context::needs_full_compact(est_after, mi.context_window, threshold, thread.message_count())
-            {
+            if crate::context::needs_full_compact(
+                est_after,
+                mi.context_window,
+                threshold,
+                thread.message_count(),
+            ) {
                 let _ = event_tx.send(AgentEvent::AutoCompacting {
                     estimated_tokens: est_after,
                     context_window: mi.context_window,
@@ -420,14 +456,17 @@ pub async fn run_turn_with_content(
                     let plan_content = {
                         let plan_dir = ctx.project_root.join(".nyzhi").join("plans");
                         if plan_dir.exists() {
-                            std::fs::read_dir(&plan_dir)
-                                .ok()
-                                .and_then(|entries| {
-                                    entries.filter_map(|e| e.ok())
-                                        .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
-                                        .max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
-                                        .and_then(|e| std::fs::read_to_string(e.path()).ok())
-                                })
+                            std::fs::read_dir(&plan_dir).ok().and_then(|entries| {
+                                entries
+                                    .filter_map(|e| e.ok())
+                                    .filter(|e| {
+                                        e.path().extension().map_or(false, |ext| ext == "md")
+                                    })
+                                    .max_by_key(|e| {
+                                        e.metadata().ok().and_then(|m| m.modified().ok())
+                                    })
+                                    .and_then(|e| std::fs::read_to_string(e.path()).ok())
+                            })
                         } else {
                             None
                         }
@@ -449,17 +488,17 @@ pub async fn run_turn_with_content(
                     );
 
                     let new_est = thread.estimated_tokens(&system_prompt);
-                    let _ = event_tx.send(AgentEvent::SystemMessage(
-                        format!("Full compaction complete: {} → {} tokens ({} messages kept)",
-                            format_tokens(est_after), format_tokens(new_est), thread.message_count()),
-                    ));
+                    let _ = event_tx.send(AgentEvent::SystemMessage(format!(
+                        "Full compaction complete: {} → {} tokens ({} messages kept)",
+                        format_tokens(est_after),
+                        format_tokens(new_est),
+                        thread.message_count()
+                    )));
                 }
             }
         }
 
-        let model_id = model_info
-            .map(|m| m.id.to_string())
-            .unwrap_or_default();
+        let model_id = model_info.map(|m| m.id.to_string()).unwrap_or_default();
 
         let thinking = if config.thinking_enabled {
             Some(nyzhi_provider::ThinkingConfig {
@@ -489,9 +528,7 @@ pub async fn run_turn_with_content(
                 Ok(s) => s,
                 Err(e) => {
                     if let Some(pe) = e.downcast_ref::<ProviderError>() {
-                        if pe.is_retryable()
-                            && stream_attempt < config.retry.max_retries
-                        {
+                        if pe.is_retryable() && stream_attempt < config.retry.max_retries {
                             stream_attempt += 1;
                             let wait = pe
                                 .retry_after_ms()
@@ -499,9 +536,7 @@ pub async fn run_turn_with_content(
                                     config
                                         .retry
                                         .initial_backoff_ms
-                                        .saturating_mul(
-                                            2u64.saturating_pow(stream_attempt - 1),
-                                        )
+                                        .saturating_mul(2u64.saturating_pow(stream_attempt - 1))
                                 })
                                 .min(config.retry.max_backoff_ms);
                             let _ = event_tx.send(AgentEvent::Retrying {
@@ -510,8 +545,7 @@ pub async fn run_turn_with_content(
                                 wait_ms: wait,
                                 reason: pe.to_string(),
                             });
-                            tokio::time::sleep(std::time::Duration::from_millis(wait))
-                                .await;
+                            tokio::time::sleep(std::time::Duration::from_millis(wait)).await;
                             continue 'stream_retry;
                         }
                     }
@@ -565,9 +599,7 @@ pub async fn run_turn_with_content(
 
             if let Some(e) = stream_err {
                 if let Some(pe) = e.downcast_ref::<ProviderError>() {
-                    if pe.is_retryable()
-                        && stream_attempt < config.retry.max_retries
-                    {
+                    if pe.is_retryable() && stream_attempt < config.retry.max_retries {
                         stream_attempt += 1;
                         let wait = pe
                             .retry_after_ms()
@@ -575,9 +607,7 @@ pub async fn run_turn_with_content(
                                 config
                                     .retry
                                     .initial_backoff_ms
-                                    .saturating_mul(
-                                        2u64.saturating_pow(stream_attempt - 1),
-                                    )
+                                    .saturating_mul(2u64.saturating_pow(stream_attempt - 1))
                             })
                             .min(config.retry.max_backoff_ms);
                         let _ = event_tx.send(AgentEvent::Retrying {
@@ -586,8 +616,7 @@ pub async fn run_turn_with_content(
                             wait_ms: wait,
                             reason: pe.to_string(),
                         });
-                        tokio::time::sleep(std::time::Duration::from_millis(wait))
-                            .await;
+                        tokio::time::sleep(std::time::Duration::from_millis(wait)).await;
                         continue 'stream_retry;
                     }
                 }
@@ -598,14 +627,18 @@ pub async fn run_turn_with_content(
         };
 
         if let Some(usage) = &acc.usage {
-            session_usage.turn_input_tokens =
-                session_usage.turn_input_tokens.saturating_add(usage.input_tokens);
-            session_usage.turn_output_tokens =
-                session_usage.turn_output_tokens.saturating_add(usage.output_tokens);
-            session_usage.turn_cache_read_tokens =
-                session_usage.turn_cache_read_tokens.saturating_add(usage.cache_read_tokens);
-            session_usage.turn_cache_creation_tokens =
-                session_usage.turn_cache_creation_tokens.saturating_add(usage.cache_creation_tokens);
+            session_usage.turn_input_tokens = session_usage
+                .turn_input_tokens
+                .saturating_add(usage.input_tokens);
+            session_usage.turn_output_tokens = session_usage
+                .turn_output_tokens
+                .saturating_add(usage.output_tokens);
+            session_usage.turn_cache_read_tokens = session_usage
+                .turn_cache_read_tokens
+                .saturating_add(usage.cache_read_tokens);
+            session_usage.turn_cache_creation_tokens = session_usage
+                .turn_cache_creation_tokens
+                .saturating_add(usage.cache_creation_tokens);
             session_usage.total_input_tokens += usage.input_tokens as u64;
             session_usage.total_output_tokens += usage.output_tokens as u64;
             session_usage.total_cache_read_tokens += usage.cache_read_tokens as u64;
@@ -681,7 +714,13 @@ pub async fn run_turn_with_content(
                 let tc = &acc.tool_calls[i];
                 let start = std::time::Instant::now();
                 let output = match execute_with_permission(
-                    registry, &tc.name, args, ctx, event_tx, &config.trust, config.plan_mode,
+                    registry,
+                    &tc.name,
+                    args,
+                    ctx,
+                    event_tx,
+                    &config.trust,
+                    config.plan_mode,
                 )
                 .await
                 {
@@ -764,9 +803,7 @@ pub async fn run_turn_with_content(
                         "team_name": team,
                     }),
                 };
-                let msg = crate::teams::mailbox::TeamMessage::with_payload(
-                    agent, &payload, None,
-                );
+                let msg = crate::teams::mailbox::TeamMessage::with_payload(agent, &payload, None);
                 let _ = crate::teams::mailbox::send_message(team, &lead_name, msg);
             }
         }
@@ -838,8 +875,8 @@ fn should_auto_approve(trust: &TrustConfig, tool_name: &str, args: &serde_json::
     match trust.mode {
         TrustMode::Full => true,
         TrustMode::Limited => {
-            let tool_allowed = trust.allow_tools.is_empty()
-                || trust.allow_tools.iter().any(|t| t == tool_name);
+            let tool_allowed =
+                trust.allow_tools.is_empty() || trust.allow_tools.iter().any(|t| t == tool_name);
             if !tool_allowed {
                 return false;
             }
@@ -854,11 +891,17 @@ fn should_auto_approve(trust: &TrustConfig, tool_name: &str, args: &serde_json::
         }
         TrustMode::AutoEdit => {
             let write_tools = [
-                "write", "edit", "multi_edit", "apply_patch",
-                "delete_file", "move_file", "copy_file", "create_dir",
+                "write",
+                "edit",
+                "multi_edit",
+                "apply_patch",
+                "delete_file",
+                "move_file",
+                "copy_file",
+                "create_dir",
             ];
-            let read_tools_auto = trust.allow_tools.is_empty()
-                || trust.allow_tools.iter().any(|t| t == tool_name);
+            let read_tools_auto =
+                trust.allow_tools.is_empty() || trust.allow_tools.iter().any(|t| t == tool_name);
             if write_tools.contains(&tool_name) && read_tools_auto {
                 true
             } else {
@@ -969,7 +1012,10 @@ async fn summarize_write_args(args: &serde_json::Value) -> String {
         let preview = lines.join("\n");
         let total = new_content.lines().count();
         if total > 15 {
-            format!("{file_path} (new file, {total} lines)\n{preview}\n... ({} more lines)", total - 15)
+            format!(
+                "{file_path} (new file, {total} lines)\n{preview}\n... ({} more lines)",
+                total - 15
+            )
         } else {
             format!("{file_path} (new file)\n{preview}")
         }

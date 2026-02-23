@@ -96,22 +96,56 @@ pub fn detect_checks(project_root: &Path) -> Vec<VerifyCheck> {
     let mut checks = vec![];
 
     if project_root.join("Cargo.toml").exists() {
-        checks.push(VerifyCheck { kind: CheckKind::Build, command: "cargo check".to_string() });
-        checks.push(VerifyCheck { kind: CheckKind::Test, command: "cargo test".to_string() });
-        checks.push(VerifyCheck { kind: CheckKind::Lint, command: "cargo clippy -- -D warnings".to_string() });
+        checks.push(VerifyCheck {
+            kind: CheckKind::Build,
+            command: "cargo check".to_string(),
+        });
+        checks.push(VerifyCheck {
+            kind: CheckKind::Test,
+            command: "cargo test".to_string(),
+        });
+        checks.push(VerifyCheck {
+            kind: CheckKind::Lint,
+            command: "cargo clippy -- -D warnings".to_string(),
+        });
     } else if project_root.join("package.json").exists() {
-        checks.push(VerifyCheck { kind: CheckKind::Build, command: "npm run build".to_string() });
-        checks.push(VerifyCheck { kind: CheckKind::Test, command: "npm test".to_string() });
+        checks.push(VerifyCheck {
+            kind: CheckKind::Build,
+            command: "npm run build".to_string(),
+        });
+        checks.push(VerifyCheck {
+            kind: CheckKind::Test,
+            command: "npm test".to_string(),
+        });
         if project_root.join("node_modules/.bin/eslint").exists() {
-            checks.push(VerifyCheck { kind: CheckKind::Lint, command: "npx eslint .".to_string() });
+            checks.push(VerifyCheck {
+                kind: CheckKind::Lint,
+                command: "npx eslint .".to_string(),
+            });
         }
     } else if project_root.join("go.mod").exists() {
-        checks.push(VerifyCheck { kind: CheckKind::Build, command: "go build ./...".to_string() });
-        checks.push(VerifyCheck { kind: CheckKind::Test, command: "go test ./...".to_string() });
-        checks.push(VerifyCheck { kind: CheckKind::Lint, command: "go vet ./...".to_string() });
-    } else if project_root.join("pyproject.toml").exists() || project_root.join("setup.py").exists() {
-        checks.push(VerifyCheck { kind: CheckKind::Test, command: "python -m pytest".to_string() });
-        checks.push(VerifyCheck { kind: CheckKind::Lint, command: "python -m ruff check .".to_string() });
+        checks.push(VerifyCheck {
+            kind: CheckKind::Build,
+            command: "go build ./...".to_string(),
+        });
+        checks.push(VerifyCheck {
+            kind: CheckKind::Test,
+            command: "go test ./...".to_string(),
+        });
+        checks.push(VerifyCheck {
+            kind: CheckKind::Lint,
+            command: "go vet ./...".to_string(),
+        });
+    } else if project_root.join("pyproject.toml").exists() || project_root.join("setup.py").exists()
+    {
+        checks.push(VerifyCheck {
+            kind: CheckKind::Test,
+            command: "python -m pytest".to_string(),
+        });
+        checks.push(VerifyCheck {
+            kind: CheckKind::Lint,
+            command: "python -m ruff check .".to_string(),
+        });
     }
 
     checks

@@ -187,7 +187,13 @@ impl Tool for ReviewPrTool {
         }
 
         let info_output = tokio::process::Command::new("gh")
-            .args(["pr", "view", pr, "--json", "title,body,author,state,additions,deletions"])
+            .args([
+                "pr",
+                "view",
+                pr,
+                "--json",
+                "title,body,author,state,additions,deletions",
+            ])
             .current_dir(&ctx.project_root)
             .output()
             .await?;
@@ -264,7 +270,10 @@ async fn detect_default_branch(project_root: &std::path::Path) -> Result<String>
     match output {
         Ok(o) if o.status.success() => {
             let branch = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            Ok(branch.strip_prefix("origin/").unwrap_or(&branch).to_string())
+            Ok(branch
+                .strip_prefix("origin/")
+                .unwrap_or(&branch)
+                .to_string())
         }
         _ => Ok("main".to_string()),
     }

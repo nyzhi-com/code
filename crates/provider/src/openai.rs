@@ -15,28 +15,52 @@ const DEFAULT_MODEL: &str = "gpt-5.3-codex";
 pub fn default_models() -> Vec<ModelInfo> {
     vec![
         ModelInfo {
-            id: "gpt-5.3-codex".into(), name: "GPT-5.3 Codex".into(), provider: "openai".into(),
-            context_window: 400_000, max_output_tokens: 128_000,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 2.0, output_price_per_m: 8.0,
-            cache_read_price_per_m: 0.5, cache_write_price_per_m: 0.0,
-            tier: ModelTier::High, thinking: Some(ThinkingSupport::openai_reasoning()),
+            id: "gpt-5.3-codex".into(),
+            name: "GPT-5.3 Codex".into(),
+            provider: "openai".into(),
+            context_window: 400_000,
+            max_output_tokens: 128_000,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 2.0,
+            output_price_per_m: 8.0,
+            cache_read_price_per_m: 0.5,
+            cache_write_price_per_m: 0.0,
+            tier: ModelTier::High,
+            thinking: Some(ThinkingSupport::openai_reasoning()),
         },
         ModelInfo {
-            id: "gpt-5.2-codex".into(), name: "GPT-5.2 Codex".into(), provider: "openai".into(),
-            context_window: 272_000, max_output_tokens: 100_000,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 2.0, output_price_per_m: 8.0,
-            cache_read_price_per_m: 0.5, cache_write_price_per_m: 0.0,
-            tier: ModelTier::High, thinking: Some(ThinkingSupport::openai_reasoning()),
+            id: "gpt-5.2-codex".into(),
+            name: "GPT-5.2 Codex".into(),
+            provider: "openai".into(),
+            context_window: 272_000,
+            max_output_tokens: 100_000,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 2.0,
+            output_price_per_m: 8.0,
+            cache_read_price_per_m: 0.5,
+            cache_write_price_per_m: 0.0,
+            tier: ModelTier::High,
+            thinking: Some(ThinkingSupport::openai_reasoning()),
         },
         ModelInfo {
-            id: "gpt-5.2".into(), name: "GPT-5.2".into(), provider: "openai".into(),
-            context_window: 272_000, max_output_tokens: 100_000,
-            supports_tools: true, supports_streaming: true, supports_vision: true,
-            input_price_per_m: 2.0, output_price_per_m: 8.0,
-            cache_read_price_per_m: 0.5, cache_write_price_per_m: 0.0,
-            tier: ModelTier::High, thinking: Some(ThinkingSupport::openai_reasoning()),
+            id: "gpt-5.2".into(),
+            name: "GPT-5.2".into(),
+            provider: "openai".into(),
+            context_window: 272_000,
+            max_output_tokens: 100_000,
+            supports_tools: true,
+            supports_streaming: true,
+            supports_vision: true,
+            input_price_per_m: 2.0,
+            output_price_per_m: 8.0,
+            cache_read_price_per_m: 0.5,
+            cache_write_price_per_m: 0.0,
+            tier: ModelTier::High,
+            thinking: Some(ThinkingSupport::openai_reasoning()),
         },
     ]
 }
@@ -92,7 +116,8 @@ impl OpenAIProvider {
 
     pub fn from_config(config: &nyzhi_config::Config) -> Result<Self> {
         let entry = config.provider.entry("openai");
-        let cred = nyzhi_auth::resolve_credential("openai", entry.and_then(|e| e.api_key.as_deref()))?;
+        let cred =
+            nyzhi_auth::resolve_credential("openai", entry.and_then(|e| e.api_key.as_deref()))?;
         Ok(Self::new(
             cred.header_value(),
             entry.and_then(|e| e.base_url.clone()),
@@ -101,7 +126,9 @@ impl OpenAIProvider {
     }
 
     fn chat_request(&self, url: &str) -> reqwest::RequestBuilder {
-        let mut req = self.client.post(url)
+        let mut req = self
+            .client
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.api_key));
         if self.is_openrouter {
             req = req
@@ -143,7 +170,10 @@ impl OpenAIProvider {
                                 "id": id,
                                 "function": {"name": name, "arguments": input.to_string()},
                             }),
-                            ContentPart::ToolResult { tool_use_id, content } => json!({
+                            ContentPart::ToolResult {
+                                tool_use_id,
+                                content,
+                            } => json!({
                                 "role": "tool",
                                 "tool_call_id": tool_use_id,
                                 "content": content,
@@ -393,8 +423,7 @@ impl Provider for OpenAIProvider {
                         .unwrap_or(0) as u32;
                     return Ok(StreamEvent::Usage(Usage {
                         input_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-                        output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0)
-                            as u32,
+                        output_tokens: usage["completion_tokens"].as_u64().unwrap_or(0) as u32,
                         cache_read_tokens: cached,
                         cache_creation_tokens: 0,
                     }));
@@ -464,7 +493,10 @@ impl OpenAIProvider {
                                 "id": id,
                                 "function": {"name": name, "arguments": input.to_string()},
                             }),
-                            ContentPart::ToolResult { tool_use_id, content } => json!({
+                            ContentPart::ToolResult {
+                                tool_use_id,
+                                content,
+                            } => json!({
                                 "role": "tool",
                                 "tool_call_id": tool_use_id,
                                 "content": content,
@@ -478,9 +510,7 @@ impl OpenAIProvider {
         msgs
     }
 
-    async fn chat_responses_api(
-        &self, model: &str, request: &ChatRequest,
-    ) -> Result<ChatResponse> {
+    async fn chat_responses_api(&self, model: &str, request: &ChatRequest) -> Result<ChatResponse> {
         let mut body = json!({
             "model": model,
             "input": self.build_messages_no_system(request),
@@ -496,7 +526,11 @@ impl OpenAIProvider {
             body["temperature"] = json!(temp);
         }
 
-        let thinking_enabled = request.thinking.as_ref().map(|t| t.enabled).unwrap_or(false);
+        let thinking_enabled = request
+            .thinking
+            .as_ref()
+            .map(|t| t.enabled)
+            .unwrap_or(false);
         if thinking_enabled {
             let effort = request
                 .thinking
@@ -510,10 +544,15 @@ impl OpenAIProvider {
 
         let status = resp.status();
         if !status.is_success() {
-            let retry_after = resp.headers().get("retry-after")
-                .and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+            let retry_after = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::from_http(status.as_u16(), body, retry_after.as_deref()).into());
+            return Err(
+                ProviderError::from_http(status.as_u16(), body, retry_after.as_deref()).into(),
+            );
         }
 
         let data: serde_json::Value = resp.json().await?;
@@ -536,7 +575,10 @@ impl OpenAIProvider {
 
         let usage = &data["usage"];
         Ok(ChatResponse {
-            message: Message { role: Role::Assistant, content: MessageContent::Text(text) },
+            message: Message {
+                role: Role::Assistant,
+                content: MessageContent::Text(text),
+            },
             usage: Some(Usage {
                 input_tokens: usage["input_tokens"].as_u64().unwrap_or(0) as u32,
                 output_tokens: usage["output_tokens"].as_u64().unwrap_or(0) as u32,
@@ -548,7 +590,9 @@ impl OpenAIProvider {
     }
 
     async fn chat_stream_responses_api(
-        &self, model: &str, request: &ChatRequest,
+        &self,
+        model: &str,
+        request: &ChatRequest,
     ) -> Result<BoxStream<'static, Result<StreamEvent>>> {
         let mut body = json!({
             "model": model,
@@ -563,7 +607,11 @@ impl OpenAIProvider {
             body["tools"] = json!(self.build_tools_responses(&request.tools));
         }
 
-        let thinking_enabled = request.thinking.as_ref().map(|t| t.enabled).unwrap_or(false);
+        let thinking_enabled = request
+            .thinking
+            .as_ref()
+            .map(|t| t.enabled)
+            .unwrap_or(false);
         if thinking_enabled {
             let effort = request
                 .thinking
@@ -577,10 +625,15 @@ impl OpenAIProvider {
 
         let status = resp.status();
         if !status.is_success() {
-            let retry_after = resp.headers().get("retry-after")
-                .and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+            let retry_after = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::from_http(status.as_u16(), body, retry_after.as_deref()).into());
+            return Err(
+                ProviderError::from_http(status.as_u16(), body, retry_after.as_deref()).into(),
+            );
         }
 
         let sse_stream = parse_sse_stream(resp);

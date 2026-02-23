@@ -10,6 +10,7 @@ description = "Core agent loop and tool system for nyzhi"
 [dependencies]
 nyzhi-provider.workspace = true
 nyzhi-config.workspace = true
+nyzhi-index.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

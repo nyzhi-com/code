@@ -39,7 +39,11 @@ impl HookResult {
             let lines: Vec<&str> = combined.lines().collect();
             let display: String = if lines.len() > 10 {
                 let tail = &lines[lines.len() - 10..];
-                format!("...({} lines trimmed)\n{}", lines.len() - 10, tail.join("\n"))
+                format!(
+                    "...({} lines trimmed)\n{}",
+                    lines.len() - 10,
+                    tail.join("\n")
+                )
             } else {
                 combined
             };
@@ -128,10 +132,7 @@ pub async fn run_hooks_for_event(
             }
         }
         if let Some(ref pattern) = hook.pattern {
-            let file = context
-                .get("file")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let file = context.get("file").and_then(|v| v.as_str()).unwrap_or("");
             if !file.is_empty() && !matches_pattern(pattern, file) {
                 continue;
             }
@@ -157,9 +158,13 @@ async fn run_hook(
             result
         }
         HookType::Prompt => {
-            let prompt_text = hook.prompt.as_deref().unwrap_or("Evaluate this hook context.");
+            let prompt_text = hook
+                .prompt
+                .as_deref()
+                .unwrap_or("Evaluate this hook context.");
             let context_str = stdin_data.unwrap_or("");
-            let full_prompt = format!("{prompt_text}\n\nContext:\n{context_str}\n\nAnswer YES or NO.");
+            let full_prompt =
+                format!("{prompt_text}\n\nContext:\n{context_str}\n\nAnswer YES or NO.");
             HookResult {
                 command: format!("prompt: {}", &full_prompt[..full_prompt.len().min(100)]),
                 stdout: "YES".to_string(),
@@ -170,11 +175,16 @@ async fn run_hook(
             }
         }
         HookType::Agent => {
-            let instructions = hook.instructions.as_deref().unwrap_or("Evaluate this hook context.");
+            let instructions = hook
+                .instructions
+                .as_deref()
+                .unwrap_or("Evaluate this hook context.");
             let _context_str = stdin_data.unwrap_or("");
             HookResult {
                 command: format!("agent: {}", &instructions[..instructions.len().min(100)]),
-                stdout: serde_json::json!({"safe": true, "reason": "Hook agent evaluation placeholder"}).to_string(),
+                stdout:
+                    serde_json::json!({"safe": true, "reason": "Hook agent evaluation placeholder"})
+                        .to_string(),
                 stderr: String::new(),
                 exit_code: Some(0),
                 timed_out: false,
@@ -195,13 +205,13 @@ pub async fn run_pre_tool_hooks(
         "tool_name": tool_name,
         "tool_args": tool_args,
     });
-    let results =
-        run_hooks_for_event(hooks, HookEvent::PreToolUse, &context, cwd).await;
-    let blocked = results.iter().any(|r| {
-        r.exit_code.map(|c| c != 0).unwrap_or(false)
-    }) && hooks
+    let results = run_hooks_for_event(hooks, HookEvent::PreToolUse, &context, cwd).await;
+    let blocked = results
         .iter()
-        .any(|h| h.event == HookEvent::PreToolUse && h.block);
+        .any(|r| r.exit_code.map(|c| c != 0).unwrap_or(false))
+        && hooks
+            .iter()
+            .any(|h| h.event == HookEvent::PreToolUse && h.block);
     (results, blocked)
 }
 
@@ -240,8 +250,7 @@ pub async fn run_teammate_idle_hooks(
         "teammate_name": teammate_name,
         "team_name": team_name,
     });
-    let results =
-        run_hooks_for_event(hooks, HookEvent::TeammateIdle, &context, cwd).await;
+    let results = run_hooks_for_event(hooks, HookEvent::TeammateIdle, &context, cwd).await;
     for r in &results {
         if r.exit_code == Some(2) {
             return Some(r.stderr.clone());
@@ -268,8 +277,7 @@ pub async fn run_task_completed_hooks(
         "teammate_name": teammate_name,
         "team_name": team_name,
     });
-    let results =
-        run_hooks_for_event(hooks, HookEvent::TaskCompleted, &context, cwd).await;
+    let results = run_hooks_for_event(hooks, HookEvent::TaskCompleted, &context, cwd).await;
     for r in &results {
         if r.exit_code == Some(2) {
             return Some(r.stderr.clone());
@@ -319,12 +327,7 @@ async fn run_hook_command(
         }
     }
 
-    match tokio::time::timeout(
-        Duration::from_secs(timeout_secs),
-        child.wait_with_output(),
-    )
-    .await
-    {
+    match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output()).await {
         Ok(Ok(output)) => HookResult {
             command: command.to_string(),
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),

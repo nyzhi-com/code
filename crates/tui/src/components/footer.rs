@@ -26,7 +26,11 @@ fn format_cost(usd: f64) -> String {
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let mode_toggle_hint = if app.plan_mode { "S-Tab act" } else { "S-Tab plan" };
+    let mode_toggle_hint = if app.plan_mode {
+        "S-Tab act"
+    } else {
+        "S-Tab plan"
+    };
     let left = match app.mode {
         AppMode::Streaming => "esc cancel",
         AppMode::AwaitingApproval => "y approve  n deny",
@@ -118,14 +122,22 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         ));
     }
 
-    spans.push(Span::raw(" ".repeat(if left.is_empty() { available.saturating_sub(right_len + 2) } else { gap })));
+    spans.push(Span::raw(" ".repeat(if left.is_empty() {
+        available.saturating_sub(right_len + 2)
+    } else {
+        gap
+    })));
 
     if matches!(app.trust_mode, nyzhi_config::TrustMode::Full) {
-        let without_trust: Vec<&str> = info_parts.iter()
+        let without_trust: Vec<&str> = info_parts
+            .iter()
             .filter(|p| *p != "TRUST:FULL")
             .map(|s| s.as_str())
             .collect();
-        spans.push(Span::styled("TRUST:FULL", Style::default().fg(theme.danger).bold()));
+        spans.push(Span::styled(
+            "TRUST:FULL",
+            Style::default().fg(theme.danger).bold(),
+        ));
         if !without_trust.is_empty() {
             spans.push(Span::styled(
                 format!("  {}", without_trust.join("  ")),
@@ -133,7 +145,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             ));
         }
     } else if !info_str.is_empty() {
-        spans.push(Span::styled(info_str, Style::default().fg(theme.text_tertiary)));
+        spans.push(Span::styled(
+            info_str,
+            Style::default().fg(theme.text_tertiary),
+        ));
     }
 
     if !info_parts.is_empty() || matches!(app.trust_mode, nyzhi_config::TrustMode::Full) {

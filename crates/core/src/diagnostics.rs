@@ -118,7 +118,11 @@ pub fn run_diagnostics(
     };
     results.push(DiagnosticResult {
         name: "Skills".into(),
-        status: if skill_count > 0 { DiagStatus::Pass } else { DiagStatus::Warn },
+        status: if skill_count > 0 {
+            DiagStatus::Pass
+        } else {
+            DiagStatus::Warn
+        },
         message: format!("{skill_count} skill(s) in .nyzhi/skills/"),
     });
 
