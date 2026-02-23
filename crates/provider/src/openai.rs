@@ -440,12 +440,51 @@ impl Provider for OpenAIProvider {
 }
 
 impl OpenAIProvider {
+    fn build_messages_no_system(&self, request: &ChatRequest) -> Vec<serde_json::Value> {
+        let mut msgs = Vec::new();
+        for msg in &request.messages {
+            msgs.push(match &msg.content {
+                MessageContent::Text(text) => json!({
+                    "role": role_str(&msg.role),
+                    "content": text,
+                }),
+                MessageContent::Parts(parts) => {
+                    let content: Vec<serde_json::Value> = parts
+                        .iter()
+                        .map(|p| match p {
+                            ContentPart::Text { text } => json!({"type": "text", "text": text}),
+                            ContentPart::Image { media_type, data } => json!({
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": format!("data:{media_type};base64,{data}")
+                                }
+                            }),
+                            ContentPart::ToolUse { id, name, input } => json!({
+                                "type": "function",
+                                "id": id,
+                                "function": {"name": name, "arguments": input.to_string()},
+                            }),
+                            ContentPart::ToolResult { tool_use_id, content } => json!({
+                                "role": "tool",
+                                "tool_call_id": tool_use_id,
+                                "content": content,
+                            }),
+                        })
+                        .collect();
+                    json!({"role": role_str(&msg.role), "content": content})
+                }
+            });
+        }
+        msgs
+    }
+
     async fn chat_responses_api(
         &self, model: &str, request: &ChatRequest,
     ) -> Result<ChatResponse> {
         let mut body = json!({
             "model": model,
-            "input": self.build_messages(request),
+            "input": self.build_messages_no_system(request),
+            "instructions": request.system.as_deref().unwrap_or("You are a helpful assistant."),
         });
         if !request.tools.is_empty() {
             body["tools"] = json!(self.build_tools_responses(&request.tools));
@@ -510,7 +549,8 @@ impl OpenAIProvider {
     ) -> Result<BoxStream<'static, Result<StreamEvent>>> {
         let mut body = json!({
             "model": model,
-            "input": self.build_messages(request),
+            "input": self.build_messages_no_system(request),
+            "instructions": request.system.as_deref().unwrap_or("You are a helpful assistant."),
             "stream": true,
         });
         if !request.tools.is_empty() {

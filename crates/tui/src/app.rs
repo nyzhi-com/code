@@ -890,6 +890,17 @@ impl App {
                         });
                     }
                 }
+                if !self.current_stream.is_empty() {
+                    self.items.push(DisplayItem::Message {
+                        role: "assistant".to_string(),
+                        content: std::mem::take(&mut self.current_stream),
+                    });
+                }
+                self.thinking_stream.clear();
+                self.stream_start = None;
+                self.stream_token_count = 0;
+                self.turn_start = None;
+                self.mode = AppMode::Input;
             }
 
             // --- Background task completion ---
