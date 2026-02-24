@@ -327,6 +327,56 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         description: "detect and list project checks",
         kind: CommandKind::Prompt,
     },
+    SlashCommandDef {
+        name: "/quick",
+        description: "ad-hoc task with commit discipline",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/map",
+        description: "map codebase (stack, arch, conventions, concerns)",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/init-project",
+        description: "structured project initialization with research",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/profile",
+        description: "switch model profile (quality/balanced/budget)",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/worktree",
+        description: "manage git worktrees for isolated agent work",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/worktree create",
+        description: "create isolated worktree workspace",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/worktree list",
+        description: "list active worktrees",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/worktree merge",
+        description: "merge worktree back to parent branch",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/worktree remove",
+        description: "remove a worktree",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/resume-work",
+        description: "load latest handoff and resume",
+        kind: CommandKind::Prompt,
+    },
 ];
 
 pub fn classify_command(input: &str) -> CommandKind {

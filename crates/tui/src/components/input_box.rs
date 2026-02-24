@@ -14,130 +14,54 @@ fn cursor_2d(input: &str, byte_pos: usize) -> (u16, u16) {
     (row, col)
 }
 
+const PROMPT_CHAR: &str = "❯";
+const CONT_CHAR: &str = "·";
+
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &SpinnerState) {
-    let border_color = match app.mode {
-        AppMode::Input => theme.border_strong,
-        _ => theme.border_default,
+    let focused = matches!(app.mode, AppMode::Input);
+    let border_color = if focused {
+        theme.accent
+    } else {
+        theme.border_default
     };
 
     let block = Block::default()
         .borders(Borders::TOP)
         .border_style(Style::default().fg(border_color))
-        .style(Style::default().bg(theme.bg_page));
+        .style(Style::default().bg(theme.bg_surface));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    if inner.height == 0 || inner.width == 0 {
+        return;
+    }
+
+    let badge = mode_badge(app, theme);
+    let badge_width = badge.width() as u16 + 1;
+
+    let content_area = Rect::new(
+        inner.x + badge_width,
+        inner.y,
+        inner.width.saturating_sub(badge_width),
+        inner.height,
+    );
+
+    let badge_area = Rect::new(inner.x, inner.y, badge_width, 1);
+    frame.render_widget(
+        Paragraph::new(badge).style(Style::default().bg(theme.bg_surface)),
+        badge_area,
+    );
+
     match app.mode {
-        AppMode::Streaming => {
-            if !app.input.is_empty() {
-                let prompt = "> ";
-                let queue_hint = format!(" (queued: {})", app.message_queue.len() + 1);
-                let lines: Vec<Line> = app
-                    .input
-                    .split('\n')
-                    .enumerate()
-                    .map(|(i, line_text)| {
-                        let prefix = if i == 0 { prompt } else { "  " };
-                        Line::from(vec![
-                            Span::styled(prefix, Style::default().fg(theme.warning).bold()),
-                            Span::styled(line_text, Style::default().fg(theme.text_primary)),
-                        ])
-                    })
-                    .collect();
-                let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_page));
-                frame.render_widget(paragraph, inner);
-
-                let status_area = Rect::new(
-                    inner.x + inner.width.saturating_sub(queue_hint.len() as u16 + 1),
-                    inner.y,
-                    queue_hint.len() as u16 + 1,
-                    1,
-                );
-                frame.render_widget(
-                    Paragraph::new(Span::styled(
-                        queue_hint,
-                        Style::default().fg(theme.text_disabled),
-                    )),
-                    status_area,
-                );
-
-                let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
-                let prefix_len = 2u16;
-                frame.set_cursor_position(Position::new(
-                    inner.x + prefix_len + cursor_col,
-                    inner.y + cursor_row,
-                ));
-            } else {
-                let mut spans = vec![
-                    Span::styled(
-                        format!("{} ", spinner.current_frame()),
-                        Style::default().fg(theme.accent),
-                    ),
-                    Span::styled("thinking...", Style::default().fg(theme.text_tertiary)),
-                ];
-                if let Some(start) = &app.turn_start {
-                    let elapsed_ms = start.elapsed().as_millis() as u64;
-                    let elapsed_str = if elapsed_ms < 1000 {
-                        format!("{elapsed_ms}ms")
-                    } else if elapsed_ms < 60_000 {
-                        format!("{:.1}s", elapsed_ms as f64 / 1000.0)
-                    } else {
-                        let m = elapsed_ms / 60_000;
-                        let s = (elapsed_ms % 60_000) / 1000;
-                        format!("{m}m{s}s")
-                    };
-                    spans.push(Span::styled(
-                        format!(" ({elapsed_str})"),
-                        Style::default().fg(theme.text_tertiary),
-                    ));
-                }
-                let queue_count = app.message_queue.len();
-                if queue_count > 0 {
-                    spans.push(Span::styled(
-                        format!("  queue:{queue_count}"),
-                        Style::default().fg(theme.text_disabled),
-                    ));
-                }
-                spans.push(Span::styled(
-                    "  type to queue",
-                    Style::default().fg(theme.text_disabled),
-                ));
-                let content = Line::from(spans);
-                frame.render_widget(
-                    Paragraph::new(content).style(Style::default().bg(theme.bg_page)),
-                    inner,
-                );
-            }
-        }
-        AppMode::AwaitingApproval => {
-            let content = Line::from(vec![
-                Span::styled("[y/n] ", Style::default().fg(theme.accent).bold()),
-                Span::styled("approve?", Style::default().fg(theme.text_secondary)),
-            ]);
-            frame.render_widget(
-                Paragraph::new(content).style(Style::default().bg(theme.bg_page)),
-                inner,
-            );
-        }
-        AppMode::AwaitingUserQuestion => {
-            let content = Line::from(vec![
-                Span::styled("? ", Style::default().fg(theme.accent).bold()),
-                Span::styled(
-                    "select an option above",
-                    Style::default().fg(theme.text_secondary),
-                ),
-            ]);
-            frame.render_widget(
-                Paragraph::new(content).style(Style::default().bg(theme.bg_page)),
-                inner,
-            );
-        }
+        AppMode::Streaming => render_streaming(frame, content_area, app, theme, spinner),
+        AppMode::AwaitingApproval => render_approval(frame, content_area, theme),
+        AppMode::AwaitingUserQuestion => render_question(frame, content_area, theme),
         AppMode::Input => {
             if let Some(search) = &app.history_search {
-                render_history_search(frame, inner, app, theme, search);
+                render_history_search(frame, content_area, app, theme, search);
             } else {
-                render_normal_input(frame, inner, app, theme);
+                render_normal_input(frame, content_area, app, theme);
             }
         }
     }
@@ -147,14 +71,176 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
     }
 }
 
-fn render_normal_input(frame: &mut Frame, inner: Rect, app: &App, theme: &Theme) {
-    let prompt = "> ";
-    let cont = "  ";
+fn mode_badge<'a>(app: &App, theme: &Theme) -> Line<'a> {
+    if app.plan_mode {
+        Line::from(vec![
+            Span::styled(
+                " Plan ",
+                Style::default().fg(theme.bg_page).bg(theme.warning).bold(),
+            ),
+            Span::raw(" "),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(
+                " Act ",
+                Style::default()
+                    .fg(theme.text_tertiary)
+                    .bg(theme.bg_elevated),
+            ),
+            Span::raw(" "),
+        ])
+    }
+}
+
+fn render_streaming(
+    frame: &mut Frame,
+    area: Rect,
+    app: &App,
+    theme: &Theme,
+    spinner: &SpinnerState,
+) {
+    if !app.input.is_empty() {
+        let lines: Vec<Line> = app
+            .input
+            .split('\n')
+            .enumerate()
+            .map(|(i, line_text)| {
+                let prefix = if i == 0 { PROMPT_CHAR } else { CONT_CHAR };
+                Line::from(vec![
+                    Span::styled(
+                        format!("{prefix} "),
+                        Style::default().fg(theme.warning).bold(),
+                    ),
+                    Span::styled(line_text, Style::default().fg(theme.text_primary)),
+                ])
+            })
+            .collect();
+        let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_surface));
+        frame.render_widget(paragraph, area);
+
+        let queue_hint = format!(" queued:{} ", app.message_queue.len() + 1);
+        let hint_w = queue_hint.len() as u16;
+        if area.width > hint_w + 2 {
+            let hint_area = Rect::new(
+                area.x + area.width - hint_w,
+                area.y,
+                hint_w,
+                1,
+            );
+            frame.render_widget(
+                Paragraph::new(Span::styled(
+                    queue_hint,
+                    Style::default()
+                        .fg(theme.text_disabled)
+                        .bg(theme.bg_elevated),
+                )),
+                hint_area,
+            );
+        }
+
+        let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
+        frame.set_cursor_position(Position::new(
+            area.x + 2 + cursor_col,
+            area.y + cursor_row,
+        ));
+    } else {
+        let mut spans: Vec<Span> = vec![
+            Span::styled(
+                format!("{} ", spinner.current_frame()),
+                Style::default().fg(theme.accent),
+            ),
+            Span::styled("thinking", Style::default().fg(theme.text_tertiary)),
+        ];
+
+        if let Some(start) = &app.turn_start {
+            let ms = start.elapsed().as_millis() as u64;
+            let elapsed = if ms < 1000 {
+                format!("{ms}ms")
+            } else if ms < 60_000 {
+                format!("{:.1}s", ms as f64 / 1000.0)
+            } else {
+                let m = ms / 60_000;
+                let s = (ms % 60_000) / 1000;
+                format!("{m}m{s}s")
+            };
+            spans.push(Span::styled(
+                format!(" {elapsed}"),
+                Style::default().fg(theme.text_disabled),
+            ));
+        }
+
+        let queue_count = app.message_queue.len();
+        if queue_count > 0 {
+            spans.push(Span::styled(
+                format!("  queue:{queue_count}"),
+                Style::default().fg(theme.text_disabled),
+            ));
+        }
+
+        spans.push(Span::styled(
+            "  type to queue",
+            Style::default().fg(theme.text_disabled),
+        ));
+
+        frame.render_widget(
+            Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg_surface)),
+            area,
+        );
+    }
+}
+
+fn render_approval(frame: &mut Frame, area: Rect, theme: &Theme) {
+    let content = Line::from(vec![
+        Span::styled(
+            format!("{PROMPT_CHAR} "),
+            Style::default().fg(theme.warning).bold(),
+        ),
+        Span::styled(
+            "approve? ",
+            Style::default().fg(theme.text_primary),
+        ),
+        Span::styled("y", Style::default().fg(theme.success).bold()),
+        Span::styled("/", Style::default().fg(theme.text_disabled)),
+        Span::styled("n", Style::default().fg(theme.danger).bold()),
+    ]);
+    frame.render_widget(
+        Paragraph::new(content).style(Style::default().bg(theme.bg_surface)),
+        area,
+    );
+}
+
+fn render_question(frame: &mut Frame, area: Rect, theme: &Theme) {
+    let content = Line::from(vec![
+        Span::styled("? ", Style::default().fg(theme.info).bold()),
+        Span::styled(
+            "select an option above",
+            Style::default().fg(theme.text_secondary),
+        ),
+    ]);
+    frame.render_widget(
+        Paragraph::new(content).style(Style::default().bg(theme.bg_surface)),
+        area,
+    );
+}
+
+fn render_normal_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let lines: Vec<Line> = if app.input.is_empty() {
         vec![Line::from(vec![
-            Span::styled(prompt, Style::default().fg(theme.accent).bold()),
             Span::styled(
-                "Ask anything, Ctrl+K for commands",
+                format!("{PROMPT_CHAR} "),
+                Style::default().fg(theme.accent).bold(),
+            ),
+            Span::styled(
+                "Ask anything... ",
+                Style::default().fg(theme.text_disabled),
+            ),
+            Span::styled(
+                "/",
+                Style::default().fg(theme.text_disabled).bold(),
+            ),
+            Span::styled(
+                " commands",
                 Style::default().fg(theme.text_disabled),
             ),
         ])]
@@ -163,9 +249,12 @@ fn render_normal_input(frame: &mut Frame, inner: Rect, app: &App, theme: &Theme)
             .split('\n')
             .enumerate()
             .map(|(i, line_text)| {
-                let prefix = if i == 0 { prompt } else { cont };
+                let prefix = if i == 0 { PROMPT_CHAR } else { CONT_CHAR };
                 Line::from(vec![
-                    Span::styled(prefix, Style::default().fg(theme.accent).bold()),
+                    Span::styled(
+                        format!("{prefix} "),
+                        Style::default().fg(theme.accent).bold(),
+                    ),
                     Span::styled(line_text, Style::default().fg(theme.text_primary)),
                 ])
             })
@@ -173,7 +262,7 @@ fn render_normal_input(frame: &mut Frame, inner: Rect, app: &App, theme: &Theme)
     };
 
     let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
-    let visible_height = inner.height;
+    let visible_height = area.height;
 
     let scroll_offset = if visible_height == 0 {
         0
@@ -184,14 +273,13 @@ fn render_normal_input(frame: &mut Frame, inner: Rect, app: &App, theme: &Theme)
     };
 
     let paragraph = Paragraph::new(lines)
-        .style(Style::default().bg(theme.bg_page))
+        .style(Style::default().bg(theme.bg_surface))
         .scroll((scroll_offset, 0));
-    frame.render_widget(paragraph, inner);
+    frame.render_widget(paragraph, area);
 
-    let prefix_len = 2u16;
     frame.set_cursor_position(Position::new(
-        inner.x + prefix_len + cursor_col,
-        inner.y + cursor_row - scroll_offset,
+        area.x + 2 + cursor_col,
+        area.y + cursor_row - scroll_offset,
     ));
 }
 
@@ -332,7 +420,7 @@ fn render_completion_popup(
 
 fn render_history_search(
     frame: &mut Frame,
-    inner: Rect,
+    area: Rect,
     app: &App,
     theme: &Theme,
     search: &crate::history::HistorySearch,
@@ -343,7 +431,7 @@ fn render_history_search(
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::from(vec![
         Span::styled(
-            "(reverse-search): ",
+            "search: ",
             Style::default().fg(theme.accent).bold(),
         ),
         Span::styled(&search.query, Style::default().fg(theme.text_primary)),
@@ -373,9 +461,9 @@ fn render_history_search(
         )));
     }
 
-    let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_page));
-    frame.render_widget(paragraph, inner);
+    let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_surface));
+    frame.render_widget(paragraph, area);
 
-    let cursor_col = "(reverse-search): ".len() as u16 + search.query.len() as u16;
-    frame.set_cursor_position(Position::new(inner.x + cursor_col, inner.y));
+    let cursor_col = "search: ".len() as u16 + search.query.len() as u16;
+    frame.set_cursor_position(Position::new(area.x + cursor_col, area.y));
 }

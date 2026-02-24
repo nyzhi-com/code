@@ -16,7 +16,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let logo_width = logo_lines.iter().map(|l| l.len()).max().unwrap_or(0);
     let inner_w = inner.width as usize;
 
-    let content_height = logo_lines.len() + 6;
+    let content_height = logo_lines.len() + 8;
     let vert_pad = inner.height.saturating_sub(content_height as u16) / 2;
 
     for _ in 0..vert_pad {
@@ -37,7 +37,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let ver_pad = inner_w.saturating_sub(version.len()) / 2;
     lines.push(Line::from(Span::styled(
         format!("{:>ver_pad$}{version}", ""),
-        Style::default().fg(theme.text_tertiary),
+        Style::default().fg(theme.text_disabled),
     )));
 
     lines.push(Line::from(""));
@@ -48,35 +48,49 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         let h_pad = inner_w.saturating_sub(hint.len()) / 2;
         lines.push(Line::from(Span::styled(
             format!("{:>h_pad$}{hint}", ""),
-            Style::default().fg(theme.text_disabled),
+            Style::default().fg(theme.warning),
         )));
     } else {
         let status = format!("{} · {}", app.provider_name, app.model_name);
         let s_pad = inner_w.saturating_sub(status.len()) / 2;
         lines.push(Line::from(Span::styled(
             format!("{:>s_pad$}{status}", ""),
-            Style::default().fg(theme.text_tertiary),
+            Style::default().fg(theme.text_secondary),
         )));
     }
 
     lines.push(Line::from(""));
 
-    let shortcuts = [
-        ("Ctrl+K", "commands"),
+    let shortcuts: &[(&str, &str)] = &[
+        ("/", "commands"),
+        ("S-Tab", "plan"),
         ("Tab", "thinking"),
         ("Ctrl+J", "newline"),
-        ("Ctrl+L", "clear"),
     ];
-    let hint_text: String = shortcuts
-        .iter()
-        .map(|(k, d)| format!("{} {}", k, d))
-        .collect::<Vec<_>>()
-        .join("   ");
-    let ht_pad = inner_w.saturating_sub(hint_text.len()) / 2;
-    lines.push(Line::from(Span::styled(
-        format!("{:>ht_pad$}{hint_text}", ""),
-        Style::default().fg(theme.text_disabled),
-    )));
+
+    let mut hint_spans: Vec<Span> = Vec::new();
+    for (i, (key, desc)) in shortcuts.iter().enumerate() {
+        if i > 0 {
+            hint_spans.push(Span::styled(
+                "   ",
+                Style::default().fg(theme.text_disabled),
+            ));
+        }
+        hint_spans.push(Span::styled(
+            (*key).to_string(),
+            Style::default().fg(theme.text_tertiary).bold(),
+        ));
+        hint_spans.push(Span::styled(
+            format!(" {desc}"),
+            Style::default().fg(theme.text_disabled),
+        ));
+    }
+
+    let hint_width: usize = hint_spans.iter().map(|s| s.width()).sum();
+    let ht_pad = inner_w.saturating_sub(hint_width) / 2;
+    let mut padded = vec![Span::raw(" ".repeat(ht_pad))];
+    padded.extend(hint_spans);
+    lines.push(Line::from(padded));
 
     let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_page));
     frame.render_widget(paragraph, inner);

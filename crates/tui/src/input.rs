@@ -907,15 +907,32 @@ pub async fn handle_key(
                 if let Ok(notepads) =
                     nyzhi_core::notepad::list_notepads(&app.workspace.project_root)
                 {
-                    if let Some(plan_name) = notepads.last() {
-                        if let Ok(wisdom) = nyzhi_core::notepad::read_notepad(
+                    for np_name in &notepads {
+                        if let Ok(content) = nyzhi_core::notepad::read_notepad(
                             &app.workspace.project_root,
-                            plan_name,
+                            np_name,
                         ) {
-                            if wisdom.lines().count() > 3 {
-                                sections.push(format!("## Notepad: {plan_name}\n{wisdom}\n"));
+                            if content.lines().count() > 2 {
+                                sections.push(format!("## Notepad: {np_name}\n{content}\n"));
                             }
                         }
+                    }
+                }
+
+                if app.context_window > 0 && app.context_used_tokens > 0 {
+                    let pct = app.context_used_tokens as f64 / app.context_window as f64 * 100.0;
+                    sections.push(format!("## Context Usage\n- {:.0}% used ({} / {} tokens)\n", pct, app.context_used_tokens, app.context_window));
+                }
+
+                {
+                    let tracker = tool_ctx.change_tracker.blocking_lock();
+                    let changed = tracker.changed_files();
+                    if !changed.is_empty() {
+                        let mut cs = String::from("## Files Changed This Session\n");
+                        for f in &changed {
+                            cs.push_str(&format!("- {}\n", f.display()));
+                        }
+                        sections.push(cs);
                     }
                 }
 
@@ -939,6 +956,290 @@ pub async fn handle_key(
                             content: format!("Failed to write handoff: {e}"),
                         });
                     }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/resume-work" {
+                let handoff_dir = app.workspace.project_root.join(".nyzhi");
+                let mut latest: Option<(String, std::path::PathBuf)> = None;
+                if let Ok(entries) = std::fs::read_dir(&handoff_dir) {
+                    for e in entries.flatten() {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if name.starts_with("handoff-") && name.ends_with(".md") {
+                            if latest.as_ref().map_or(true, |(n, _)| name > *n) {
+                                latest = Some((name, e.path()));
+                            }
+                        }
+                    }
+                }
+                if let Some((_, path)) = latest {
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => {
+                            let prompt = format!(
+                                "Resume work from this handoff. Read it carefully and continue where we left off.\n\n{content}"
+                            );
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Loaded handoff: {}", path.display()),
+                            });
+                            app.turn_request = Some(TurnRequest {
+                                input: prompt,
+                                content: None,
+                                is_background: false,
+                                label: "resume-work".to_string(),
+                            });
+                            app.mode = AppMode::Streaming;
+                        }
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Failed to read handoff: {e}"),
+                            });
+                        }
+                    }
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No handoff files found in .nyzhi/".to_string(),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/quick" || input.starts_with("/quick ") {
+                let task = input.strip_prefix("/quick").unwrap_or("").trim();
+                if task.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /quick <task description>".to_string(),
+                    });
+                } else {
+                    let prompt = format!(
+                        "Quick task: {task}\n\n\
+                         Execute this ad-hoc task with these guarantees:\n\
+                         1. Understand the task fully before writing code\n\
+                         2. Make changes with atomic git commits (conventional format: feat/fix/refactor/docs/test)\n\
+                         3. After each change, verify it works (run tests, type checks, or relevant validation)\n\
+                         4. Report a brief summary: what changed, what was verified, any issues\n\n\
+                         Be surgical. No unnecessary refactoring. Focus on exactly what was asked."
+                    );
+                    app.items.push(DisplayItem::Message {
+                        role: "user".to_string(),
+                        content: format!("/quick {task}"),
+                    });
+                    app.turn_request = Some(TurnRequest {
+                        input: prompt,
+                        content: None,
+                        is_background: false,
+                        label: format!("quick: {task}"),
+                    });
+                    app.mode = AppMode::Streaming;
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/map" {
+                let prompt = "Map this codebase comprehensively. Spawn explorer sub-agents in parallel to analyze:\n\n\
+                    1. **Stack**: Languages, frameworks, dependencies, build tools, runtime\n\
+                    2. **Architecture**: Directory structure, module boundaries, data flow, key abstractions\n\
+                    3. **Conventions**: Naming patterns, formatting style, testing approach, error handling patterns\n\
+                    4. **Concerns**: Tech debt, security issues, performance bottlenecks, missing tests\n\n\
+                    Write results to:\n\
+                    - `.nyzhi/map/STACK.md`\n\
+                    - `.nyzhi/map/ARCHITECTURE.md`\n\
+                    - `.nyzhi/map/CONVENTIONS.md`\n\
+                    - `.nyzhi/map/CONCERNS.md`\n\n\
+                    Be thorough but concise. Focus on actionable insights."
+                    .to_string();
+                app.items.push(DisplayItem::Message {
+                    role: "user".to_string(),
+                    content: "/map".to_string(),
+                });
+                app.turn_request = Some(TurnRequest {
+                    input: prompt,
+                    content: None,
+                    is_background: false,
+                    label: "map codebase".to_string(),
+                });
+                app.mode = AppMode::Streaming;
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/init-project" {
+                let prompt = "Initialize this project with structured documentation. Follow this workflow:\n\n\
+                    1. **Interview**: Use `ask_user` to ask about:\n\
+                       - Project goals and vision\n\
+                       - Target users and use cases\n\
+                       - Tech stack preferences and constraints\n\
+                       - Key features for v1 vs future\n\
+                       - Non-functional requirements (performance, security, scale)\n\n\
+                    2. **Research**: Explore the existing codebase (if any) to understand current state\n\n\
+                    3. **Create documentation** in `.nyzhi/`:\n\
+                       - `PROJECT.md` -- Vision, goals, tech stack, key decisions\n\
+                       - `REQUIREMENTS.md` -- v1 must-haves, v2 nice-to-haves, out of scope\n\
+                       - `ROADMAP.md` -- Phases with success criteria\n\
+                       - `STATE.md` -- Current status, decisions made, blockers\n\n\
+                    Take your time with the interview. Ask one question at a time."
+                    .to_string();
+                app.items.push(DisplayItem::Message {
+                    role: "user".to_string(),
+                    content: "/init-project".to_string(),
+                });
+                app.turn_request = Some(TurnRequest {
+                    input: prompt,
+                    content: None,
+                    is_background: false,
+                    label: "init-project".to_string(),
+                });
+                app.mode = AppMode::Streaming;
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/profile" || input.starts_with("/profile ") {
+                let arg = input.strip_prefix("/profile").unwrap_or("").trim();
+                if arg.is_empty() {
+                    let current = app.model_profile.as_deref().unwrap_or("default");
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!(
+                            "Model profile: {current}\n\
+                             Available: quality, balanced, budget, default\n\
+                             Usage: /profile <name>"
+                        ),
+                    });
+                } else {
+                    let valid = ["quality", "balanced", "budget", "default"];
+                    if valid.contains(&arg) {
+                        app.model_profile = if arg == "default" {
+                            None
+                        } else {
+                            Some(arg.to_string())
+                        };
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Model profile set to: {arg}"),
+                        });
+                    } else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Unknown profile '{arg}'. Use: quality, balanced, budget, default"),
+                        });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/worktree" || input.starts_with("/worktree ") {
+                let arg = input.strip_prefix("/worktree").unwrap_or("").trim();
+                let project = &app.workspace.project_root;
+
+                if arg.is_empty() || arg == "list" {
+                    let wts = nyzhi_core::worktree::list_worktrees(project);
+                    if wts.is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "No worktrees found.".to_string(),
+                        });
+                    } else {
+                        let mut lines = String::from("Worktrees:\n");
+                        for w in &wts {
+                            let status = if w.has_changes { " (modified)" } else { "" };
+                            lines.push_str(&format!(
+                                "  {} [{}] {}{}\n",
+                                w.name,
+                                w.branch,
+                                w.path.display(),
+                                status
+                            ));
+                        }
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: lines,
+                        });
+                    }
+                } else if let Some(name) = arg.strip_prefix("create ") {
+                    let name = name.trim();
+                    if name.is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Usage: /worktree create <name>".to_string(),
+                        });
+                    } else {
+                        match nyzhi_core::worktree::create_worktree(project, Some(name)) {
+                            Ok(info) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!(
+                                        "Created worktree '{}' at {} (branch: {})",
+                                        info.name,
+                                        info.path.display(),
+                                        info.branch
+                                    ),
+                                });
+                            }
+                            Err(e) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Failed: {e}"),
+                                });
+                            }
+                        }
+                    }
+                } else if let Some(name) = arg.strip_prefix("merge ") {
+                    let name = name.trim();
+                    match nyzhi_core::worktree::merge_worktree(project, name) {
+                        Ok(msg) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: msg,
+                            });
+                        }
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Merge failed: {e}"),
+                            });
+                        }
+                    }
+                } else if let Some(name) = arg.strip_prefix("remove ") {
+                    let name = name.trim();
+                    match nyzhi_core::worktree::remove_worktree(project, name, false) {
+                        Ok(had_changes) => {
+                            let msg = if had_changes {
+                                format!("Worktree '{name}' has uncommitted changes. Use force to remove.")
+                            } else {
+                                format!("Removed worktree '{name}'.")
+                            };
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: msg,
+                            });
+                        }
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Remove failed: {e}"),
+                            });
+                        }
+                    }
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /worktree [list|create <name>|merge <name>|remove <name>]".to_string(),
+                    });
                 }
                 app.input.clear();
                 app.cursor_pos = 0;

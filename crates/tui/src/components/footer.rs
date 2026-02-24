@@ -26,16 +26,17 @@ fn format_cost(usd: f64) -> String {
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let mode_toggle_hint = if app.plan_mode {
-        "S-Tab act"
-    } else {
-        "S-Tab plan"
-    };
-    let left = match app.mode {
+    let left_hint = match app.mode {
         AppMode::Streaming => "esc cancel",
         AppMode::AwaitingApproval => "y approve  n deny",
-        AppMode::AwaitingUserQuestion => "select an option",
-        AppMode::Input => mode_toggle_hint,
+        AppMode::AwaitingUserQuestion => "↑↓ select  enter confirm",
+        AppMode::Input => {
+            if app.plan_mode {
+                "S-Tab act"
+            } else {
+                "S-Tab plan"
+            }
+        }
     };
 
     let mut info_parts: Vec<String> = Vec::new();
@@ -88,6 +89,11 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         }
     }
 
+    if app.context_window > 0 && app.context_used_tokens > 0 {
+        let pct = (app.context_used_tokens as f64 / app.context_window as f64 * 100.0) as u8;
+        info_parts.push(format!("ctx:{pct}%"));
+    }
+
     let queue_count = app.message_queue.len();
     if queue_count > 0 {
         info_parts.push(format!("queue:{queue_count}"));
@@ -101,44 +107,23 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     };
 
     let info_str = info_parts.join("  ");
-    let right_len = if info_str.is_empty() {
+    let right_content_len = if info_str.is_empty() {
         model_label.len()
     } else {
         info_str.len() + 2 + model_label.len()
     };
 
-    let mode_badge = if app.plan_mode { "Plan" } else { "Act" };
-    let badge_len = mode_badge.len() + 3;
-
     let available = area.width as usize;
-    let gap = available.saturating_sub(badge_len + left.len() + right_len + 4);
+    let gap = available.saturating_sub(left_hint.len() + right_content_len + 4);
 
     let mut spans: Vec<Span> = Vec::new();
 
-    if app.plan_mode {
-        spans.push(Span::styled(
-            format!(" {mode_badge} "),
-            Style::default().fg(theme.bg_page).bg(theme.warning).bold(),
-        ));
-    } else {
-        spans.push(Span::styled(
-            format!(" {mode_badge} "),
-            Style::default().fg(theme.text_tertiary),
-        ));
-    }
+    spans.push(Span::styled(
+        format!(" {left_hint}"),
+        Style::default().fg(theme.text_disabled),
+    ));
 
-    if !left.is_empty() {
-        spans.push(Span::styled(
-            format!(" {left}"),
-            Style::default().fg(theme.text_tertiary),
-        ));
-    }
-
-    spans.push(Span::raw(" ".repeat(if left.is_empty() {
-        available.saturating_sub(right_len + 2)
-    } else {
-        gap
-    })));
+    spans.push(Span::raw(" ".repeat(gap.max(1))));
 
     if matches!(app.trust_mode, nyzhi_config::TrustMode::Full) {
         let without_trust: Vec<&str> = info_parts
@@ -172,7 +157,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     } else {
         Style::default().fg(theme.accent).bold()
     };
-    spans.push(Span::styled(format!("{model_label}  "), model_style));
+    spans.push(Span::styled(format!("{model_label} "), model_style));
 
     let line = Line::from(spans);
     let paragraph = Paragraph::new(line).style(Style::default().bg(theme.bg_surface));

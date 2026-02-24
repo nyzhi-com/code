@@ -39,26 +39,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 render_message(&mut lines, role, content, theme, &app.highlighter, dark);
             }
             DisplayItem::Thinking(content) => {
-                let think_start = lines.len();
-                let dim = Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC);
-                lines.push(Line::from(Span::styled("  Thinking...", dim)));
-                for line_text in content.lines().take(10) {
-                    let trimmed = if line_text.len() > 120 {
-                        format!("{}...", &line_text[..117])
-                    } else {
-                        line_text.to_string()
-                    };
-                    lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
-                }
-                if content.lines().count() > 10 {
-                    lines.push(Line::from(Span::styled(
-                        format!("  ... ({} more lines)", content.lines().count() - 10),
-                        dim,
-                    )));
-                }
-                prepend_bar(&mut lines[think_start..], Color::DarkGray);
+                render_thinking(&mut lines, content, theme, false);
             }
             DisplayItem::ToolCall {
                 name,
@@ -70,14 +51,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 let tool_start = lines.len();
                 match app.output_style {
                     nyzhi_config::OutputStyle::Minimal => {
-                        let dim = Style::default().fg(theme.text_disabled);
-                        let icon = match status {
-                            ToolStatus::Running => "*",
-                            ToolStatus::WaitingApproval => "?",
-                            ToolStatus::Completed => "+",
-                            ToolStatus::Denied => "x",
-                        };
-                        lines.push(Line::from(Span::styled(format!("    {icon} {name}"), dim)));
+                        render_tool_minimal(&mut lines, name, status, theme);
                     }
                     _ => {
                         render_tool_call(
@@ -98,52 +72,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 hunks,
                 is_new_file,
             } => {
-                let diff_start = lines.len();
-                let header_label = if *is_new_file {
-                    format!("  +++ {file} (new file)")
-                } else {
-                    format!("  --- {file}")
-                };
-                lines.push(Line::from(Span::styled(
-                    header_label,
-                    Style::default().fg(theme.accent).bold(),
-                )));
-
-                for hunk in hunks {
-                    lines.push(Line::from(Span::styled(
-                        format!("  {}", hunk.header),
-                        Style::default().fg(Color::Cyan),
-                    )));
-                    for dl in &hunk.lines {
-                        let (prefix, style) = match dl.kind {
-                            DiffLineKind::Added => (
-                                "+",
-                                Style::default().fg(Color::Green),
-                            ),
-                            DiffLineKind::Removed => (
-                                "-",
-                                Style::default().fg(Color::Red),
-                            ),
-                            DiffLineKind::Context => (
-                                " ",
-                                Style::default().fg(theme.text_secondary),
-                            ),
-                        };
-                        let line_text = if dl.content.len() > 120 {
-                            format!("  {prefix}{}", &dl.content[..117])
-                        } else {
-                            format!("  {prefix}{}", dl.content)
-                        };
-                        lines.push(Line::from(Span::styled(line_text, style)));
-                    }
-                }
-                if hunks.is_empty() && !*is_new_file {
-                    lines.push(Line::from(Span::styled(
-                        "  (no changes)",
-                        Style::default().fg(theme.text_disabled),
-                    )));
-                }
-                prepend_bar(&mut lines[diff_start..], Color::Yellow);
+                render_diff(&mut lines, file, hunks, *is_new_file, theme);
             }
         }
 
@@ -162,34 +91,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     }
 
     if !app.thinking_stream.is_empty() && app.current_stream.is_empty() {
-        let dim = Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::ITALIC);
         lines.push(Line::from(""));
-        let think_stream_start = lines.len();
-        lines.push(Line::from(Span::styled("  Thinking...", dim)));
-        let tlines: Vec<&str> = app.thinking_stream.lines().collect();
-        let show = tlines.len().min(6);
-        if show < tlines.len() {
-            for line_text in &tlines[tlines.len() - show..] {
-                let trimmed = if line_text.len() > 120 {
-                    format!("{}...", &line_text[..117])
-                } else {
-                    (*line_text).to_string()
-                };
-                lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
-            }
-        } else {
-            for line_text in &tlines {
-                let trimmed = if line_text.len() > 120 {
-                    format!("{}...", &line_text[..117])
-                } else {
-                    (*line_text).to_string()
-                };
-                lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
-            }
-        }
-        prepend_bar(&mut lines[think_stream_start..], Color::DarkGray);
+        render_thinking_stream(&mut lines, &app.thinking_stream, theme);
     }
 
     if !app.current_stream.is_empty() {
@@ -202,10 +105,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             &app.highlighter,
             dark,
         );
-        lines.push(Line::from(Span::styled(
-            "  _",
-            Style::default().fg(theme.accent),
-        )));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("█", Style::default().fg(theme.accent)),
+        ]));
         prepend_bar(&mut lines[stream_start..], theme.accent);
     }
 
@@ -269,6 +172,29 @@ fn prepend_bar(lines: &mut [Line<'_>], color: Color) {
     }
 }
 
+fn role_label<'a>(role: &str, theme: &Theme) -> (Vec<Span<'a>>, Color) {
+    match role {
+        "user" => {
+            let spans = vec![
+                Span::styled("  You", Style::default().fg(theme.info).bold()),
+            ];
+            (spans, theme.info)
+        }
+        "system" => {
+            let spans = vec![
+                Span::styled("  system", Style::default().fg(theme.text_disabled).italic()),
+            ];
+            (spans, theme.text_disabled)
+        }
+        _ => {
+            let spans = vec![
+                Span::styled("  Nizzy", Style::default().fg(theme.accent).bold()),
+            ];
+            (spans, theme.accent)
+        }
+    }
+}
+
 fn render_message<'a>(
     lines: &mut Vec<Line<'a>>,
     role: &str,
@@ -280,6 +206,9 @@ fn render_message<'a>(
     lines.push(Line::from(""));
     let bar_start = lines.len();
 
+    let (label_spans, bar_color) = role_label(role, theme);
+    lines.push(Line::from(label_spans));
+
     match role {
         "user" => {
             for line in content.lines() {
@@ -289,17 +218,77 @@ fn render_message<'a>(
                 )));
             }
         }
+        "system" => {
+            for line in content.lines() {
+                lines.push(Line::from(Span::styled(
+                    format!("  {line}"),
+                    Style::default().fg(theme.text_secondary).italic(),
+                )));
+            }
+        }
         _ => {
             render_highlighted_content(lines, content, theme, highlighter, dark);
         }
     }
 
-    let bar_color = if role == "user" {
-        theme.info
-    } else {
-        theme.accent
-    };
     prepend_bar(&mut lines[bar_start..], bar_color);
+}
+
+fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, _streaming: bool) {
+    lines.push(Line::from(""));
+    let think_start = lines.len();
+    let dim = Style::default()
+        .fg(theme.text_disabled)
+        .add_modifier(Modifier::ITALIC);
+
+    lines.push(Line::from(vec![
+        Span::styled("  thinking ", dim),
+        Span::styled(
+            format!("({} lines)", content.lines().count()),
+            Style::default().fg(theme.text_disabled),
+        ),
+    ]));
+
+    for line_text in content.lines().take(8) {
+        let trimmed = if line_text.len() > 120 {
+            format!("{}...", &line_text[..117])
+        } else {
+            line_text.to_string()
+        };
+        lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
+    }
+    if content.lines().count() > 8 {
+        lines.push(Line::from(Span::styled(
+            format!("  ... +{} more", content.lines().count() - 8),
+            Style::default().fg(theme.text_disabled),
+        )));
+    }
+    prepend_bar(&mut lines[think_start..], theme.text_disabled);
+}
+
+fn render_thinking_stream<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
+    let think_start = lines.len();
+    let dim = Style::default()
+        .fg(theme.text_disabled)
+        .add_modifier(Modifier::ITALIC);
+
+    lines.push(Line::from(Span::styled("  thinking...", dim)));
+    let tlines: Vec<&str> = content.lines().collect();
+    let show = tlines.len().min(6);
+    let start = if show < tlines.len() {
+        tlines.len() - show
+    } else {
+        0
+    };
+    for line_text in &tlines[start..] {
+        let trimmed = if line_text.len() > 120 {
+            format!("{}...", &line_text[..117])
+        } else {
+            (*line_text).to_string()
+        };
+        lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
+    }
+    prepend_bar(&mut lines[think_start..], theme.text_disabled);
 }
 
 fn render_highlighted_content<'a>(
@@ -363,6 +352,32 @@ fn format_elapsed(ms: u64) -> String {
     }
 }
 
+fn tool_icon(status: &ToolStatus) -> (&'static str, fn(&Theme) -> Color) {
+    match status {
+        ToolStatus::Running => ("◌", |t: &Theme| t.warning),
+        ToolStatus::WaitingApproval => ("?", |t: &Theme| t.warning),
+        ToolStatus::Completed => ("✓", |t: &Theme| t.success),
+        ToolStatus::Denied => ("✗", |t: &Theme| t.danger),
+    }
+}
+
+fn render_tool_minimal<'a>(
+    lines: &mut Vec<Line<'a>>,
+    name: &str,
+    status: &ToolStatus,
+    theme: &Theme,
+) {
+    let (icon, color_fn) = tool_icon(status);
+    let color = color_fn(theme);
+    lines.push(Line::from(vec![
+        Span::styled(format!("    {icon} "), Style::default().fg(color)),
+        Span::styled(
+            name.to_string(),
+            Style::default().fg(theme.text_disabled),
+        ),
+    ]));
+}
+
 fn render_tool_call<'a>(
     lines: &mut Vec<Line<'a>>,
     name: &str,
@@ -372,36 +387,38 @@ fn render_tool_call<'a>(
     elapsed_ms: &Option<u64>,
     theme: &Theme,
 ) {
-    let (icon, icon_color) = match status {
-        ToolStatus::Running => ("*", theme.warning),
-        ToolStatus::WaitingApproval => ("?", theme.accent),
-        ToolStatus::Completed => ("+", theme.success),
-        ToolStatus::Denied => ("x", theme.danger),
-    };
+    let (icon, color_fn) = tool_icon(status);
+    let icon_color = color_fn(theme);
 
     let mut summary_lines = args_summary.lines();
     let first_line = summary_lines.next().unwrap_or("");
 
-    let summary = if first_line.len() > 60 {
-        format!("{}...", &first_line[..57])
+    let summary = if first_line.len() > 80 {
+        format!("{}...", &first_line[..77])
     } else {
         first_line.to_string()
     };
 
     let mut spans = vec![
         Span::styled(format!("    {icon} "), Style::default().fg(icon_color)),
-        Span::styled(name.to_string(), Style::default().fg(theme.accent).bold()),
         Span::styled(
-            format!(" {summary}"),
-            Style::default().fg(theme.text_tertiary),
+            name.to_string(),
+            Style::default().fg(theme.accent).bold(),
         ),
     ];
+
+    if !summary.is_empty() {
+        spans.push(Span::styled(
+            format!(" {summary}"),
+            Style::default().fg(theme.text_tertiary),
+        ));
+    }
 
     if *status == ToolStatus::Completed {
         if let Some(ms) = elapsed_ms {
             spans.push(Span::styled(
-                format!("  ({})", format_elapsed(*ms)),
-                Style::default().fg(theme.text_tertiary),
+                format!(" {}", format_elapsed(*ms)),
+                Style::default().fg(theme.text_disabled),
             ));
         }
     }
@@ -427,12 +444,80 @@ fn render_tool_call<'a>(
             &all_lines[..all_lines.len().min(max_lines)]
         };
         for line in display_lines {
+            let truncated = if line.len() > 120 {
+                format!("{}...", &line[..117])
+            } else {
+                (*line).to_string()
+            };
             lines.push(Line::from(Span::styled(
-                format!("      {line}"),
-                Style::default().fg(theme.text_secondary),
+                format!("      {truncated}"),
+                Style::default().fg(theme.text_disabled),
+            )));
+        }
+        if all_lines.len() > max_lines {
+            lines.push(Line::from(Span::styled(
+                format!("      ... +{} lines", all_lines.len() - max_lines),
+                Style::default().fg(theme.text_disabled),
             )));
         }
     }
+}
+
+fn render_diff<'a>(
+    lines: &mut Vec<Line<'a>>,
+    file: &str,
+    hunks: &[crate::app::DiffHunk],
+    is_new_file: bool,
+    theme: &Theme,
+) {
+    lines.push(Line::from(""));
+    let diff_start = lines.len();
+
+    let header_label = if is_new_file {
+        format!("  + {file}")
+    } else {
+        format!("  ~ {file}")
+    };
+    let header_color = if is_new_file {
+        theme.success
+    } else {
+        theme.accent
+    };
+    lines.push(Line::from(Span::styled(
+        header_label,
+        Style::default().fg(header_color).bold(),
+    )));
+
+    for hunk in hunks {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", hunk.header),
+            Style::default().fg(theme.info),
+        )));
+        for dl in &hunk.lines {
+            let (prefix, color) = match dl.kind {
+                DiffLineKind::Added => ("+", theme.success),
+                DiffLineKind::Removed => ("-", theme.danger),
+                DiffLineKind::Context => (" ", theme.text_disabled),
+            };
+            let line_text = if dl.content.len() > 120 {
+                format!("  {prefix}{}", &dl.content[..117])
+            } else {
+                format!("  {prefix}{}", dl.content)
+            };
+            lines.push(Line::from(Span::styled(
+                line_text,
+                Style::default().fg(color),
+            )));
+        }
+    }
+    if hunks.is_empty() && !is_new_file {
+        lines.push(Line::from(Span::styled(
+            "  (no changes)",
+            Style::default().fg(theme.text_disabled),
+        )));
+    }
+
+    prepend_bar(&mut lines[diff_start..], if is_new_file { theme.success } else { theme.warning });
 }
 
 fn render_diff_line<'a>(line: &str, theme: &Theme) -> Line<'a> {

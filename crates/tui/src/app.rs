@@ -137,6 +137,7 @@ pub struct App {
     pub should_quit: bool,
     pub provider_name: String,
     pub model_name: String,
+    pub model_profile: Option<String>,
     pub scroll_offset: u16,
     pub theme: Theme,
     pub spinner: SpinnerState,
@@ -221,6 +222,7 @@ impl App {
             should_quit: false,
             provider_name: provider_name.to_string(),
             model_name: model_name.to_string(),
+            model_profile: None,
             scroll_offset: 0,
             theme: Theme::from_config(config),
             spinner: SpinnerState::new(),
@@ -475,14 +477,18 @@ impl App {
             nyzhi_core::skills::load_skills(&self.workspace.project_root).unwrap_or_default();
         let skills_text = nyzhi_core::skills::format_skills_for_prompt(&skills);
 
+        let mut sys_prompt = nyzhi_core::prompt::build_system_prompt_with_skills(
+            Some(&self.workspace),
+            config.agent.custom_instructions.as_deref(),
+            &mcp_tool_summaries,
+            supports_vision,
+            &skills_text,
+        );
+        if config.agent.auto_commit {
+            sys_prompt.push_str(nyzhi_core::prompt::auto_commit_instructions());
+        }
         let mut agent_config = AgentConfig {
-            system_prompt: nyzhi_core::prompt::build_system_prompt_with_skills(
-                Some(&self.workspace),
-                config.agent.custom_instructions.as_deref(),
-                &mcp_tool_summaries,
-                supports_vision,
-                &skills_text,
-            ),
+            system_prompt: sys_prompt,
             max_steps: config.agent.max_steps.unwrap_or(100),
             max_tokens: config.agent.max_tokens,
             trust: config.agent.trust.clone(),
@@ -1563,6 +1569,21 @@ impl App {
                         self.stream_token_count = 0;
                         self.turn_start = None;
                         self.mode = AppMode::Input;
+
+                        if self.context_window > 0 && self.context_used_tokens > 0 {
+                            let pct = self.context_used_tokens as f64
+                                / self.context_window as f64
+                                * 100.0;
+                            if pct >= 75.0 {
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!(
+                                        "Context usage at {:.0}%. Quality may degrade. Consider `/compact` or `/handoff`.",
+                                        pct
+                                    ),
+                                });
+                            }
+                        }
 
                         let should_notify = turn_elapsed
                             .map(|d| d.as_millis() as u64 >= self.notify.min_duration_ms)

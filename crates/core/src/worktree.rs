@@ -156,6 +156,24 @@ pub fn list_worktrees(project_root: &Path) -> Vec<WorktreeInfo> {
     result
 }
 
+pub fn merge_worktree(project_root: &Path, name: &str) -> Result<String> {
+    let branch = format!("worktree-{name}");
+    let output = std::process::Command::new("git")
+        .args(["merge", &branch, "--no-ff", "-m"])
+        .arg(format!("Merge worktree {name}"))
+        .current_dir(project_root)
+        .output()
+        .context("Failed to run git merge")?;
+
+    if output.status.success() {
+        let _ = remove_worktree(project_root, name, false);
+        Ok(format!("Merged branch '{branch}' and removed worktree '{name}'."))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Merge failed: {stderr}")
+    }
+}
+
 fn ensure_gitignore(project_root: &Path) -> Result<()> {
     let gitignore = project_root.join(".gitignore");
     let pattern = ".nyzhi/worktrees/";

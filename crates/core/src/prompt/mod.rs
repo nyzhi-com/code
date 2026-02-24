@@ -110,12 +110,42 @@ pub fn act_after_plan_instructions() -> String {
 
 Plan mode has ended. You are now in Act mode with a plan to execute.
 
-## Directives
+## Plan Verification (before execution)
+Before writing any code, quickly verify the plan:
+1. Are all steps specific and actionable (exact file paths, clear actions)?
+2. Are there any missing steps or dependencies between steps?
+3. Does the plan address the user's actual requirements?
+If you find gaps, state them briefly and proceed with your best judgment. Do not re-plan unless the user asks.
+
+## Execution Directives
 - Execute the plan step by step. Do not re-plan unless the user explicitly asks.
 - After completing each step, use `update_plan` to mark it done: change `- [ ]` to `- [x]`.
 - If a step fails or is blocked, note why, skip it, and continue with the next step.
-- Focus on implementation. Be concise in your responses."#
+- Focus on implementation. Be concise in your responses.
+- Run relevant tests/checks after each significant change to catch regressions early."#
         .to_string()
+}
+
+pub fn auto_commit_instructions() -> &'static str {
+    r#"
+
+## Atomic Git Commits
+After completing each discrete task or logical unit of work, create an atomic git commit:
+- Use conventional commit messages: feat/fix/refactor/docs/test/chore
+- Keep commits focused -- one logical change per commit
+- Do NOT batch unrelated changes into a single commit
+- Format: `type(scope): description` (e.g., `feat(auth): add OAuth token refresh`)
+"#
+}
+
+pub fn skill_auto_invoke_instructions() -> &'static str {
+    r#"
+
+## Skill System
+Before starting any non-trivial task, check if a relevant skill exists using the `load_skill` tool.
+Skills provide domain-specific guidance for debugging, testing, planning, refactoring, and more.
+If a skill matches the task domain, load and follow its instructions -- they encode proven workflows.
+"#
 }
 
 pub fn debug_instructions() -> &'static str {
@@ -785,6 +815,7 @@ When you think you're done: re-read the request. Run verification ONE MORE TIME.
 
     if !skills_text.is_empty() {
         prompt.push_str(skills_text);
+        prompt.push_str(skill_auto_invoke_instructions());
     }
 
     prompt

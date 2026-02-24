@@ -27,6 +27,13 @@ impl ChangeTracker {
         self.changes.push(change);
     }
 
+    pub fn changed_files(&self) -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = self.changes.iter().map(|c| c.path.clone()).collect();
+        paths.sort();
+        paths.dedup();
+        paths
+    }
+
     /// Pop the most recent change and restore the file to its original state.
     /// Returns the reverted change, or None if the stack is empty.
     pub async fn undo_last(&mut self) -> Result<Option<FileChange>> {

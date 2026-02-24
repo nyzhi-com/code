@@ -201,6 +201,10 @@ pub struct AgentSettings {
     pub verify: VerifyConfig,
     #[serde(default)]
     pub agents: AgentManagerConfig,
+    #[serde(default)]
+    pub auto_commit: bool,
+    #[serde(default)]
+    pub model_profile: Option<String>,
 }
 
 fn default_max_agents() -> usize {
@@ -992,6 +996,12 @@ impl Config {
                         roles
                     },
                 },
+                auto_commit: project.agent.auto_commit || global.agent.auto_commit,
+                model_profile: project
+                    .agent
+                    .model_profile
+                    .clone()
+                    .or(global.agent.model_profile.clone()),
             },
             mcp: McpConfig {
                 servers: mcp_servers,
