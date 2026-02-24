@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: linux-aarch64
+          - target: x86_64-apple-darwin
+            os: macos-13
+            artifact: darwin-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-14
+            artifact: darwin-aarch64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} -p nyzhi
+
+      - name: Package
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../nyzhi-${{ matrix.artifact }}.tar.gz nyz
+          cd ../../..
+          shasum -a 256 nyzhi-${{ matrix.artifact }}.tar.gz | cut -d' ' -f1 > nyzhi-${{ matrix.artifact }}.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nyzhi-${{ matrix.artifact }}
+          path: |
+            nyzhi-${{ matrix.artifact }}.tar.gz
+            nyzhi-${{ matrix.artifact }}.sha256
+
+  publish:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Gather metadata
+        id: meta
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          SHA_DARWIN_X86=$(cat artifacts/nyzhi-darwin-x86_64.sha256)
+          SHA_DARWIN_ARM=$(cat artifacts/nyzhi-darwin-aarch64.sha256)
+          SHA_LINUX_X86=$(cat artifacts/nyzhi-linux-x86_64.sha256)
+          SHA_LINUX_ARM=$(cat artifacts/nyzhi-linux-aarch64.sha256)
+
+          cat > metadata.json << EOF
+          {
+            "version": "$VERSION",
+            "commit_sha": "$GITHUB_SHA",
+            "artifacts": {
+              "darwin-x86_64":  { "sha256": "$SHA_DARWIN_X86" },
+              "darwin-aarch64": { "sha256": "$SHA_DARWIN_ARM" },
+              "linux-x86_64":   { "sha256": "$SHA_LINUX_X86" },
+              "linux-aarch64":  { "sha256": "$SHA_LINUX_ARM" }
+            }
+          }
+          EOF
+          cat metadata.json
+
+      - name: Upload to Raccoon
+        run: |
+          curl -fsSL -X POST "https://ci.nyzhi.com/api/releases/upload" \
+            -H "Authorization: Bearer ${{ secrets.RACCOON_UPLOAD_SECRET }}" \
+            -F "metadata=@metadata.json;type=application/json" \
+            -F "darwin-x86_64=@artifacts/nyzhi-darwin-x86_64.tar.gz" \
+            -F "darwin-aarch64=@artifacts/nyzhi-darwin-aarch64.tar.gz" \
+            -F "linux-x86_64=@artifacts/nyzhi-linux-x86_64.tar.gz" \
+            -F "linux-aarch64=@artifacts/nyzhi-linux-aarch64.tar.gz"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/nyzhi-darwin-x86_64.tar.gz
+            artifacts/nyzhi-darwin-aarch64.tar.gz
+            artifacts/nyzhi-linux-x86_64.tar.gz
+            artifacts/nyzhi-linux-aarch64.tar.gz
