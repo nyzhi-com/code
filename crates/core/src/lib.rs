@@ -11,6 +11,7 @@ pub mod context_files;
 pub mod deepinit;
 pub mod diagnostics;
 pub mod formatter;
+pub mod git_undo;
 pub mod hooks;
 
 pub mod conversation;

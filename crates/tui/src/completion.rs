@@ -218,6 +218,11 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
+        name: "/review",
+        description: "code review: uncommitted, HEAD~N, or pr N",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
         name: "/retry",
         description: "resend the last prompt",
         kind: CommandKind::Prompt,
@@ -310,6 +315,11 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
     SlashCommandDef {
         name: "/undo all",
         description: "undo all changes this session",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/undo git",
+        description: "restore all files from git HEAD",
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
@@ -446,12 +456,23 @@ pub fn generate_candidates(
         CompletionContext::SlashCommand => generate_slash_candidates(prefix, custom_commands),
         CompletionContext::AtMention => {
             let path_part = prefix.strip_prefix('@').unwrap_or(prefix);
-            let mut candidates = generate_path_candidates(path_part, cwd);
-            for c in &mut candidates {
-                c.insert(0, '@');
+            if path_part.contains('/') {
+                let mut candidates = generate_path_candidates(path_part, cwd);
+                for c in &mut candidates {
+                    c.insert(0, '@');
+                }
+                let descs = vec![String::new(); candidates.len()];
+                (candidates, descs)
+            } else {
+                let mut results = fuzzy_file_search(path_part, cwd, MAX_CANDIDATES);
+                results.sort_by(|(_, sa), (_, sb)| sb.cmp(sa));
+                let candidates: Vec<String> = results
+                    .iter()
+                    .map(|(path, _)| format!("@{path}"))
+                    .collect();
+                let descs = vec![String::new(); candidates.len()];
+                (candidates, descs)
             }
-            let descs = vec![String::new(); candidates.len()];
-            (candidates, descs)
         }
         CompletionContext::FilePath => {
             let candidates = generate_path_candidates(prefix, cwd);
@@ -513,6 +534,88 @@ fn generate_path_candidates(partial: &str, cwd: &Path) -> Vec<String> {
 
     candidates.sort();
     candidates
+}
+
+fn fuzzy_file_search(query: &str, root: &Path, limit: usize) -> Vec<(String, u32)> {
+    let query_lower = query.to_lowercase();
+    let mut results: Vec<(String, u32)> = Vec::new();
+
+    fn walk(dir: &Path, root: &Path, query: &str, results: &mut Vec<(String, u32)>, depth: u8) {
+        if depth > 6 {
+            return;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name == "node_modules" || name == "target" || name == "__pycache__" {
+                continue;
+            }
+            let path = entry.path();
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .to_string();
+            let is_dir = path.is_dir();
+
+            let score = fuzzy_score(query, &rel.to_lowercase());
+            if score > 0 {
+                let display = if is_dir {
+                    format!("{rel}/")
+                } else {
+                    rel
+                };
+                results.push((display, score));
+            }
+
+            if is_dir && results.len() < 500 {
+                walk(&path, root, query, results, depth + 1);
+            }
+        }
+    }
+
+    walk(root, root, &query_lower, &mut results, 0);
+    results.sort_by(|a, b| b.1.cmp(&a.1));
+    results.truncate(limit);
+    results
+}
+
+fn fuzzy_score(query: &str, target: &str) -> u32 {
+    if query.is_empty() {
+        return 0;
+    }
+    let filename = target.rsplit('/').next().unwrap_or(target);
+
+    if filename.contains(query) {
+        return 100 + (50u32.saturating_sub(filename.len() as u32));
+    }
+    if target.contains(query) {
+        return 50 + (50u32.saturating_sub(target.len() as u32));
+    }
+
+    let mut qi = 0;
+    let query_chars: Vec<char> = query.chars().collect();
+    let mut score = 0u32;
+    let mut prev_match = false;
+
+    for ch in target.chars() {
+        if qi < query_chars.len() && ch == query_chars[qi] {
+            score += if prev_match { 3 } else { 1 };
+            qi += 1;
+            prev_match = true;
+        } else {
+            prev_match = false;
+        }
+    }
+
+    if qi == query_chars.len() {
+        score + 10u32.saturating_sub(target.len() as u32 / 10)
+    } else {
+        0
+    }
 }
 
 fn split_path_prefix(partial: &str, cwd: &Path) -> (std::path::PathBuf, String) {
@@ -662,14 +765,14 @@ mod tests {
     #[test]
     fn slash_candidates_include_custom() {
         let custom = vec![nyzhi_core::commands::CustomCommand {
-            name: "review".to_string(),
-            prompt_template: "Review $ARGUMENTS".to_string(),
-            description: "Code review".to_string(),
+            name: "mycheck".to_string(),
+            prompt_template: "Check $ARGUMENTS".to_string(),
+            description: "Custom check".to_string(),
         }];
-        let (names, descs) = generate_slash_candidates("/rev", &custom);
-        assert!(names.contains(&"/review".to_string()));
-        let idx = names.iter().position(|n| n == "/review").unwrap();
-        assert_eq!(descs[idx], "Code review");
+        let (names, descs) = generate_slash_candidates("/myc", &custom);
+        assert!(names.contains(&"/mycheck".to_string()));
+        let idx = names.iter().position(|n| n == "/mycheck").unwrap();
+        assert_eq!(descs[idx], "Custom check");
     }
 
     #[test]

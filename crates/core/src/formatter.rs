@@ -1,8 +1,6 @@
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::Result;
-
 pub struct FormatResult {
     pub file: String,
     pub formatter: String,

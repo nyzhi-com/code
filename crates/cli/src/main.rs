@@ -47,6 +47,12 @@ enum Commands {
         /// Attach image file(s) to the prompt
         #[arg(short = 'i', long = "image")]
         images: Vec<String>,
+        /// Output format: text (default) or json (JSONL events)
+        #[arg(long, default_value = "text")]
+        format: String,
+        /// Write final response to a file
+        #[arg(short = 'o', long = "output")]
+        output_file: Option<String>,
     },
     /// Log in to a provider (OAuth or API key)
     Login {
@@ -957,7 +963,12 @@ async fn main() -> Result<()> {
     }
 
     match cli.command {
-        Some(Commands::Run { prompt, images }) => {
+        Some(Commands::Run {
+            prompt,
+            images,
+            format,
+            output_file,
+        }) => {
             let Some(ref provider) = provider else {
                 eprintln!("No credentials configured. Set an API key or run `nyz login`.");
                 std::process::exit(1);
@@ -971,6 +982,8 @@ async fn main() -> Result<()> {
                 &config,
                 &mcp_summaries,
                 cli.team_name.as_deref(),
+                &format,
+                output_file.as_deref(),
             )
             .await?;
         }
@@ -1066,6 +1079,8 @@ async fn main() -> Result<()> {
                 &config,
                 &mcp_summaries,
                 None,
+                "text",
+                None,
             )
             .await?;
 
@@ -1104,12 +1119,15 @@ async fn run_once(
     config: &nyzhi_config::Config,
     mcp_tools: &[nyzhi_core::prompt::McpToolSummary],
     team_name: Option<&str>,
+    format: &str,
+    output_file: Option<&str>,
 ) -> Result<()> {
     use nyzhi_core::agent::{AgentConfig, AgentEvent};
     use nyzhi_core::conversation::Thread;
     use nyzhi_core::tools::ToolContext;
     use nyzhi_provider::{ContentPart, MessageContent};
 
+    let json_mode = format == "json";
     let mut thread = Thread::new();
     let agent_config = AgentConfig {
         system_prompt: nyzhi_core::prompt::build_system_prompt_with_mcp(
@@ -1149,27 +1167,52 @@ async fn run_once(
     };
 
     let tx = event_tx.clone();
+    let response_text = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let response_capture = response_text.clone();
     let handle = tokio::spawn(async move {
         while let Ok(event) = event_rx.recv().await {
             match event {
-                AgentEvent::TextDelta(text) => print!("{text}"),
+                AgentEvent::TextDelta(ref text) => {
+                    if json_mode {
+                        let obj = serde_json::json!({"type": "text_delta", "text": text});
+                        println!("{}", obj);
+                    } else {
+                        print!("{text}");
+                    }
+                    response_capture.lock().unwrap().push_str(text);
+                }
                 AgentEvent::ToolCallStart { name, .. } => {
-                    eprint!("\n[tool: {name}] ");
+                    if json_mode {
+                        let obj = serde_json::json!({"type": "tool_start", "name": name});
+                        println!("{}", obj);
+                    } else {
+                        eprint!("\n[tool: {name}] ");
+                    }
                 }
                 AgentEvent::ToolCallDone { name, output, .. } => {
-                    let preview = if output.len() > 200 {
-                        format!("{}...", &output[..197])
+                    if json_mode {
+                        let obj = serde_json::json!({"type": "tool_done", "name": name, "output": output});
+                        println!("{}", obj);
                     } else {
-                        output
-                    };
-                    eprintln!("{name} done: {preview}");
+                        let preview = if output.len() > 200 {
+                            format!("{}...", &output[..197])
+                        } else {
+                            output
+                        };
+                        eprintln!("{name} done: {preview}");
+                    }
                 }
                 AgentEvent::ApprovalRequest {
                     tool_name, respond, ..
                 } => {
                     let mut guard = respond.lock().await;
                     if let Some(sender) = guard.take() {
-                        eprintln!("[auto-approved: {tool_name}]");
+                        if json_mode {
+                            let obj = serde_json::json!({"type": "auto_approved", "tool": tool_name});
+                            println!("{}", obj);
+                        } else {
+                            eprintln!("[auto-approved: {tool_name}]");
+                        }
                         let _ = sender.send(true);
                     }
                 }
@@ -1179,11 +1222,26 @@ async fn run_once(
                     wait_ms,
                     reason,
                 } => {
-                    eprintln!("\n[retry {attempt}/{max_retries}] waiting {wait_ms}ms: {reason}");
+                    if json_mode {
+                        let obj = serde_json::json!({"type": "retry", "attempt": attempt, "max": max_retries, "wait_ms": wait_ms, "reason": reason});
+                        println!("{}", obj);
+                    } else {
+                        eprintln!("\n[retry {attempt}/{max_retries}] waiting {wait_ms}ms: {reason}");
+                    }
                 }
-                AgentEvent::TurnComplete => break,
+                AgentEvent::TurnComplete => {
+                    if json_mode {
+                        println!("{}", serde_json::json!({"type": "turn_complete"}));
+                    }
+                    break;
+                }
                 AgentEvent::Error(e) => {
-                    eprintln!("\nError: {e}");
+                    if json_mode {
+                        let obj = serde_json::json!({"type": "error", "message": e});
+                        println!("{}", obj);
+                    } else {
+                        eprintln!("\nError: {e}");
+                    }
                     break;
                 }
                 _ => {}
@@ -1270,6 +1328,12 @@ async fn run_once(
         for r in results {
             eprintln!("{}", r.summary());
         }
+    }
+
+    if let Some(path) = output_file {
+        let text = response_text.lock().unwrap().clone();
+        std::fs::write(path, &text)?;
+        eprintln!("Response written to {path}");
     }
 
     println!();

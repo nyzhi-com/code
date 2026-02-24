@@ -70,6 +70,15 @@ pub async fn handle_key(
         return;
     }
 
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('k') {
+        if app.mode == AppMode::Input {
+            app.input = "/".to_string();
+            app.cursor_pos = 1;
+            try_open_completion(app, &tool_ctx.cwd);
+        }
+        return;
+    }
+
     if key.modifiers.contains(KeyModifiers::CONTROL)
         && key.code == KeyCode::Char('n')
         && app.search_query.is_some()
@@ -684,6 +693,94 @@ pub async fn handle_key(
                     label: "init-deep".to_string(),
                 });
                 app.mode = AppMode::Streaming;
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/review" || input.starts_with("/review ") {
+                let arg = input.strip_prefix("/review").unwrap_or("").trim();
+                let project = &app.workspace.project_root;
+
+                let (diff_output, label) = if arg.is_empty() {
+                    let diff = std::process::Command::new("git")
+                        .args(["diff", "HEAD"])
+                        .current_dir(project)
+                        .output();
+                    let untracked = std::process::Command::new("git")
+                        .args(["diff", "--no-index", "/dev/null", "."])
+                        .current_dir(project)
+                        .output();
+                    let mut result = diff
+                        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                        .unwrap_or_default();
+                    if let Ok(u) = untracked {
+                        let ut = String::from_utf8_lossy(&u.stdout).to_string();
+                        if !ut.is_empty() {
+                            result.push_str("\n--- Untracked ---\n");
+                            result.push_str(&ut);
+                        }
+                    }
+                    (result, "uncommitted changes".to_string())
+                } else if let Some(pr_num) = arg.strip_prefix("pr ").or(arg.strip_prefix("pr")) {
+                    let pr_num = pr_num.trim();
+                    let diff = std::process::Command::new("gh")
+                        .args(["pr", "diff", pr_num])
+                        .current_dir(project)
+                        .output();
+                    (
+                        diff.map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                            .unwrap_or_else(|e| format!("Failed to get PR diff: {e}")),
+                        format!("PR #{pr_num}"),
+                    )
+                } else {
+                    let diff = std::process::Command::new("git")
+                        .args(["diff", arg])
+                        .current_dir(project)
+                        .output();
+                    (
+                        diff.map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                            .unwrap_or_else(|e| format!("Failed to get diff: {e}")),
+                        format!("diff {arg}"),
+                    )
+                };
+
+                if diff_output.trim().is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("No changes found for: {label}"),
+                    });
+                } else {
+                    let truncated = if diff_output.len() > 50000 {
+                        format!("{}...\n(truncated at 50K chars)", &diff_output[..50000])
+                    } else {
+                        diff_output
+                    };
+                    let prompt = format!(
+                        "Review the following code changes ({label}). \
+                         Provide a structured code review:\n\n\
+                         ## Review Format\n\
+                         1. **Summary**: What these changes do (1-2 sentences)\n\
+                         2. **Bugs**: Logic errors, edge cases, null checks, off-by-ones\n\
+                         3. **Security**: Input validation, auth, injection, secrets\n\
+                         4. **Performance**: N+1 queries, unnecessary allocations, O(n^2)\n\
+                         5. **Style**: Naming, consistency, dead code, missing tests\n\
+                         6. **Verdict**: APPROVE / REQUEST_CHANGES / NEEDS_DISCUSSION\n\n\
+                         Be specific — cite file names and line numbers.\n\n\
+                         ```diff\n{truncated}\n```"
+                    );
+                    app.items.push(DisplayItem::Message {
+                        role: "user".to_string(),
+                        content: format!("/review {label}"),
+                    });
+                    app.turn_request = Some(TurnRequest {
+                        input: prompt,
+                        content: None,
+                        is_background: false,
+                        label: format!("review: {label}"),
+                    });
+                    app.mode = AppMode::Streaming;
+                }
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;
@@ -1692,16 +1789,66 @@ pub async fn handle_key(
                         });
                     }
                     Ok(None) => {
-                        app.items.push(DisplayItem::Message {
-                            role: "system".to_string(),
-                            content: "No changes to undo.".to_string(),
-                        });
+                        if nyzhi_core::git_undo::is_git_repo(&app.workspace.project_root) {
+                            match nyzhi_core::git_undo::git_diff_stat(&app.workspace.project_root) {
+                                Ok(stat) if stat.trim().is_empty() => {
+                                    app.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: "No changes to undo.".to_string(),
+                                    });
+                                }
+                                Ok(_stat) => {
+                                    app.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: "No tracked changes. Use `/undo git` to restore all files from git HEAD.".to_string(),
+                                    });
+                                }
+                                Err(_) => {
+                                    app.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: "No changes to undo.".to_string(),
+                                    });
+                                }
+                            }
+                        } else {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: "No changes to undo.".to_string(),
+                            });
+                        }
                     }
                     Err(e) => {
                         app.items.push(DisplayItem::Message {
                             role: "system".to_string(),
                             content: format!("Undo failed: {e}"),
                         });
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/undo git" {
+                if !nyzhi_core::git_undo::is_git_repo(&app.workspace.project_root) {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Not a git repository.".to_string(),
+                    });
+                } else {
+                    match nyzhi_core::git_undo::git_undo_all(&app.workspace.project_root) {
+                        Ok(msg) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: msg,
+                            });
+                        }
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Git undo failed: {e}"),
+                            });
+                        }
                     }
                 }
                 app.input.clear();
