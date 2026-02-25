@@ -1,0 +1,8 @@
+fault_id,severity,blast_radius,category,title,primary_files,batch,planned_action,status
+F001,critical,high,placeholder_logic,Prompt/Agent hook types return success-like placeholders,crates/core/src/hooks.rs,A,Fail-closed behavior + command fallback + regression tests,resolved
+F002,high,high,config_unconsumed,index config keys not fully wired (embedding/exclude/auto_context_chunks),crates/index/src/lib.rs;crates/tui/src/app.rs;crates/core/src/agent/mod.rs;crates/cli/src/main.rs,B,Wire config into runtime path + tests/docs,resolved
+F003,high,medium,missing_dispatch,No-arg slash commands can fall through as prompt (/team /image /refactor /search),crates/tui/src/input.rs,B,Handle bare command with usage/selector behavior,resolved
+F004,medium,medium,docs_runtime_drift,Duplicate /thinking command metadata conflicts with runtime behavior,crates/tui/src/completion.rs,B,Normalize command entries and keep explicit /thinking toggle entry,resolved
+F005,medium,medium,discoverability,Command selector omits many built-in and custom slash commands,crates/tui/src/app.rs,B,Append uncategorized built-ins and custom commands to palette,resolved
+F006,medium,low,config_unconsumed,agent.auto_simplify merged but unconsumed,crates/config/src/lib.rs,C,Defer (needs product behavior decision),deferred
+F007,low,low,dead_code,git_undo create_checkpoint appears unused and has ignored stash pop result,crates/core/src/git_undo.rs,C,Defer (separate git-undo hardening change),deferred

@@ -37,25 +37,28 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
         return;
     }
 
-    let badge = mode_badge(app, theme);
-    let badge_width = badge.width() as u16 + 1;
-
-    let content_area = Rect::new(
-        inner.x + badge_width,
-        inner.y,
-        inner.width.saturating_sub(badge_width),
-        inner.height,
-    );
-
-    let badge_area = Rect::new(inner.x, inner.y, badge_width, 1);
-    frame.render_widget(
-        Paragraph::new(badge).style(Style::default().bg(theme.bg_surface)),
-        badge_area,
-    );
+    let show_badge = inner.width >= 50;
+    let content_area = if show_badge {
+        let badge = mode_badge(app, theme);
+        let badge_width = badge.width() as u16 + 1;
+        let badge_area = Rect::new(inner.x, inner.y, badge_width, 1);
+        frame.render_widget(
+            Paragraph::new(badge).style(Style::default().bg(theme.bg_surface)),
+            badge_area,
+        );
+        Rect::new(
+            inner.x + badge_width,
+            inner.y,
+            inner.width.saturating_sub(badge_width),
+            inner.height,
+        )
+    } else {
+        inner
+    };
 
     match app.mode {
         AppMode::Streaming => render_streaming(frame, content_area, app, theme, spinner),
-        AppMode::AwaitingApproval => render_approval(frame, content_area, theme),
+        AppMode::AwaitingApproval => render_approval(frame, content_area, app, theme),
         AppMode::AwaitingUserQuestion => render_question(frame, content_area, theme),
         AppMode::Input => {
             if let Some(search) = &app.history_search {
@@ -78,7 +81,10 @@ fn mode_badge<'a>(app: &App, theme: &Theme) -> Line<'a> {
                 " Plan ",
                 Style::default().fg(theme.bg_page).bg(theme.warning).bold(),
             ),
-            Span::raw(" "),
+            Span::styled(
+                " S-Tab ",
+                Style::default().fg(theme.text_disabled),
+            ),
         ])
     } else {
         Line::from(vec![
@@ -88,7 +94,10 @@ fn mode_badge<'a>(app: &App, theme: &Theme) -> Line<'a> {
                     .fg(theme.text_tertiary)
                     .bg(theme.bg_elevated),
             ),
-            Span::raw(" "),
+            Span::styled(
+                " S-Tab ",
+                Style::default().fg(theme.text_disabled),
+            ),
         ])
     }
 }
@@ -190,22 +199,71 @@ fn render_streaming(
     }
 }
 
-fn render_approval(frame: &mut Frame, area: Rect, theme: &Theme) {
-    let content = Line::from(vec![
-        Span::styled(
+fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let buttons: [(&str, usize); 3] = [(" Allow ", 0), (" Deny ", 1), (" Always ", 2)];
+    let btn_total_width: usize = buttons.iter().map(|(l, _)| l.len() + 2).sum::<usize>() + 2;
+
+    let mut left_spans: Vec<Span> = Vec::new();
+
+    if let Some((ref tool, ref args)) = app.pending_approval_context {
+        left_spans.push(Span::styled(
             format!("{PROMPT_CHAR} "),
             Style::default().fg(theme.warning).bold(),
-        ),
-        Span::styled(
+        ));
+        left_spans.push(Span::styled(
+            tool.clone(),
+            Style::default().fg(theme.accent).bold(),
+        ));
+
+        let first_line = args.lines().next().unwrap_or("");
+        let max_args = (area.width as usize).saturating_sub(tool.len() + btn_total_width + 6);
+        if !first_line.is_empty() && max_args > 4 {
+            let truncated = if first_line.len() > max_args {
+                format!(" {}...", &first_line[..max_args.saturating_sub(3)])
+            } else {
+                format!(" {first_line}")
+            };
+            left_spans.push(Span::styled(
+                truncated,
+                Style::default().fg(theme.text_tertiary),
+            ));
+        }
+    } else {
+        left_spans.push(Span::styled(
+            format!("{PROMPT_CHAR} "),
+            Style::default().fg(theme.warning).bold(),
+        ));
+        left_spans.push(Span::styled(
             "approve? ",
             Style::default().fg(theme.text_primary),
-        ),
-        Span::styled("y", Style::default().fg(theme.success).bold()),
-        Span::styled("/", Style::default().fg(theme.text_disabled)),
-        Span::styled("n", Style::default().fg(theme.danger).bold()),
-    ]);
+        ));
+    }
+
+    let used: usize = left_spans.iter().map(|s| s.width()).sum();
+    let gap = (area.width as usize).saturating_sub(used + btn_total_width);
+    if gap > 0 {
+        left_spans.push(Span::raw(" ".repeat(gap)));
+    }
+
+    for (label, idx) in &buttons {
+        if *idx == app.approval_cursor {
+            left_spans.push(Span::styled(
+                format!("[{label}]"),
+                Style::default().fg(theme.bg_page).bg(theme.accent).bold(),
+            ));
+        } else {
+            left_spans.push(Span::styled(
+                format!("[{label}]"),
+                Style::default()
+                    .fg(theme.text_secondary)
+                    .bg(theme.bg_elevated),
+            ));
+        }
+        left_spans.push(Span::raw(" "));
+    }
+
     frame.render_widget(
-        Paragraph::new(content).style(Style::default().bg(theme.bg_surface)),
+        Paragraph::new(Line::from(left_spans)).style(Style::default().bg(theme.bg_surface)),
         area,
     );
 }

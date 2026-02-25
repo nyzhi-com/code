@@ -84,11 +84,11 @@ Primary runtime helpers in `core/hooks.rs`:
 
 ## Hook types
 
-- `command`: real shell command (`sh -c`), timeout, optional JSON stdin context
-- `prompt`: placeholder behavior currently returns static success-like result
-- `agent`: placeholder behavior currently returns static JSON `{"safe": true, ...}`
+- `command`: real shell command (`sh -c`), timeout, optional JSON stdin context.
+- `prompt`: currently runs `command` as fallback when provided; without a command it fails closed with non-zero exit.
+- `agent`: currently runs `command` as fallback when provided; without a command it fails closed with non-zero exit.
 
-`command` is the practical production path today.
+`command` remains the production path until native prompt/agent hook execution is implemented.
 
 ## Team hook special code
 

@@ -1,0 +1,10 @@
+ M .github/workflows/release.yml
+ M crates/config/src/lib.rs
+ M crates/tui/src/app.rs
+ M crates/tui/src/completion.rs
+ M crates/tui/src/components/chat.rs
+ M crates/tui/src/components/input_box.rs
+ M crates/tui/src/components/selector.rs
+ M crates/tui/src/components/text_prompt.rs
+ M crates/tui/src/input.rs
+?? .tmp/

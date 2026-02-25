@@ -1144,6 +1144,8 @@ async fn run_once(
         compact_instructions: config.agent.compact_instructions.clone(),
         team_name: team_name.map(String::from),
         agent_name: team_name.map(|_| "team-lead".to_string()),
+        auto_context: config.index.auto_context,
+        auto_context_chunks: config.index.auto_context_chunks,
         ..AgentConfig::default()
     };
     let (event_tx, mut event_rx) = tokio::sync::broadcast::channel::<AgentEvent>(256);

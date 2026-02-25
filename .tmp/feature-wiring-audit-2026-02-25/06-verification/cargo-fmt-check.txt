@@ -1,0 +1,673 @@
+Diff in /Users/staticpayload/nyzhi/code/crates/cli/src/main.rs:1210:
+                     let mut guard = respond.lock().await;
+                     if let Some(sender) = guard.take() {
+                         if json_mode {
+-                            let obj = serde_json::json!({"type": "auto_approved", "tool": tool_name});
++                            let obj =
++                                serde_json::json!({"type": "auto_approved", "tool": tool_name});
+                             println!("{}", obj);
+                         } else {
+                             eprintln!("[auto-approved: {tool_name}]");
+Diff in /Users/staticpayload/nyzhi/code/crates/cli/src/main.rs:1228:
+                         let obj = serde_json::json!({"type": "retry", "attempt": attempt, "max": max_retries, "wait_ms": wait_ms, "reason": reason});
+                         println!("{}", obj);
+                     } else {
+-                        eprintln!("\n[retry {attempt}/{max_retries}] waiting {wait_ms}ms: {reason}");
++                        eprintln!(
++                            "\n[retry {attempt}/{max_retries}] waiting {wait_ms}ms: {reason}"
++                        );
+                     }
+                 }
+                 AgentEvent::TurnComplete => {
+Diff in /Users/staticpayload/nyzhi/code/crates/core/src/agent/mod.rs:320:
+                         .collect::<Vec<_>>()
+                         .join(" "),
+                 };
+-                match index.auto_context(&query_text, config.auto_context_chunks).await {
++                match index
++                    .auto_context(&query_text, config.auto_context_chunks)
++                    .await
++                {
+                     Ok(ctx_xml) if !ctx_xml.is_empty() => match user_content {
+                         MessageContent::Text(t) => {
+                             MessageContent::Text(format!("{ctx_xml}\n\n{t}"))
+Diff in /Users/staticpayload/nyzhi/code/crates/core/src/formatter.rs:27:
+     FormatterDef {
+         name: "prettier",
+         extensions: &[
+-            "js", "ts", "jsx", "tsx", "json", "css", "scss", "html", "md", "yaml", "yml",
+-            "graphql",
++            "js", "ts", "jsx", "tsx", "json", "css", "scss", "html", "md", "yaml", "yml", "graphql",
+         ],
+         command: "npx",
+         args_template: "prettier --write {file}",
+Diff in /Users/staticpayload/nyzhi/code/crates/core/src/formatter.rs:35:
+-        detect_files: &["package.json", ".prettierrc", ".prettierrc.json", ".prettierrc.js"],
++        detect_files: &[
++            "package.json",
++            ".prettierrc",
++            ".prettierrc.json",
++            ".prettierrc.js",
++        ],
+     },
+     FormatterDef {
+         name: "black",
+Diff in /Users/staticpayload/nyzhi/code/crates/core/src/formatter.rs:131:
+     }
+ }
+ 
+-pub async fn format_file_async(file_path: String, project_root: std::path::PathBuf) -> Option<FormatResult> {
++pub async fn format_file_async(
++    file_path: String,
++    project_root: std::path::PathBuf,
++) -> Option<FormatResult> {
+     tokio::task::spawn_blocking(move || format_file(&file_path, &project_root))
+         .await
+         .ok()?
+Diff in /Users/staticpayload/nyzhi/code/crates/core/src/hooks.rs:159:
+         }
+         HookType::Prompt => {
+             if !fallback_cmd.is_empty() {
+-                let mut result = run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
++                let mut result =
++                    run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
+                 result.hook_type = HookType::Prompt;
+                 return result;
+             }
+Diff in /Users/staticpayload/nyzhi/code/crates/core/src/hooks.rs:174:
+         }
+         HookType::Agent => {
+             if !fallback_cmd.is_empty() {
+-                let mut result = run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
++                let mut result =
++                    run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
+                 result.hook_type = HookType::Agent;
+                 return result;
+             }
+Diff in /Users/staticpayload/nyzhi/code/crates/core/src/hooks.rs:421:
+ 
+     #[tokio::test]
+     async fn prompt_hook_with_command_uses_command_fallback() {
+-        let hooks = vec![make_hook(HookEvent::AfterTurn, HookType::Prompt, "printf ok")];
++        let hooks = vec![make_hook(
++            HookEvent::AfterTurn,
++            HookType::Prompt,
++            "printf ok",
++        )];
+         let results = run_after_turn_hooks(&hooks, Path::new(".")).await;
+         assert_eq!(results.len(), 1);
+         let r = &results[0];
+Diff in /Users/staticpayload/nyzhi/code/crates/core/src/worktree.rs:167:
+ 
+     if output.status.success() {
+         let _ = remove_worktree(project_root, name, false);
+-        Ok(format!("Merged branch '{branch}' and removed worktree '{name}'."))
++        Ok(format!(
++            "Merged branch '{branch}' and removed worktree '{name}'."
++        ))
+     } else {
+         let stderr = String::from_utf8_lossy(&output.stderr);
+         anyhow::bail!("Merge failed: {stderr}")
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:413:
+                             Ok(stats) => {
+                                 tracing::info!(
+                                     "Index built: {} files, {} chunks, {} vectors",
+-                                    stats.file_count, stats.chunk_count, stats.vector_count
++                                    stats.file_count,
++                                    stats.chunk_count,
++                                    stats.vector_count
+                                 );
+                             }
+                             Err(e) => tracing::warn!("Index build failed: {e}"),
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:720:
+                         } else if self.text_prompt.is_some() {
+                             self.handle_text_prompt_key(key, config).await;
+                         } else if self.settings_panel.is_some() {
+-                            let action = self
+-                                .settings_panel
+-                                .as_mut()
+-                                .unwrap()
+-                                .handle_key(key);
++                            let action = self.settings_panel.as_mut().unwrap().handle_key(key);
+                             self.handle_settings_action(action);
+                         } else if self.selector.is_some() {
+                             self.handle_selector_key(key, &mut model_info_idx, &mut agent_config)
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:866:
+                                     0 => self.respond_approval(true).await,
+                                     1 => self.respond_approval(false).await,
+                                     2 => {
+-                                        if let Some((ref tool, _)) =
+-                                            self.pending_approval_context
+-                                        {
+-                                            self.session_approved_tools
+-                                                .insert(tool.clone());
++                                        if let Some((ref tool, _)) = self.pending_approval_context {
++                                            self.session_approved_tools.insert(tool.clone());
+                                         }
+                                         self.respond_approval(true).await;
+                                     }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:1350:
+                                 *elapsed_ms = Some(ev_elapsed);
+                             }
+                         }
+-                        if name == "write" || name == "edit" || name == "multi_edit" || name == "apply_patch" {
++                        if name == "write"
++                            || name == "edit"
++                            || name == "multi_edit"
++                            || name == "apply_patch"
++                        {
+                             let tracker = change_tracker.clone();
+                             let last_change = {
+                                 let guard = futures::executor::block_on(tracker.lock());
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:1370:
+                                     .unwrap_or(&file_path)
+                                     .trim_start_matches('/')
+                                     .to_string();
+-                                let diff_item = generate_diff(
+-                                    &rel,
+-                                    old_content.as_deref(),
+-                                    &new_content,
+-                                );
++                                let diff_item =
++                                    generate_diff(&rel, old_content.as_deref(), &new_content);
+                                 if let DisplayItem::Diff { ref hunks, .. } = diff_item {
+                                     if !hunks.is_empty() {
+                                         self.items.push(diff_item);
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:1386:
+                                 if let Some(tx) = self.hook_tx.clone() {
+                                     tokio::spawn(async move {
+                                         if let Some(r) = nyzhi_core::formatter::format_file_async(
+-                                            fmt_path,
+-                                            fmt_root,
+-                                        ).await {
++                                            fmt_path, fmt_root,
++                                        )
++                                        .await
++                                        {
+                                             if r.success {
+-                                                let _ = tx.send(format!("Formatted with {}", r.formatter));
++                                                let _ = tx.send(format!(
++                                                    "Formatted with {}",
++                                                    r.formatter
++                                                ));
+                                             }
+                                         }
+                                     });
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:1509:
+                                 }
+                             }
+                             self.pending_approval = Some(respond);
+-                            self.pending_approval_context =
+-                                Some((tool_name.clone(), args_summary));
++                            self.pending_approval_context = Some((tool_name.clone(), args_summary));
+                             self.mode = AppMode::AwaitingApproval;
+                         }
+                     }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:1643:
+                         self.mode = AppMode::Input;
+ 
+                         if self.context_window > 0 && self.context_used_tokens > 0 {
+-                            let pct = self.context_used_tokens as f64
+-                                / self.context_window as f64
++                            let pct = self.context_used_tokens as f64 / self.context_window as f64
+                                 * 100.0;
+                             if pct >= 75.0 {
+                                 self.items.push(DisplayItem::Message {
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:2705:
+                     "/status", "/context", "/changes", "/todo", "/plan", "/notepad", "/bg",
+                 ],
+             ),
+-            ("UI", &["/settings", "/theme", "/accent", "/thinking", "/notify", "/image"]),
+             (
++                "UI",
++                &[
++                    "/settings",
++                    "/theme",
++                    "/accent",
++                    "/thinking",
++                    "/notify",
++                    "/image",
++                ],
++            ),
++            (
+                 "System",
+                 &["/help", "/bug", "/editor", "/enable_exa", "/undo", "/exit"],
+             ),
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:2941:
+                                 nyzhi_config::TrustMode::Limited => {
+                                     nyzhi_config::TrustMode::AutoEdit
+                                 }
+-                                nyzhi_config::TrustMode::AutoEdit => {
+-                                    nyzhi_config::TrustMode::Full
+-                                }
++                                nyzhi_config::TrustMode::AutoEdit => nyzhi_config::TrustMode::Full,
+                                 nyzhi_config::TrustMode::Full => nyzhi_config::TrustMode::Off,
+                             }
+                         } else {
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:2953:
+                                 nyzhi_config::TrustMode::AutoEdit => {
+                                     nyzhi_config::TrustMode::Limited
+                                 }
+-                                nyzhi_config::TrustMode::Full => {
+-                                    nyzhi_config::TrustMode::AutoEdit
+-                                }
++                                nyzhi_config::TrustMode::Full => nyzhi_config::TrustMode::AutoEdit,
+                             }
+                         };
+                         if let Some(p) = &mut self.settings_panel {
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:3267:
+                         header,
+                         lines: std::mem::take(&mut current_hunk_lines),
+                     });
+-                    hunk_old_start =
+-                        edits[..i].iter().filter(|e| matches!(e, Edit::Equal(_) | Edit::Delete(_))).count() + 1 - max_ctx.min(i);
+-                    hunk_new_start =
+-                        edits[..i].iter().filter(|e| matches!(e, Edit::Equal(_) | Edit::Insert(_))).count() + 1 - max_ctx.min(i);
++                    hunk_old_start = edits[..i]
++                        .iter()
++                        .filter(|e| matches!(e, Edit::Equal(_) | Edit::Delete(_)))
++                        .count()
++                        + 1
++                        - max_ctx.min(i);
++                    hunk_new_start = edits[..i]
++                        .iter()
++                        .filter(|e| matches!(e, Edit::Equal(_) | Edit::Insert(_)))
++                        .count()
++                        + 1
++                        - max_ctx.min(i);
+                     hunk_old_count = 0;
+                     hunk_new_count = 0;
+                     let ctx_start = i.saturating_sub(max_ctx);
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/app.rs:3345:
+         while current_hunk_lines.len() > 1 {
+             if matches!(
+                 current_hunk_lines.last(),
+-                Some(DiffLine { kind: DiffLineKind::Context, .. })
++                Some(DiffLine {
++                    kind: DiffLineKind::Context,
++                    ..
++                })
+             ) && current_hunk_lines
+                 .iter()
+                 .rev()
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/completion.rs:526:
+             } else {
+                 let mut results = fuzzy_file_search(path_part, cwd, MAX_CANDIDATES);
+                 results.sort_by(|(_, sa), (_, sb)| sb.cmp(sa));
+-                let candidates: Vec<String> = results
+-                    .iter()
+-                    .map(|(path, _)| format!("@{path}"))
+-                    .collect();
++                let candidates: Vec<String> =
++                    results.iter().map(|(path, _)| format!("@{path}")).collect();
+                 let descs = vec![String::new(); candidates.len()];
+                 (candidates, descs)
+             }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/completion.rs:610:
+         };
+         for entry in entries.filter_map(|e| e.ok()) {
+             let name = entry.file_name().to_string_lossy().to_string();
+-            if name.starts_with('.') || name == "node_modules" || name == "target" || name == "__pycache__" {
++            if name.starts_with('.')
++                || name == "node_modules"
++                || name == "target"
++                || name == "__pycache__"
++            {
+                 continue;
+             }
+             let path = entry.path();
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/completion.rs:623:
+ 
+             let score = fuzzy_score(query, &rel.to_lowercase());
+             if score > 0 {
+-                let display = if is_dir {
+-                    format!("{rel}/")
+-                } else {
+-                    rel
+-                };
++                let display = if is_dir { format!("{rel}/") } else { rel };
+                 results.push((display, score));
+             }
+ 
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/completion.rs:936:
+ 
+     #[test]
+     fn classify_multi_word_command() {
+-        assert_eq!(
+-            classify_command("/thinking toggle"),
+-            CommandKind::Instant
+-        );
++        assert_eq!(classify_command("/thinking toggle"), CommandKind::Instant);
+         assert_eq!(classify_command("/clear queue"), CommandKind::StreamingSafe);
+     }
+ }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/chat.rs:434:
+     let color = color_fn(theme);
+     lines.push(Line::from(vec![
+         Span::styled(format!("    {icon} "), Style::default().fg(color)),
+-        Span::styled(
+-            name.to_string(),
+-            Style::default().fg(theme.text_disabled),
+-        ),
++        Span::styled(name.to_string(), Style::default().fg(theme.text_disabled)),
+     ]));
+ }
+ 
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/chat.rs:464:
+ 
+     let mut spans = vec![
+         Span::styled(format!("    {icon} "), Style::default().fg(icon_color)),
+-        Span::styled(
+-            name.to_string(),
+-            Style::default().fg(theme.accent).bold(),
+-        ),
++        Span::styled(name.to_string(), Style::default().fg(theme.accent).bold()),
+     ];
+ 
+     if !summary.is_empty() {
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/chat.rs:580:
+         )));
+     }
+ 
+-    prepend_bar(&mut lines[diff_start..], if is_new_file { theme.success } else { theme.warning });
++    prepend_bar(
++        &mut lines[diff_start..],
++        if is_new_file {
++            theme.success
++        } else {
++            theme.warning
++        },
++    );
+ }
+ 
+ fn render_diff_line<'a>(line: &str, theme: &Theme) -> Line<'a> {
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/input_box.rs:81:
+                 " Plan ",
+                 Style::default().fg(theme.bg_page).bg(theme.warning).bold(),
+             ),
+-            Span::styled(
+-                " S-Tab ",
+-                Style::default().fg(theme.text_disabled),
+-            ),
++            Span::styled(" S-Tab ", Style::default().fg(theme.text_disabled)),
+         ])
+     } else {
+         Line::from(vec![
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/input_box.rs:94:
+                     .fg(theme.text_tertiary)
+                     .bg(theme.bg_elevated),
+             ),
+-            Span::styled(
+-                " S-Tab ",
+-                Style::default().fg(theme.text_disabled),
+-            ),
++            Span::styled(" S-Tab ", Style::default().fg(theme.text_disabled)),
+         ])
+     }
+ }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/input_box.rs:131:
+         let queue_hint = format!(" queued:{} ", app.message_queue.len() + 1);
+         let hint_w = queue_hint.len() as u16;
+         if area.width > hint_w + 2 {
+-            let hint_area = Rect::new(
+-                area.x + area.width - hint_w,
+-                area.y,
+-                hint_w,
+-                1,
+-            );
++            let hint_area = Rect::new(area.x + area.width - hint_w, area.y, hint_w, 1);
+             frame.render_widget(
+                 Paragraph::new(Span::styled(
+                     queue_hint,
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/input_box.rs:149:
+         }
+ 
+         let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
+-        frame.set_cursor_position(Position::new(
+-            area.x + 2 + cursor_col,
+-            area.y + cursor_row,
+-        ));
++        frame.set_cursor_position(Position::new(area.x + 2 + cursor_col, area.y + cursor_row));
+     } else {
+         let mut spans: Vec<Span> = vec![
+             Span::styled(
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/input_box.rs:289:
+                 format!("{PROMPT_CHAR} "),
+                 Style::default().fg(theme.accent).bold(),
+             ),
+-            Span::styled(
+-                "Ask anything... ",
+-                Style::default().fg(theme.text_disabled),
+-            ),
+-            Span::styled(
+-                "/",
+-                Style::default().fg(theme.text_disabled).bold(),
+-            ),
+-            Span::styled(
+-                " commands",
+-                Style::default().fg(theme.text_disabled),
+-            ),
++            Span::styled("Ask anything... ", Style::default().fg(theme.text_disabled)),
++            Span::styled("/", Style::default().fg(theme.text_disabled).bold()),
++            Span::styled(" commands", Style::default().fg(theme.text_disabled)),
+         ])]
+     } else {
+         app.input
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/input_box.rs:488:
+ 
+     let mut lines: Vec<Line> = Vec::new();
+     lines.push(Line::from(vec![
+-        Span::styled(
+-            "search: ",
+-            Style::default().fg(theme.accent).bold(),
+-        ),
++        Span::styled("search: ", Style::default().fg(theme.accent).bold()),
+         Span::styled(&search.query, Style::default().fg(theme.text_primary)),
+     ]));
+ 
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/settings_panel.rs:178:
+     frame.render_widget(block, popup_area);
+ 
+     let content_h = inner.height.saturating_sub(2) as usize;
+-    let desc_area = Rect::new(inner.x, inner.y + inner.height.saturating_sub(2), inner.width, 1);
+-    let list_area = Rect::new(inner.x, inner.y, inner.width, inner.height.saturating_sub(2));
++    let desc_area = Rect::new(
++        inner.x,
++        inner.y + inner.height.saturating_sub(2),
++        inner.width,
++        1,
++    );
++    let list_area = Rect::new(
++        inner.x,
++        inner.y,
++        inner.width,
++        inner.height.saturating_sub(2),
++    );
+ 
+     let cursor_pos = panel.cursor;
+     let scroll = if cursor_pos >= content_h {
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/settings_panel.rs:200:
+                 }
+                 lines.push(Line::from(vec![
+                     Span::raw("  "),
+-                    Span::styled(
+-                        name.clone(),
+-                        Style::default().fg(theme.text_primary).bold(),
+-                    ),
++                    Span::styled(name.clone(), Style::default().fg(theme.text_primary).bold()),
+                 ]));
+             }
+             SettingsRow::Item(item) => {
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/settings_panel.rs:288:
+         }
+         SettingKind::SubMenu => {
+             vec![
+-                Span::styled(
+-                    item.current_value.clone(),
+-                    Style::default().fg(val_color),
+-                ),
++                Span::styled(item.current_value.clone(), Style::default().fg(val_color)),
+                 Span::styled(" ▸", Style::default().fg(dim)),
+             ]
+         }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/text_prompt.rs:132:
+     ];
+     if state.masked {
+         hint_spans.push(Span::styled("  tab", Style::default().fg(theme.accent)));
+-        hint_spans.push(Span::styled(" reveal ", Style::default().fg(theme.text_disabled)));
++        hint_spans.push(Span::styled(
++            " reveal ",
++            Style::default().fg(theme.text_disabled),
++        ));
+     } else {
+         hint_spans.push(Span::styled(" ", Style::default()));
+     }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/text_prompt.rs:152:
+     let inner = block.inner(popup_area);
+     frame.render_widget(block, popup_area);
+ 
+-    let content = Rect::new(inner.x + 1, inner.y, inner.width.saturating_sub(2), inner.height);
++    let content = Rect::new(
++        inner.x + 1,
++        inner.y,
++        inner.width.saturating_sub(2),
++        inner.height,
++    );
+ 
+     let mut y_offset = 0u16;
+ 
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/text_prompt.rs:160:
+         if y_offset < content.height {
+             let desc_area = Rect::new(content.x, content.y + y_offset, content.width, 1);
+             frame.render_widget(
+-                Paragraph::new(desc.as_str())
+-                    .style(Style::default().fg(theme.text_secondary).bg(theme.bg_elevated)),
++                Paragraph::new(desc.as_str()).style(
++                    Style::default()
++                        .fg(theme.text_secondary)
++                        .bg(theme.bg_elevated),
++                ),
+                 desc_area,
+             );
+             y_offset += 1;
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/text_prompt.rs:179:
+             _ => "API Key:",
+         };
+         frame.render_widget(
+-            Paragraph::new(label_text)
+-                .style(Style::default().fg(theme.text_primary).bold().bg(theme.bg_elevated)),
++            Paragraph::new(label_text).style(
++                Style::default()
++                    .fg(theme.text_primary)
++                    .bold()
++                    .bg(theme.bg_elevated),
++            ),
+             label_area,
+         );
+         y_offset += 1;
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/components/text_prompt.rs:211:
+             display_value
+         };
+ 
+-        frame.render_widget(
+-            Paragraph::new(display).style(style),
+-            input_area,
+-        );
++        frame.render_widget(Paragraph::new(display).style(style), input_area);
+ 
+         frame.set_cursor_position(Position::new(
+             input_area.x + state.cursor_pos.min(visible_width) as u16,
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/highlight.rs:293:
+     if let Some((num, rest)) = strip_numbered_list(trimmed) {
+         let mut spans = vec![
+             Span::raw("  "),
+-            Span::styled(
+-                format!("{num} "),
+-                Style::default().fg(accent),
+-            ),
++            Span::styled(format!("{num} "), Style::default().fg(accent)),
+         ];
+         spans.extend(parse_inline_markdown(rest, base_fg, accent, code_bg));
+         return Line::from(spans);
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/input.rs:908:
+                     nyzhi_core::notepad::list_notepads(&app.workspace.project_root)
+                 {
+                     for np_name in &notepads {
+-                        if let Ok(content) = nyzhi_core::notepad::read_notepad(
+-                            &app.workspace.project_root,
+-                            np_name,
+-                        ) {
++                        if let Ok(content) =
++                            nyzhi_core::notepad::read_notepad(&app.workspace.project_root, np_name)
++                        {
+                             if content.lines().count() > 2 {
+                                 sections.push(format!("## Notepad: {np_name}\n{content}\n"));
+                             }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/input.rs:921:
+ 
+                 if app.context_window > 0 && app.context_used_tokens > 0 {
+                     let pct = app.context_used_tokens as f64 / app.context_window as f64 * 100.0;
+-                    sections.push(format!("## Context Usage\n- {:.0}% used ({} / {} tokens)\n", pct, app.context_used_tokens, app.context_window));
++                    sections.push(format!(
++                        "## Context Usage\n- {:.0}% used ({} / {} tokens)\n",
++                        pct, app.context_used_tokens, app.context_window
++                    ));
+                 }
+ 
+                 {
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/input.rs:1133:
+                     } else {
+                         app.items.push(DisplayItem::Message {
+                             role: "system".to_string(),
+-                            content: format!("Unknown profile '{arg}'. Use: quality, balanced, budget, default"),
++                            content: format!(
++                                "Unknown profile '{arg}'. Use: quality, balanced, budget, default"
++                            ),
+                         });
+                     }
+                 }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/input.rs:1238:
+                 } else {
+                     app.items.push(DisplayItem::Message {
+                         role: "system".to_string(),
+-                        content: "Usage: /worktree [list|create <name>|merge <name>|remove <name>]".to_string(),
++                        content: "Usage: /worktree [list|create <name>|merge <name>|remove <name>]"
++                            .to_string(),
+                     });
+                 }
+                 app.input.clear();
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/input.rs:1978:
+                         match idx.stats() {
+                             Ok(s) => format!(
+                                 "Index: {} files, {} chunks, {} vectors\n  Ready: {}",
+-                                s.file_count, s.chunk_count, s.vector_count,
++                                s.file_count,
++                                s.chunk_count,
++                                s.vector_count,
+                                 idx.is_ready()
+                             ),
+                             Err(e) => format!("Index stats error: {e}"),
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/input.rs:2009:
+                             match handle.build().await {
+                                 Ok(s) => tracing::info!(
+                                     "Re-index complete: {} files, {} chunks",
+-                                    s.file_count, s.chunk_count
++                                    s.file_count,
++                                    s.chunk_count
+                                 ),
+                                 Err(e) => tracing::warn!("Re-index failed: {e}"),
+                             }
+Diff in /Users/staticpayload/nyzhi/code/crates/tui/src/input.rs:2218:
+                             .unwrap_or(&c.path.display().to_string())
+                             .trim_start_matches('/')
+                             .to_string();
+-                        let diff_item = crate::app::generate_diff(
+-                            &rel,
+-                            c.original.as_deref(),
+-                            &c.new_content,
+-                        );
++                        let diff_item =
++                            crate::app::generate_diff(&rel, c.original.as_deref(), &c.new_content);
+                         app.items.push(diff_item);
+                     }
+                 }

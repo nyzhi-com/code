@@ -2,7 +2,8 @@ use ratatui::prelude::*;
 
 use crate::app::App;
 use crate::components::{
-    chat, footer, input_box, plan_banner, selector, text_prompt, todo_panel, update_banner, welcome,
+    chat, footer, input_box, plan_banner, selector, settings_panel, text_prompt, todo_panel,
+    update_banner, welcome,
 };
 use crate::spinner::SpinnerState;
 use crate::theme::Theme;
@@ -60,5 +61,9 @@ pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState)
 
     if let Some(ref tp) = app.todo_panel {
         todo_panel::draw(frame, tp, theme);
+    }
+
+    if let Some(ref panel) = app.settings_panel {
+        settings_panel::draw(frame, panel, theme);
     }
 }

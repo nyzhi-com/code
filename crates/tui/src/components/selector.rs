@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -10,6 +10,7 @@ pub struct SelectorItem {
     pub value: String,
     pub preview_color: Option<Color>,
     pub is_header: bool,
+    pub right_badge: Option<String>,
 }
 
 impl SelectorItem {
@@ -19,6 +20,7 @@ impl SelectorItem {
             value: value.to_string(),
             preview_color: None,
             is_header: false,
+            right_badge: None,
         }
     }
 
@@ -28,6 +30,7 @@ impl SelectorItem {
             value: String::new(),
             preview_color: None,
             is_header: true,
+            right_badge: None,
         }
     }
 
@@ -70,6 +73,7 @@ pub enum SelectorAction {
     Select(String),
     Cancel,
     Tab,
+    ViewAllProviders,
 }
 
 impl SelectorState {
@@ -208,6 +212,12 @@ impl SelectorState {
                 }
                 SelectorAction::None
             }
+            KeyCode::Char('a')
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && self.kind == SelectorKind::Model =>
+            {
+                SelectorAction::ViewAllProviders
+            }
             KeyCode::Char(c)
                 if matches!(
                     self.kind,
@@ -234,6 +244,10 @@ impl SelectorState {
 
 pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
     let area = frame.area();
+
+    let overlay = Block::default().style(Style::default().bg(theme.bg_sunken).add_modifier(Modifier::DIM));
+    frame.render_widget(overlay, area);
+
     let filtered = selector.filtered_indices();
 
     let item_count = filtered.len() as u16;
@@ -272,7 +286,9 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
     let footer_spans: Vec<Span> = match selector.kind {
         SelectorKind::Model if selector.context_value.as_deref() != Some("thinking") => {
             vec![
-                Span::styled(" tab", Style::default().fg(theme.accent)),
+                Span::styled(" ctrl+a", Style::default().fg(theme.accent)),
+                Span::styled(": providers  ", Style::default().fg(theme.text_disabled)),
+                Span::styled("tab", Style::default().fg(theme.accent)),
                 Span::styled(": thinking  ", Style::default().fg(theme.text_disabled)),
                 Span::styled("esc ", Style::default().fg(theme.text_disabled)),
             ]
@@ -306,7 +322,7 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
                 SelectorKind::ApiKeyInput => "Enter API key...",
                 SelectorKind::Command => "Type to filter commands...",
                 SelectorKind::CustomModelInput => "e.g. anthropic/claude-sonnet-4",
-                SelectorKind::Model => "Filter models...",
+                SelectorKind::Model => "Search...",
                 SelectorKind::UserQuestion => "Type custom answer...",
                 _ => "Search...",
             };
@@ -351,6 +367,8 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
     } else {
         0
     };
+
+    let inner_w = content_area.width as usize;
 
     let mut lines: Vec<Line> = Vec::new();
     for &orig_idx in filtered.iter().skip(scroll).take(visible_h) {
@@ -402,7 +420,23 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         } else {
             Style::default().fg(theme.text_secondary)
         };
-        spans.push(Span::styled(item.label.clone(), label_style));
+
+        let prefix_width = 4 + if item.preview_color.is_some() { 2 } else { 0 };
+
+        if let Some(ref badge) = item.right_badge {
+            let badge_style = Style::default().fg(theme.text_disabled);
+            let label_len = item.label.chars().count();
+            let badge_len = badge.chars().count();
+            let avail = inner_w.saturating_sub(prefix_width);
+            let gap = avail.saturating_sub(label_len + badge_len);
+            spans.push(Span::styled(item.label.clone(), label_style));
+            if gap > 0 {
+                spans.push(Span::raw(" ".repeat(gap)));
+            }
+            spans.push(Span::styled(badge.clone(), badge_style));
+        } else {
+            spans.push(Span::styled(item.label.clone(), label_style));
+        }
 
         lines.push(Line::from(spans));
     }

@@ -786,8 +786,8 @@ pub async fn handle_key(
                 return;
             }
 
-            if input.starts_with("/refactor ") {
-                let target = input.strip_prefix("/refactor ").unwrap().trim().to_string();
+            if input == "/refactor" || input.starts_with("/refactor ") {
+                let target = input.strip_prefix("/refactor").unwrap().trim().to_string();
                 if target.is_empty() {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
@@ -1528,7 +1528,7 @@ pub async fn handle_key(
                 return;
             }
 
-            if input.starts_with("/team ") {
+            if input == "/team" || input.starts_with("/team ") {
                 let arg = input.strip_prefix("/team").unwrap().trim();
                 let parts: Vec<&str> = arg.splitn(2, ' ').collect();
                 if parts.len() < 2 {
@@ -1825,8 +1825,8 @@ pub async fn handle_key(
                 return;
             }
 
-            if input.starts_with("/search ") {
-                let query = input.strip_prefix("/search ").unwrap().trim();
+            if input == "/search" || input.starts_with("/search ") {
+                let query = input.strip_prefix("/search").unwrap().trim();
                 if query.is_empty() {
                     app.items.push(DisplayItem::Message {
                         role: "system".to_string(),
@@ -1938,25 +1938,32 @@ pub async fn handle_key(
                 return;
             }
 
-            if let Some(path_str) = input.strip_prefix("/image ") {
-                let path_str = path_str.trim();
-                match load_image(path_str) {
-                    Ok(img) => {
-                        let kb = img.size_bytes / 1024;
-                        app.items.push(DisplayItem::Message {
-                            role: "system".to_string(),
-                            content: format!(
-                                "Image attached: {} ({} KB). Type your prompt and press Enter.",
-                                img.filename, kb
-                            ),
-                        });
-                        app.pending_images.push(img);
-                    }
-                    Err(e) => {
-                        app.items.push(DisplayItem::Message {
-                            role: "system".to_string(),
-                            content: format!("Failed to load image: {e}"),
-                        });
+            if input == "/image" || input.starts_with("/image ") {
+                let path_str = input.strip_prefix("/image").unwrap().trim();
+                if path_str.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /image <path>".to_string(),
+                    });
+                } else {
+                    match load_image(path_str) {
+                        Ok(img) => {
+                            let kb = img.size_bytes / 1024;
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!(
+                                    "Image attached: {} ({} KB). Type your prompt and press Enter.",
+                                    img.filename, kb
+                                ),
+                            });
+                            app.pending_images.push(img);
+                        }
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Failed to load image: {e}"),
+                            });
+                        }
                     }
                 }
                 app.input.clear();
@@ -2502,6 +2509,25 @@ pub async fn handle_key(
 
             if input == "/style" {
                 app.open_style_selector();
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/thinking" || input == "/thinking toggle" {
+                app.show_thinking = !app.show_thinking;
+                let state = if app.show_thinking { "on" } else { "off" };
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!("Thinking display: {state}"),
+                });
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/settings" {
+                app.open_settings_panel();
                 app.input.clear();
                 app.cursor_pos = 0;
                 return;

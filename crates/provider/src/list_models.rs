@@ -464,9 +464,7 @@ fn humanize_model_id(id: &str) -> String {
         .rsplit('/')
         .next()
         .unwrap_or(id)
-        .replace('-', " ")
-        .replace('_', " ")
-        .replace(':', " ");
+        .replace(['-', '_', ':'], " ");
 
     let mut result = String::with_capacity(name.len());
     let mut capitalize_next = true;
@@ -507,7 +505,7 @@ pub fn merge_models(fetched: Vec<ModelInfo>, hardcoded: &[ModelInfo]) -> Vec<Mod
             if model.thinking.is_none() && hc.thinking.is_some() {
                 model.thinking = hc.thinking.clone();
             }
-            model.tier = hc.tier.clone();
+            model.tier = hc.tier;
             model.name = hc.name.clone();
             model.supports_vision = hc.supports_vision;
         }

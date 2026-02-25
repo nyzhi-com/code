@@ -115,42 +115,55 @@ impl TextPromptState {
 pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
     let area = frame.area();
 
-    let popup_width = 58u16.min(area.width.saturating_sub(4));
-    let popup_height = (7 + state.description.len() as u16).min(area.height.saturating_sub(4));
+    let popup_width = 60u16.min(area.width.saturating_sub(4));
+    let desc_lines = state.description.len() as u16;
+    let popup_height = (8 + desc_lines).min(area.height.saturating_sub(4));
     let x = (area.width.saturating_sub(popup_width)) / 2;
     let y = (area.height.saturating_sub(popup_height)) / 2;
     let popup_area = Rect::new(x, y, popup_width, popup_height);
 
     frame.render_widget(Clear, popup_area);
 
+    let mut hint_spans: Vec<Span> = vec![
+        Span::styled(" enter", Style::default().fg(theme.accent)),
+        Span::styled(" confirm  ", Style::default().fg(theme.text_disabled)),
+        Span::styled("esc", Style::default().fg(theme.accent)),
+        Span::styled(" cancel", Style::default().fg(theme.text_disabled)),
+    ];
+    if state.masked {
+        hint_spans.push(Span::styled("  tab", Style::default().fg(theme.accent)));
+        hint_spans.push(Span::styled(" reveal ", Style::default().fg(theme.text_disabled)));
+    } else {
+        hint_spans.push(Span::styled(" ", Style::default()));
+    }
+
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.accent))
+        .border_style(Style::default().fg(theme.border_strong))
         .title(Line::from(vec![
             Span::raw(" "),
             Span::styled(&state.title, Style::default().fg(theme.accent).bold()),
             Span::raw(" "),
         ]))
-        .title_alignment(Alignment::Center);
+        .title_alignment(Alignment::Center)
+        .title_bottom(Line::from(hint_spans).alignment(Alignment::Right))
+        .style(Style::default().bg(theme.bg_elevated));
 
+    let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
 
-    let inner = Rect::new(
-        popup_area.x + 2,
-        popup_area.y + 1,
-        popup_area.width.saturating_sub(4),
-        popup_area.height.saturating_sub(2),
-    );
+    let content = Rect::new(inner.x + 1, inner.y, inner.width.saturating_sub(2), inner.height);
 
     let mut y_offset = 0u16;
 
-    // Description lines
     for desc in &state.description {
-        if y_offset < inner.height {
-            let desc_area = Rect::new(inner.x, inner.y + y_offset, inner.width, 1);
-            let text =
-                Paragraph::new(desc.as_str()).style(Style::default().fg(theme.text_secondary));
-            frame.render_widget(text, desc_area);
+        if y_offset < content.height {
+            let desc_area = Rect::new(content.x, content.y + y_offset, content.width, 1);
+            frame.render_widget(
+                Paragraph::new(desc.as_str())
+                    .style(Style::default().fg(theme.text_secondary).bg(theme.bg_elevated)),
+                desc_area,
+            );
             y_offset += 1;
         }
     }
@@ -159,45 +172,38 @@ pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
         y_offset += 1;
     }
 
-    // Label
-    if y_offset < inner.height {
-        let label_area = Rect::new(inner.x, inner.y + y_offset, inner.width, 1);
+    if y_offset < content.height {
+        let label_area = Rect::new(content.x, content.y + y_offset, content.width, 1);
         let label_text = match state.kind {
             TextPromptKind::UserQuestionCustom => "Your answer:",
             _ => "API Key:",
         };
-        let label = Paragraph::new(label_text).style(Style::default().fg(theme.text_primary));
-        frame.render_widget(label, label_area);
+        frame.render_widget(
+            Paragraph::new(label_text)
+                .style(Style::default().fg(theme.text_primary).bold().bg(theme.bg_elevated)),
+            label_area,
+        );
         y_offset += 1;
     }
 
-    // Input field
-    if y_offset < inner.height {
-        let input_area = Rect::new(inner.x, inner.y + y_offset, inner.width, 1);
+    if y_offset < content.height {
+        let input_area = Rect::new(content.x, content.y + y_offset, content.width, 1);
 
         let display_value = if state.value.is_empty() {
             state.placeholder.clone()
         } else if state.masked && !state.revealed {
-            let dots: String = "\u{25CF}".repeat(state.value.len());
-            dots
+            "\u{25CF}".repeat(state.value.len())
         } else {
             state.value.clone()
         };
 
         let style = if state.value.is_empty() {
-            Style::default().fg(theme.text_disabled)
+            Style::default().fg(theme.text_disabled).bg(theme.bg_page)
         } else {
-            Style::default().fg(theme.text_primary)
+            Style::default().fg(theme.text_primary).bg(theme.bg_page)
         };
 
-        let input_block = Block::bordered()
-            .border_type(BorderType::Plain)
-            .border_style(Style::default().fg(theme.border_strong));
-
-        let input_inner = input_block.inner(input_area);
-        frame.render_widget(input_block, input_area);
-
-        let visible_width = input_inner.width as usize;
+        let visible_width = content.width as usize;
         let display = if display_value.len() > visible_width {
             let start = display_value.len().saturating_sub(visible_width);
             display_value[start..].to_string()
@@ -205,25 +211,14 @@ pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
             display_value
         };
 
-        let input_text = Paragraph::new(display).style(style);
-        frame.render_widget(input_text, input_inner);
+        frame.render_widget(
+            Paragraph::new(display).style(style),
+            input_area,
+        );
 
-        y_offset += 2;
-    }
-
-    y_offset += 1;
-
-    // Hint line
-    if y_offset < inner.height {
-        let hint_area = Rect::new(inner.x, inner.y + y_offset, inner.width, 1);
-        let hints = vec![
-            Span::styled("Enter", Style::default().fg(theme.accent)),
-            Span::styled(": confirm  |  ", Style::default().fg(theme.text_disabled)),
-            Span::styled("Esc", Style::default().fg(theme.accent)),
-            Span::styled(": cancel  |  ", Style::default().fg(theme.text_disabled)),
-            Span::styled("Tab", Style::default().fg(theme.accent)),
-            Span::styled(": reveal", Style::default().fg(theme.text_disabled)),
-        ];
-        frame.render_widget(Paragraph::new(Line::from(hints)), hint_area);
+        frame.set_cursor_position(Position::new(
+            input_area.x + state.cursor_pos.min(visible_width) as u16,
+            input_area.y,
+        ));
     }
 }

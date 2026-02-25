@@ -1,0 +1,151 @@
+feature_id,domain,feature_name,source,trigger,dispatch_presence,selector_presence,execution_presence,wiring_status,evidence
+slash_001,tui_slash_command,/accent,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_002,tui_slash_command,/agents,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_003,tui_slash_command,/autopilot,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_004,tui_slash_command,/background,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact;starts_with
+slash_005,tui_slash_command,/bg,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_006,tui_slash_command,/bug,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_007,tui_slash_command,/changes,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_008,tui_slash_command,/clear,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_009,tui_slash_command,/clear queue,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_010,tui_slash_command,/commands,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_011,tui_slash_command,/compact,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_012,tui_slash_command,/connect,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_013,tui_slash_command,/context,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_014,tui_slash_command,/diff,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_015,tui_slash_command,/doctor,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_016,tui_slash_command,/editor,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_017,tui_slash_command,/enable_exa,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_018,tui_slash_command,/exit,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_019,tui_slash_command,/export,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_020,tui_slash_command,/handoff,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_021,tui_slash_command,/help,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_022,tui_slash_command,/hooks,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_023,tui_slash_command,/image,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_024,tui_slash_command,/index,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact;starts_with
+slash_025,tui_slash_command,/index off,crates/tui/src/completion.rs,user input,yes,no,yes,wired_via_parent_handler,parent_handler
+slash_026,tui_slash_command,/index status,crates/tui/src/completion.rs,user input,yes,no,yes,wired_via_parent_handler,parent_handler
+slash_027,tui_slash_command,/init,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_028,tui_slash_command,/init-deep,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_029,tui_slash_command,/learn,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_030,tui_slash_command,/login,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_031,tui_slash_command,/mcp,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_032,tui_slash_command,/model,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;strip_prefix;in_selector
+slash_033,tui_slash_command,/notepad,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_034,tui_slash_command,/notify,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_035,tui_slash_command,/persist,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_036,tui_slash_command,/plan,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_037,tui_slash_command,/qa,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_038,tui_slash_command,/quit,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_039,tui_slash_command,/refactor,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact;starts_with
+slash_040,tui_slash_command,/resume,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;strip_prefix;in_selector
+slash_041,tui_slash_command,/review,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact;starts_with
+slash_042,tui_slash_command,/retry,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_043,tui_slash_command,/search,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_044,tui_slash_command,/session delete,crates/tui/src/completion.rs,user input,yes,no,yes,arg_only_or_partial,strip_prefix
+slash_045,tui_slash_command,/session rename,crates/tui/src/completion.rs,user input,yes,no,yes,arg_only_or_partial,strip_prefix
+slash_046,tui_slash_command,/sessions,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;strip_prefix;in_selector
+slash_047,tui_slash_command,/status,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_048,tui_slash_command,/stop,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_049,tui_slash_command,/style,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;strip_prefix;in_selector
+slash_050,tui_slash_command,/thinking toggle,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_051,tui_slash_command,/settings,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_052,tui_slash_command,/team,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_053,tui_slash_command,/theme,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_054,tui_slash_command,/think,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_055,tui_slash_command,/thinking,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;strip_prefix;in_selector
+slash_056,tui_slash_command,/todo,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;starts_with;in_selector
+slash_057,tui_slash_command,/todo enforce on,crates/tui/src/completion.rs,user input,yes,no,yes,wired_via_parent_handler,parent_handler
+slash_058,tui_slash_command,/todo enforce off,crates/tui/src/completion.rs,user input,yes,no,yes,wired_via_parent_handler,parent_handler
+slash_059,tui_slash_command,/todo clear,crates/tui/src/completion.rs,user input,yes,no,yes,wired_via_parent_handler,parent_handler
+slash_060,tui_slash_command,/trust,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;strip_prefix;in_selector
+slash_061,tui_slash_command,/undo,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_062,tui_slash_command,/undo all,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_063,tui_slash_command,/undo git,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_064,tui_slash_command,/verify,crates/tui/src/completion.rs,user input,yes,yes,yes,wired,exact;in_selector
+slash_065,tui_slash_command,/quick,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact;starts_with
+slash_066,tui_slash_command,/map,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_067,tui_slash_command,/init-project,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+slash_068,tui_slash_command,/profile,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact;starts_with
+slash_069,tui_slash_command,/worktree,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact;starts_with
+slash_070,tui_slash_command,/worktree create,crates/tui/src/completion.rs,user input,yes,no,yes,wired_via_parent_handler,parent_handler
+slash_071,tui_slash_command,/worktree list,crates/tui/src/completion.rs,user input,yes,no,yes,wired_via_parent_handler,parent_handler
+slash_072,tui_slash_command,/worktree merge,crates/tui/src/completion.rs,user input,yes,no,yes,wired_via_parent_handler,parent_handler
+slash_073,tui_slash_command,/worktree remove,crates/tui/src/completion.rs,user input,yes,no,yes,wired_via_parent_handler,parent_handler
+slash_074,tui_slash_command,/resume-work,crates/tui/src/completion.rs,user input,yes,no,yes,wired,exact
+cli_001,cli_command,Run,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_002,cli_command,Login,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_003,cli_command,Logout,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_004,cli_command,Whoami,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_005,cli_command,Config,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_006,cli_command,Init,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_007,cli_command,Mcp,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_008,cli_command,Sessions,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_009,cli_command,Export,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_010,cli_command,Session,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_011,cli_command,Stats,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_012,cli_command,Cost,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_013,cli_command,Deepinit,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_014,cli_command,Teams,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_015,cli_command,Skills,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_016,cli_command,Wait,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_017,cli_command,Replay,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_018,cli_command,Update,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_019,cli_command,Uninstall,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+cli_020,cli_command,CiFix,crates/cli/src/main.rs,cli subcommand,yes,n/a,yes,wired,match_arm
+tool_001,core_tool_registry,bash::BashTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_002,core_tool_registry,read::ReadTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_003,core_tool_registry,write::WriteTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_004,core_tool_registry,edit::EditTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_005,core_tool_registry,glob::GlobTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_006,core_tool_registry,grep::GrepTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_007,core_tool_registry,git::GitStatusTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_008,core_tool_registry,git::GitDiffTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_009,core_tool_registry,git::GitLogTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_010,core_tool_registry,git::GitShowTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_011,core_tool_registry,git::GitBranchTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_012,core_tool_registry,git::GitCommitTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_013,core_tool_registry,git::GitCheckoutTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_014,core_tool_registry,todo::TodoReadTool::with_store(todo_store.clone()),crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_015,core_tool_registry,filesystem::ListDirTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_016,core_tool_registry,filesystem::DirectoryTreeTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_017,core_tool_registry,filesystem::FileInfoTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_018,core_tool_registry,filesystem::DeleteFileTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_019,core_tool_registry,filesystem::MoveFileTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_020,core_tool_registry,filesystem::CopyFileTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_021,core_tool_registry,filesystem::CreateDirTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_022,core_tool_registry,verify::VerifyTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_023,core_tool_registry,notepad::NotepadWriteTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_024,core_tool_registry,notepad::NotepadReadTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_025,core_tool_registry,lsp::LspDiagnosticsTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_026,core_tool_registry,lsp::AstSearchTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_027,core_tool_registry,lsp::LspGotoDefinitionTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_028,core_tool_registry,lsp::LspFindReferencesTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_029,core_tool_registry,lsp::LspHoverTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_030,core_tool_registry,web::WebFetchTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_031,core_tool_registry,web::WebSearchTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_032,core_tool_registry,tail_file::TailFileTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_033,core_tool_registry,load_skill::LoadSkillTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_034,core_tool_registry,memory::MemoryReadTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_035,core_tool_registry,memory::MemoryWriteTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_036,core_tool_registry,team::TeamCreateTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_037,core_tool_registry,team::TeamDeleteTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_038,core_tool_registry,team::SendMessageTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_039,core_tool_registry,team::TaskCreateTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_040,core_tool_registry,team::TaskUpdateTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_041,core_tool_registry,team::TaskListTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_042,core_tool_registry,team::TeamListTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_043,core_tool_registry,team::ReadInboxTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_044,core_tool_registry,batch::BatchApplyTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_045,core_tool_registry,semantic_search::SemanticSearchTool::new(idx),crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_046,core_tool_registry,fuzzy_find::FuzzyFindTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_047,core_tool_registry,update_plan::UpdatePlanTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_048,core_tool_registry,think::ThinkTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_049,core_tool_registry,ask_user::AskUserTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_050,core_tool_registry,apply_patch::ApplyPatchTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_051,core_tool_registry,apply_patch::MultiEditTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_052,core_tool_registry,browser::BrowserOpenTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_053,core_tool_registry,browser::BrowserScreenshotTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_054,core_tool_registry,browser::BrowserEvaluateTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_055,core_tool_registry,pr::CreatePrTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register
+tool_056,core_tool_registry,pr::ReviewPrTool,crates/core/src/tools/mod.rs,agent tool call,yes,n/a,yes,registered,registry.register

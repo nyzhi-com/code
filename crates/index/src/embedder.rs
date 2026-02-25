@@ -103,6 +103,12 @@ impl TfIdfEmbedder {
     }
 }
 
+impl Default for TfIdfEmbedder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl Embedder for TfIdfEmbedder {
     async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {

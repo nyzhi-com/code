@@ -150,43 +150,39 @@ async fn run_hook(
     cwd: &Path,
     stdin_data: Option<&str>,
 ) -> HookResult {
+    let fallback_cmd = command_override.unwrap_or(&hook.command).trim();
     match hook.hook_type {
         HookType::Command => {
-            let cmd = command_override.unwrap_or(&hook.command);
-            let mut result = run_hook_command(cmd, hook.timeout, cwd, stdin_data).await;
+            let mut result = run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
             result.hook_type = HookType::Command;
             result
         }
         HookType::Prompt => {
-            let prompt_text = hook
-                .prompt
-                .as_deref()
-                .unwrap_or("Evaluate this hook context.");
-            let context_str = stdin_data.unwrap_or("");
-            let full_prompt =
-                format!("{prompt_text}\n\nContext:\n{context_str}\n\nAnswer YES or NO.");
+            if !fallback_cmd.is_empty() {
+                let mut result = run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
+                result.hook_type = HookType::Prompt;
+                return result;
+            }
             HookResult {
-                command: format!("prompt: {}", &full_prompt[..full_prompt.len().min(100)]),
-                stdout: "YES".to_string(),
-                stderr: String::new(),
-                exit_code: Some(0),
+                command: "prompt".to_string(),
+                stdout: String::new(),
+                stderr: "hook_type=prompt is not implemented yet; use hook_type=command or set a command fallback".to_string(),
+                exit_code: Some(1),
                 timed_out: false,
                 hook_type: HookType::Prompt,
             }
         }
         HookType::Agent => {
-            let instructions = hook
-                .instructions
-                .as_deref()
-                .unwrap_or("Evaluate this hook context.");
-            let _context_str = stdin_data.unwrap_or("");
+            if !fallback_cmd.is_empty() {
+                let mut result = run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
+                result.hook_type = HookType::Agent;
+                return result;
+            }
             HookResult {
-                command: format!("agent: {}", &instructions[..instructions.len().min(100)]),
-                stdout:
-                    serde_json::json!({"safe": true, "reason": "Hook agent evaluation placeholder"})
-                        .to_string(),
-                stderr: String::new(),
-                exit_code: Some(0),
+                command: "agent".to_string(),
+                stdout: String::new(),
+                stderr: "hook_type=agent is not implemented yet; use hook_type=command or set a command fallback".to_string(),
+                exit_code: Some(1),
                 timed_out: false,
                 hook_type: HookType::Agent,
             }
@@ -358,6 +354,23 @@ async fn run_hook_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    fn make_hook(event: HookEvent, hook_type: HookType, command: &str) -> HookConfig {
+        HookConfig {
+            event,
+            command: command.to_string(),
+            hook_type,
+            prompt: None,
+            instructions: None,
+            tools: None,
+            model: None,
+            pattern: None,
+            tool_name: None,
+            block: false,
+            timeout: 5,
+        }
+    }
 
     #[test]
     fn pattern_matches_extension() {
@@ -382,5 +395,38 @@ mod tests {
     #[test]
     fn empty_pattern_matches_all() {
         assert!(matches_pattern("", "anything.rs"));
+    }
+
+    #[tokio::test]
+    async fn prompt_hook_without_command_fails_closed() {
+        let hooks = vec![make_hook(HookEvent::AfterTurn, HookType::Prompt, "")];
+        let results = run_after_turn_hooks(&hooks, Path::new(".")).await;
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        assert_eq!(r.hook_type, HookType::Prompt);
+        assert_eq!(r.exit_code, Some(1));
+        assert!(r.stderr.contains("not implemented"));
+    }
+
+    #[tokio::test]
+    async fn agent_hook_without_command_fails_closed() {
+        let hooks = vec![make_hook(HookEvent::AfterTurn, HookType::Agent, "")];
+        let results = run_after_turn_hooks(&hooks, Path::new(".")).await;
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        assert_eq!(r.hook_type, HookType::Agent);
+        assert_eq!(r.exit_code, Some(1));
+        assert!(r.stderr.contains("not implemented"));
+    }
+
+    #[tokio::test]
+    async fn prompt_hook_with_command_uses_command_fallback() {
+        let hooks = vec![make_hook(HookEvent::AfterTurn, HookType::Prompt, "printf ok")];
+        let results = run_after_turn_hooks(&hooks, Path::new(".")).await;
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        assert_eq!(r.hook_type, HookType::Prompt);
+        assert_eq!(r.exit_code, Some(0));
+        assert!(r.stdout.contains("ok"));
     }
 }

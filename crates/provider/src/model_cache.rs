@@ -57,3 +57,9 @@ impl ModelCache {
         self.entries.remove(provider_id);
     }
 }
+
+impl Default for ModelCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}

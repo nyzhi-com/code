@@ -151,13 +151,12 @@ fn detect_js_boundary(line: &str) -> Option<ChunkKind> {
     {
         return Some(ChunkKind::Function);
     }
-    if line.contains("=> {") || line.contains("=> (") {
-        if line.starts_with("const ")
+    if (line.contains("=> {") || line.contains("=> ("))
+        && (line.starts_with("const ")
             || line.starts_with("export const ")
-            || line.starts_with("let ")
-        {
-            return Some(ChunkKind::Function);
-        }
+            || line.starts_with("let "))
+    {
+        return Some(ChunkKind::Function);
     }
     if line.starts_with("class ")
         || line.starts_with("export class ")

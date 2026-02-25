@@ -263,6 +263,16 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
+        name: "/thinking toggle",
+        description: "toggle thinking display",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/settings",
+        description: "open settings menu",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
         name: "/team",
         description: "spawn coordinated sub-agents",
         kind: CommandKind::Prompt,
@@ -910,5 +920,26 @@ mod tests {
         };
         state.cycle_backward();
         assert_eq!(state.selected, 2);
+    }
+
+    #[test]
+    fn slash_command_names_are_unique() {
+        let mut names = std::collections::HashSet::new();
+        for def in SLASH_COMMANDS {
+            assert!(
+                names.insert(def.name),
+                "duplicate slash command definition: {}",
+                def.name
+            );
+        }
+    }
+
+    #[test]
+    fn classify_multi_word_command() {
+        assert_eq!(
+            classify_command("/thinking toggle"),
+            CommandKind::Instant
+        );
+        assert_eq!(classify_command("/clear queue"), CommandKind::StreamingSafe);
     }
 }

@@ -25,6 +25,7 @@ This page documents the current `nyzhi-config` schema and what the CLI actually 
 [shell]
 [browser]
 [memory]
+[index]
 [update]
 ```
 
@@ -47,6 +48,11 @@ All sections are optional.
 - `agent.retry.max_backoff_ms = 30000`
 - `agent.agents.max_threads = 4`
 - `agent.agents.max_depth = 2`
+- `index.enabled = true`
+- `index.embedding = "auto"` (`auto` | `api` | `tfidf`)
+- `index.auto_context = true`
+- `index.auto_context_chunks = 5`
+- `index.exclude = []`
 - `update.enabled = true`
 - `update.check_interval_hours = 4`
 - `update.release_url = "https://get.nyzhi.com"`
@@ -185,6 +191,26 @@ checks = [{ kind = "test", command = "cargo test -q" }]
 - `task_completed`
 
 See [hooks.md](hooks.md) for event payload behavior.
+
+## Index config
+
+```toml
+[index]
+enabled = true
+embedding = "auto"        # auto | api | tfidf
+auto_context = true
+auto_context_chunks = 5
+exclude = ["vendor/", "generated/"]
+```
+
+- `enabled`: enables/disables codebase indexing startup in TUI.
+- `embedding`:
+  - `auto`: API embedder when API key exists, otherwise TF-IDF.
+  - `api`: force API embedder (falls back to TF-IDF if key is unavailable).
+  - `tfidf`: force local TF-IDF embedder.
+- `auto_context`: whether indexed context is prepended to agent turns.
+- `auto_context_chunks`: number of semantic chunks injected for auto-context.
+- `exclude`: additional glob-like path excludes passed to index walk.
 
 ## MCP config
 

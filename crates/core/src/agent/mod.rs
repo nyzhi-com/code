@@ -239,6 +239,7 @@ pub struct AgentConfig {
     pub plan_mode: bool,
     pub act_after_plan: bool,
     pub auto_context: bool,
+    pub auto_context_chunks: usize,
 }
 
 impl Default for AgentConfig {
@@ -262,6 +263,7 @@ impl Default for AgentConfig {
             plan_mode: false,
             act_after_plan: false,
             auto_context: true,
+            auto_context_chunks: 5,
         }
     }
 }
@@ -318,7 +320,7 @@ pub async fn run_turn_with_content(
                         .collect::<Vec<_>>()
                         .join(" "),
                 };
-                match index.auto_context(&query_text, 5).await {
+                match index.auto_context(&query_text, config.auto_context_chunks).await {
                     Ok(ctx_xml) if !ctx_xml.is_empty() => match user_content {
                         MessageContent::Text(t) => {
                             MessageContent::Text(format!("{ctx_xml}\n\n{t}"))
@@ -1063,5 +1065,17 @@ fn format_tokens(n: usize) -> String {
         format!("{:.1}k", n as f64 / 1_000.0)
     } else {
         n.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AgentConfig;
+
+    #[test]
+    fn default_auto_context_chunk_count() {
+        let config = AgentConfig::default();
+        assert!(config.auto_context);
+        assert_eq!(config.auto_context_chunks, 5);
     }
 }

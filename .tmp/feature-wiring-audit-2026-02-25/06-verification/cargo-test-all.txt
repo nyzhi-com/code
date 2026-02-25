@@ -1,0 +1,188 @@
+   Compiling nyzhi-index v1.2.0 (/Users/staticpayload/nyzhi/code/crates/index)
+   Compiling nyzhi-provider v1.2.0 (/Users/staticpayload/nyzhi/code/crates/provider)
+   Compiling nyzhi-core v1.2.0 (/Users/staticpayload/nyzhi/code/crates/core)
+   Compiling nyzhi-tui v1.2.0 (/Users/staticpayload/nyzhi/code/crates/tui)
+   Compiling nyzhi v1.2.0 (/Users/staticpayload/nyzhi/code/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.56s
+     Running unittests src/main.rs (target/debug/deps/nyz-4d18fb2597abfb23)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/nyzhi_auth-913ef594ae7c107e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/nyzhi_config-4e4e5b1a840e5e50)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/nyzhi_core-c60785959a1655f0)
+
+running 61 tests
+test commands::tests::expand_replaces_arguments ... ok
+test commands::tests::parse_without_description ... ok
+test commands::tests::expand_no_arguments ... ok
+test commands::tests::parse_with_description ... ok
+test context::tests::context_breakdown_compute ... ok
+test context::tests::extract_file_paths_from_tool_use ... ok
+test context::tests::format_token_count_units ... ok
+test agent::tests::default_auto_context_chunk_count ... ok
+test context::tests::build_compaction_prompt_full_includes_delta ... ok
+test context::tests::dedup_collapses_repeated_reads ... ok
+test context::tests::needs_full_compact_checks_headroom ... ok
+test context::tests::prune_old_errors_collapses_tool_input ... ok
+test context::tests::should_compact_at_85_percent ... ok
+test context::tests::structured_prompt_contains_sections ... ok
+test context::tests::structured_prompt_includes_focus ... ok
+test context::tests::microcompact_hot_tail_preserved ... ok
+test context_files::tests::build_message_no_files ... ok
+test context_files::tests::build_message_with_directory ... ok
+test context_files::tests::build_message_with_file ... ok
+test context::tests::supersede_writes_collapses_when_read_follows ... ok
+test commands::tests::claude_commands_only ... ok
+test context::tests::microcompact_offloads_large_results ... ok
+test context_files::tests::format_summary ... ok
+test commands::tests::dual_directory_nyzhi_wins ... ok
+test hooks::tests::empty_pattern_matches_all ... ok
+test hooks::tests::pattern_matches_extension ... ok
+test hooks::tests::pattern_matches_multiple ... ok
+test hooks::tests::pattern_matches_substring ... ok
+test hooks::tests::agent_hook_without_command_fails_closed ... ok
+test hooks::tests::prompt_hook_without_command_fails_closed ... ok
+test keywords::tests::test_detect_eco ... ok
+test keywords::tests::test_detect_multiple ... ok
+test keywords::tests::test_no_keywords ... ok
+test keywords::tests::test_detect_plan ... ok
+test memory::tests::clear_memory_removes_all ... ok
+test memory::tests::index_updated_on_write ... ok
+test memory::tests::project_hash_is_stable ... ok
+test memory::tests::list_topics_works ... ok
+test memory::tests::write_and_read_topic ... ok
+test memory::tests::write_append_mode ... ok
+test memory::tests::write_replace_mode ... ok
+test skills::tests::claude_skills_only ... ok
+test skills::tests::no_dirs_returns_empty ... ok
+test workspace::tests::config_source_claude_fallback ... ok
+test workspace::tests::config_source_nyzhi_priority ... ok
+test workspace::tests::find_root_claude_dir ... ok
+test hooks::tests::prompt_hook_with_command_uses_command_fallback ... ok
+test workspace::tests::load_rules_agents_md_first ... ok
+test workspace::tests::load_rules_claude_md_fallback ... ok
+test workspace::tests::load_rules_cursorrules_fallback ... ok
+test workspace::tests::load_rules_none_when_missing ... ok
+test skills::tests::dual_directory_nyzhi_wins ... ok
+test workspace::tests::load_rules_empty_file_skipped ... ok
+test workspace::tests::load_rules_nyzhi_over_claude ... ok
+test context_files::tests::parse_no_mentions ... ok
+test context_files::tests::parse_home_path ... ok
+test context_files::tests::parse_mention_at_start ... ok
+test context_files::tests::parse_simple_mention ... ok
+test context_files::tests::parse_deduplicates ... ok
+test context_files::tests::parse_skips_email ... ok
+test context_files::tests::parse_multiple_mentions ... ok
+
+test result: ok. 61 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/lib.rs (target/debug/deps/nyzhi_index-5e87c5f6d47d278e)
+
+running 10 tests
+test embedder::tests::hash_embed_produces_correct_dims ... ok
+test store::tests::cosine_identical_vectors ... ok
+test chunker::tests::rust_function_detected ... ok
+test chunker::tests::python_class_detected ... ok
+test store::tests::cosine_orthogonal_vectors ... ok
+test chunker::tests::unknown_language_uses_sliding_window ... ok
+test watcher::tests::indexable_extensions ... ok
+test watcher::tests::skip_patterns ... ok
+test embedder::tests::similar_texts_have_higher_similarity ... ok
+test watcher::tests::hash_deterministic ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/nyzhi_provider-d4ee92efffacb0b5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/nyzhi_tui-5f7416f161fc66b4)
+
+running 33 tests
+test completion::tests::apply_completion_directory ... ok
+test completion::tests::cycle_backward_wraps ... ok
+test completion::tests::classify_multi_word_command ... ok
+test completion::tests::cycle_forward_wraps ... ok
+test completion::tests::apply_completion_at_mention ... ok
+test completion::tests::apply_completion_basic ... ok
+test completion::tests::detect_at_mention ... ok
+test completion::tests::detect_empty_input ... ok
+test completion::tests::detect_at_mention_start_of_input ... ok
+test completion::tests::detect_image_path ... ok
+test completion::tests::detect_plain_text ... ok
+test completion::tests::detect_slash_command ... ok
+test completion::tests::detect_slash_only ... ok
+test completion::tests::skip_email_like_at ... ok
+test completion::tests::slash_candidates_exact_no_duplicate ... ok
+test completion::tests::slash_candidates_include_custom ... ok
+test completion::tests::slash_candidates_all ... ok
+test export::tests::test_default_export_path ... ok
+test completion::tests::slash_candidates_filter ... ok
+test export::tests::test_export_empty ... ok
+test completion::tests::slash_command_names_are_unique ... ok
+test export::tests::test_export_messages ... ok
+test export::tests::test_export_thread_markdown ... ok
+test export::tests::test_export_tool_call ... ok
+test highlight::tests::parse_segments_no_code ... ok
+test highlight::tests::parse_segments_no_lang ... ok
+test highlight::tests::parse_segments_with_code_block ... ok
+test theme::tests::all_presets_produce_valid_theme ... ok
+test theme::tests::backward_compat_dark_light ... ok
+test theme::tests::overrides_applied ... ok
+test theme::tests::parse_hex ... ok
+test theme::tests::preset_round_trip ... ok
+test highlight::tests::highlighter_does_not_panic ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+   Doc-tests nyzhi_auth
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests nyzhi_config
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests nyzhi_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests nyzhi_index
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests nyzhi_provider
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests nyzhi_tui
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

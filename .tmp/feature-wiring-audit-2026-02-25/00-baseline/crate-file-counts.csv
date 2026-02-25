@@ -1,0 +1,8 @@
+crate,file_count
+auth,12
+cli,1
+config,1
+core,85
+index,6
+provider,12
+tui,21

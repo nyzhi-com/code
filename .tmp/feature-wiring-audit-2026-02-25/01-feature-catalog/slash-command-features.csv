@@ -1,0 +1,75 @@
+feature_id,domain,name,description,kind,source_file,dispatch_file
+slash_001,tui_slash_command,/accent,change accent color,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_002,tui_slash_command,/agents,list available agent roles,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_003,tui_slash_command,/autopilot,autonomous multi-step execution,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_004,tui_slash_command,/background,alias for /bg,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_005,tui_slash_command,/bg,manage background tasks,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_006,tui_slash_command,/bug,generate a bug report,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_007,tui_slash_command,/changes,list file changes this session,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_008,tui_slash_command,/clear,clear the session,StreamingSafe,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_009,tui_slash_command,/clear queue,clear the message queue,StreamingSafe,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_010,tui_slash_command,/commands,list custom commands,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_011,tui_slash_command,/compact,compress conversation history,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_012,tui_slash_command,/connect,connect a provider,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_013,tui_slash_command,/context,show context window usage,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_014,tui_slash_command,/diff,show all file changes this session as diffs,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_015,tui_slash_command,/doctor,run diagnostics,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_016,tui_slash_command,/editor,open $EDITOR for multi-line input,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_017,tui_slash_command,/enable_exa,set up Exa web search,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_018,tui_slash_command,/exit,exit nyzhi,StreamingSafe,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_019,tui_slash_command,/export,export conversation as markdown,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_020,tui_slash_command,/handoff,create session handoff for continuation,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_021,tui_slash_command,/help,show all commands and shortcuts,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_022,tui_slash_command,/hooks,list configured hooks,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_023,tui_slash_command,/image,attach an image to next prompt,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_024,tui_slash_command,/index,force re-index the codebase,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_025,tui_slash_command,/index off,disable auto-context for this session,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_026,tui_slash_command,/index status,show index stats (files; chunks; db size),Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_027,tui_slash_command,/init,initialize .nyzhi/ project config,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_028,tui_slash_command,/init-deep,generate AGENTS.md files across project,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_029,tui_slash_command,/learn,create or list learned skills,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_030,tui_slash_command,/login,show OAuth login status,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_031,tui_slash_command,/mcp,list connected MCP servers,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_032,tui_slash_command,/model,choose what model to use,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_033,tui_slash_command,/notepad,view saved notepads,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_034,tui_slash_command,/notify,configure notifications,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_035,tui_slash_command,/persist,enable verify-and-fix mode,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_036,tui_slash_command,/plan,view or create execution plans,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_037,tui_slash_command,/qa,run autonomous QA cycling,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_038,tui_slash_command,/quit,exit nyzhi,StreamingSafe,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_039,tui_slash_command,/refactor,structured refactoring workflow,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_040,tui_slash_command,/resume,restore a saved session,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_041,tui_slash_command,/review,code review: uncommitted; HEAD~N; or pr N,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_042,tui_slash_command,/retry,resend the last prompt,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_043,tui_slash_command,/search,search session messages,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_044,tui_slash_command,/session delete,delete a saved session,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_045,tui_slash_command,/session rename,rename current session,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_046,tui_slash_command,/sessions,list saved sessions,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_047,tui_slash_command,/status,show session status and usage,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_048,tui_slash_command,/stop,stop all continuation mechanisms,StreamingSafe,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_049,tui_slash_command,/style,change output verbosity,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_050,tui_slash_command,/thinking,toggle thinking display,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_051,tui_slash_command,/settings,open settings menu,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_052,tui_slash_command,/team,spawn coordinated sub-agents,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_053,tui_slash_command,/theme,choose theme (dark/light),Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_054,tui_slash_command,/think,toggle extended thinking,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_055,tui_slash_command,/thinking,set thinking effort level,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_056,tui_slash_command,/todo,view todo list and progress,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_057,tui_slash_command,/todo enforce on,enable todo enforcer,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_058,tui_slash_command,/todo enforce off,pause todo enforcer,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_059,tui_slash_command,/todo clear,clear all todos,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_060,tui_slash_command,/trust,show or set trust mode,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_061,tui_slash_command,/undo,undo the last file change,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_062,tui_slash_command,/undo all,undo all changes this session,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_063,tui_slash_command,/undo git,restore all files from git HEAD,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_064,tui_slash_command,/verify,detect and list project checks,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_065,tui_slash_command,/quick,ad-hoc task with commit discipline,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_066,tui_slash_command,/map,map codebase (stack; arch; conventions; concerns),Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_067,tui_slash_command,/init-project,structured project initialization with research,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_068,tui_slash_command,/profile,switch model profile (quality/balanced/budget),Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_069,tui_slash_command,/worktree,manage git worktrees for isolated agent work,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_070,tui_slash_command,/worktree create,create isolated worktree workspace,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_071,tui_slash_command,/worktree list,list active worktrees,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_072,tui_slash_command,/worktree merge,merge worktree back to parent branch,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_073,tui_slash_command,/worktree remove,remove a worktree,Instant,crates/tui/src/completion.rs,crates/tui/src/input.rs
+slash_074,tui_slash_command,/resume-work,load latest handoff and resume,Prompt,crates/tui/src/completion.rs,crates/tui/src/input.rs

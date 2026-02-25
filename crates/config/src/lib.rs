@@ -691,6 +691,8 @@ pub struct TuiConfig {
     pub notify: NotifyConfig,
     #[serde(default)]
     pub output_style: OutputStyle,
+    #[serde(default = "default_true")]
+    pub show_thinking: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -791,6 +793,7 @@ impl Default for TuiConfig {
             colors: ThemeOverrides::default(),
             notify: NotifyConfig::default(),
             output_style: OutputStyle::Normal,
+            show_thinking: true,
         }
     }
 }

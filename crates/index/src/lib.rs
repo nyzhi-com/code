@@ -32,10 +32,17 @@ impl Default for IndexProgress {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct IndexOptions {
+    pub embedding_mode: String,
+    pub exclude: Vec<String>,
+}
+
 pub struct CodebaseIndex {
     store: store::Store,
     embedder: Arc<dyn embedder::Embedder>,
     project_root: PathBuf,
+    exclude: Vec<String>,
     progress: Arc<Mutex<IndexProgress>>,
 }
 
@@ -44,24 +51,69 @@ impl CodebaseIndex {
     /// selects the embedding backend. The index is NOT built yet -- call
     /// `build()` afterwards (typically in a background task).
     pub fn open_sync(project_root: &Path, api_key: Option<String>) -> Result<Self> {
+        Self::open_sync_with_options(project_root, api_key, IndexOptions::default())
+    }
+
+    pub fn open_sync_with_options(
+        project_root: &Path,
+        api_key: Option<String>,
+        options: IndexOptions,
+    ) -> Result<Self> {
         let store = store::Store::open(project_root)?;
 
-        let embedder: Arc<dyn embedder::Embedder> = if let Some(key) = api_key {
-            Arc::new(embedder::ApiEmbedder::new(key))
-        } else {
-            Arc::new(embedder::TfIdfEmbedder::new())
+        let mode = options.embedding_mode.trim().to_ascii_lowercase();
+        let embedder: Arc<dyn embedder::Embedder> = match mode.as_str() {
+            "tfidf" | "local" => Arc::new(embedder::TfIdfEmbedder::new()),
+            "api" | "openai" => {
+                if let Some(key) = api_key {
+                    Arc::new(embedder::ApiEmbedder::new(key))
+                } else {
+                    tracing::warn!(
+                        "index.embedding={} requested but API key unavailable; falling back to tfidf",
+                        mode
+                    );
+                    Arc::new(embedder::TfIdfEmbedder::new())
+                }
+            }
+            "auto" | "" => {
+                if let Some(key) = api_key {
+                    Arc::new(embedder::ApiEmbedder::new(key))
+                } else {
+                    Arc::new(embedder::TfIdfEmbedder::new())
+                }
+            }
+            other => {
+                tracing::warn!(
+                    "Unknown index.embedding mode '{}'; falling back to auto selection",
+                    other
+                );
+                if let Some(key) = api_key {
+                    Arc::new(embedder::ApiEmbedder::new(key))
+                } else {
+                    Arc::new(embedder::TfIdfEmbedder::new())
+                }
+            }
         };
 
         Ok(Self {
             store,
             embedder,
             project_root: project_root.to_path_buf(),
+            exclude: options.exclude,
             progress: Arc::new(Mutex::new(IndexProgress::default())),
         })
     }
 
     pub async fn open(project_root: &Path, api_key: Option<String>) -> Result<Self> {
         Self::open_sync(project_root, api_key)
+    }
+
+    pub async fn open_with_options(
+        project_root: &Path,
+        api_key: Option<String>,
+        options: IndexOptions,
+    ) -> Result<Self> {
+        Self::open_sync_with_options(project_root, api_key, options)
     }
 
     pub async fn build(&self) -> Result<IndexStats> {
@@ -74,7 +126,7 @@ impl CodebaseIndex {
         }
 
         let existing = self.store.file_hashes()?;
-        let walk = watcher::walk_project(&self.project_root, &[])?;
+        let walk = watcher::walk_project(&self.project_root, &self.exclude)?;
 
         {
             let mut p = self.progress.lock().await;

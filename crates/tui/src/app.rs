@@ -147,6 +147,9 @@ pub struct App {
     pub mcp_manager: Option<std::sync::Arc<nyzhi_core::mcp::McpManager>>,
     pub pending_approval:
         Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>>,
+    pub pending_approval_context: Option<(String, String)>,
+    pub approval_cursor: usize,
+    pub session_approved_tools: std::collections::HashSet<String>,
     pub pending_images: Vec<PendingImage>,
     pub trust_mode: nyzhi_config::TrustMode,
     pub selector: Option<crate::components::selector::SelectorState>,
@@ -170,6 +173,7 @@ pub struct App {
     pub search_match_idx: usize,
     pub notify: nyzhi_config::NotifyConfig,
     pub output_style: nyzhi_config::OutputStyle,
+    pub show_thinking: bool,
     pub turn_request: Option<TurnRequest>,
     pub foreground_task: Option<ForegroundTask>,
     pub background_tasks: Vec<BackgroundTask>,
@@ -199,6 +203,7 @@ pub struct App {
     pub todo_enforce_count: u32,
     pub todo_progress: Option<(usize, usize, usize)>,
     pub todo_panel: Option<crate::components::todo_panel::TodoPanelState>,
+    pub settings_panel: Option<crate::components::settings_panel::SettingsPanel>,
     pub message_queue: VecDeque<TurnRequest>,
     pub model_cache: nyzhi_provider::ModelCacheHandle,
     pub codebase_index: Option<nyzhi_core::tools::IndexHandle>,
@@ -231,6 +236,9 @@ impl App {
             workspace,
             mcp_manager: None,
             pending_approval: None,
+            pending_approval_context: None,
+            approval_cursor: 0,
+            session_approved_tools: std::collections::HashSet::new(),
             pending_images: Vec::new(),
             trust_mode: nyzhi_config::TrustMode::Off,
             selector: None,
@@ -256,6 +264,7 @@ impl App {
             search_match_idx: 0,
             notify: config.notify.clone(),
             output_style: config.output_style,
+            show_thinking: config.show_thinking,
             turn_request: None,
             foreground_task: None,
             background_tasks: Vec::new(),
@@ -281,6 +290,7 @@ impl App {
             todo_enforce_count: 0,
             todo_progress: None,
             todo_panel: None,
+            settings_panel: None,
             message_queue: VecDeque::new(),
             model_cache: nyzhi_provider::ModelCache::handle(),
             codebase_index: None,
@@ -356,6 +366,15 @@ impl App {
             });
         }
 
+        let nyzhi_dir = self.workspace.project_root.join(".nyzhi");
+        if self.trust_mode == nyzhi_config::TrustMode::Off && !nyzhi_dir.exists() {
+            self.items.push(DisplayItem::Message {
+                role: "system".to_string(),
+                content: "Welcome! Choose a permission mode to get started.".to_string(),
+            });
+            self.open_trust_selector();
+        }
+
         self.history.load();
         self.custom_commands = nyzhi_core::commands::load_all_commands(
             &self.workspace.project_root,
@@ -376,7 +395,15 @@ impl App {
             let api_key = nyzhi_auth::resolve_credential("openai", None)
                 .ok()
                 .map(|c| c.header_value());
-            match nyzhi_index::CodebaseIndex::open_sync(&self.workspace.project_root, api_key) {
+            let index_options = nyzhi_index::IndexOptions {
+                embedding_mode: config.index.embedding.clone(),
+                exclude: config.index.exclude.clone(),
+            };
+            match nyzhi_index::CodebaseIndex::open_sync_with_options(
+                &self.workspace.project_root,
+                api_key,
+                index_options,
+            ) {
                 Ok(index) => {
                     let handle = std::sync::Arc::new(index);
                     self.codebase_index = Some(handle.clone());
@@ -496,6 +523,8 @@ impl App {
             routing: config.agent.routing.clone(),
             auto_compact_threshold: config.agent.auto_compact_threshold,
             compact_instructions: config.agent.compact_instructions.clone(),
+            auto_context: config.index.auto_context,
+            auto_context_chunks: config.index.auto_context_chunks,
             ..AgentConfig::default()
         };
         self.trust_mode = agent_config.trust.mode.clone();
@@ -690,6 +719,13 @@ impl App {
                             }
                         } else if self.text_prompt.is_some() {
                             self.handle_text_prompt_key(key, config).await;
+                        } else if self.settings_panel.is_some() {
+                            let action = self
+                                .settings_panel
+                                .as_mut()
+                                .unwrap()
+                                .handle_key(key);
+                            self.handle_settings_action(action);
                         } else if self.selector.is_some() {
                             self.handle_selector_key(key, &mut model_info_idx, &mut agent_config)
                                 .await;
@@ -701,6 +737,10 @@ impl App {
                             && key.modifiers.contains(KeyModifiers::CONTROL)
                         {
                             self.open_command_selector();
+                        } else if key.code == KeyCode::Char(',')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                        {
+                            self.open_settings_panel();
                         } else if key.code == KeyCode::Char('t')
                             && key.modifiers.contains(KeyModifiers::CONTROL)
                         {
@@ -812,6 +852,30 @@ impl App {
                                 KeyCode::Char('n') | KeyCode::Char('N') => {
                                     self.respond_approval(false).await;
                                 }
+                                KeyCode::Left => {
+                                    if self.approval_cursor > 0 {
+                                        self.approval_cursor -= 1;
+                                    }
+                                }
+                                KeyCode::Right => {
+                                    if self.approval_cursor < 2 {
+                                        self.approval_cursor += 1;
+                                    }
+                                }
+                                KeyCode::Enter => match self.approval_cursor {
+                                    0 => self.respond_approval(true).await,
+                                    1 => self.respond_approval(false).await,
+                                    2 => {
+                                        if let Some((ref tool, _)) =
+                                            self.pending_approval_context
+                                        {
+                                            self.session_approved_tools
+                                                .insert(tool.clone());
+                                        }
+                                        self.respond_approval(true).await;
+                                    }
+                                    _ => {}
+                                },
                                 _ => {}
                             }
                         } else {
@@ -1428,19 +1492,27 @@ impl App {
                         args_summary,
                         respond,
                     } => {
-                        if let Some(DisplayItem::ToolCall {
-                            name: ref item_name,
-                            status,
-                            ..
-                        }) = self.items.last_mut()
-                        {
-                            if *item_name == tool_name {
-                                *status = ToolStatus::WaitingApproval;
+                        if self.session_approved_tools.contains(&tool_name) {
+                            let mut guard = respond.lock().await;
+                            if let Some(sender) = guard.take() {
+                                let _ = sender.send(true);
                             }
+                        } else {
+                            if let Some(DisplayItem::ToolCall {
+                                name: ref item_name,
+                                status,
+                                ..
+                            }) = self.items.last_mut()
+                            {
+                                if *item_name == tool_name {
+                                    *status = ToolStatus::WaitingApproval;
+                                }
+                            }
+                            self.pending_approval = Some(respond);
+                            self.pending_approval_context =
+                                Some((tool_name.clone(), args_summary));
+                            self.mode = AppMode::AwaitingApproval;
                         }
-                        self.pending_approval = Some(respond);
-                        self.mode = AppMode::AwaitingApproval;
-                        let _ = args_summary;
                     }
                     AgentEvent::Retrying {
                         attempt,
@@ -1932,6 +2004,22 @@ impl App {
                                 role: "system".to_string(),
                                 content: format!("Thinking level set to: {}", label),
                             });
+                        } else if value == "__all_providers__" {
+                            self.selector = None;
+                            self.open_provider_selector();
+                            return;
+                        } else if value.starts_with("__connect__/") {
+                            let provider_id =
+                                value.strip_prefix("__connect__/").unwrap().to_string();
+                            self.selector = None;
+                            let def = nyzhi_config::find_provider_def(&provider_id);
+                            let has_oauth = def.map(|d| d.supports_oauth).unwrap_or(false);
+                            if has_oauth {
+                                self.open_connect_method(&provider_id);
+                            } else {
+                                self.open_api_key_input(&provider_id);
+                            }
+                            return;
                         } else if value.starts_with("__custom__/") {
                             let provider_id =
                                 value.strip_prefix("__custom__/").unwrap().to_string();
@@ -2196,6 +2284,10 @@ impl App {
                     }
                 }
             }
+            SelectorAction::ViewAllProviders => {
+                self.selector = None;
+                self.open_provider_selector();
+            }
             SelectorAction::None => {}
         }
         let _ = model_info_idx;
@@ -2384,24 +2476,34 @@ impl App {
                 .position(|&x| x == *p)
                 .unwrap_or(priority.len())
         });
-        let mut items = Vec::new();
 
         let cache = &self.model_cache;
 
+        let mut connected_providers: Vec<(&str, String, Vec<nyzhi_provider::ModelInfo>)> =
+            Vec::new();
+        let mut unconnected_providers: Vec<(&str, String)> = Vec::new();
+
         for provider_id in &all_providers {
-            let models = nyzhi_provider::cached_or_hardcoded(provider_id, cache);
-            if models.is_empty() {
-                continue;
-            }
             let status = nyzhi_auth::auth_status(provider_id);
             let display_name = nyzhi_config::find_provider_def(provider_id)
                 .map(|d| d.name)
-                .unwrap_or(provider_id);
-            items.push(SelectorItem::header(&format!(
-                "{} ({})",
-                display_name, status
-            )));
-            for m in &models {
+                .unwrap_or(provider_id)
+                .to_string();
+            if status == "not connected" {
+                unconnected_providers.push((provider_id, display_name));
+            } else {
+                let models = nyzhi_provider::cached_or_hardcoded(provider_id, cache);
+                if !models.is_empty() {
+                    connected_providers.push((provider_id, display_name, models));
+                }
+            }
+        }
+
+        let mut items = Vec::new();
+
+        for (provider_id, display_name, models) in &connected_providers {
+            items.push(SelectorItem::header(display_name));
+            for m in models {
                 let thinking_badge = if m.has_thinking() {
                     if m.id == self.model_name && *provider_id == self.provider_name {
                         let level = self.thinking_level.as_deref().unwrap_or("off");
@@ -2412,25 +2514,41 @@ impl App {
                 } else {
                     String::new()
                 };
-                let label = format!(
-                    "{:<24} {:>4}  {:>5}{}",
-                    m.name,
-                    m.tier,
-                    m.context_display(),
-                    thinking_badge
-                );
+                let ctx = m.context_display();
+                let right = format!("{}{}", ctx, thinking_badge);
                 let value = format!("{}/{}", provider_id, m.id);
-                items.push(SelectorItem::entry(&label, &value));
+                let mut item = SelectorItem::entry(&m.name, &value);
+                item.right_badge = Some(right);
+                items.push(item);
             }
-            let label = format!("{:<24} enter model ID", "Custom model...");
-            let value = format!("__custom__/{}", provider_id);
-            items.push(SelectorItem::entry(&label, &value));
+            let mut custom = SelectorItem::entry("Custom model...", &format!("__custom__/{}", provider_id));
+            custom.right_badge = Some("enter model ID".to_string());
+            items.push(custom);
         }
+
+        if !unconnected_providers.is_empty() {
+            items.push(SelectorItem::header("Providers"));
+            for (provider_id, display_name) in &unconnected_providers {
+                let def = nyzhi_config::find_provider_def(provider_id);
+                let hint = if def.map(|d| d.supports_oauth).unwrap_or(false) {
+                    "OAuth or API key"
+                } else {
+                    "API key"
+                };
+                let mut item = SelectorItem::entry(display_name, &format!("__connect__/{}", provider_id));
+                item.right_badge = Some(hint.to_string());
+                items.push(item);
+            }
+        }
+
+        let mut all_item = SelectorItem::entry("View all providers", "__all_providers__");
+        all_item.right_badge = Some("ctrl+a".to_string());
+        items.push(all_item);
 
         let current = format!("{}/{}", self.provider_name, self.model_name);
         self.selector = Some(SelectorState::new(
             SelectorKind::Model,
-            "Model",
+            "Select model",
             items,
             &current,
         ));
@@ -2633,7 +2751,7 @@ impl App {
                     "/status", "/context", "/changes", "/todo", "/plan", "/notepad", "/bg",
                 ],
             ),
-            ("UI", &["/theme", "/accent", "/notify", "/image"]),
+            ("UI", &["/settings", "/theme", "/accent", "/thinking", "/notify", "/image"]),
             (
                 "System",
                 &["/help", "/bug", "/editor", "/enable_exa", "/undo", "/exit"],
@@ -2645,13 +2763,41 @@ impl App {
             .map(|c| (c.name, c.description))
             .collect();
 
+        let mut categorized = std::collections::HashSet::new();
         let mut items = Vec::new();
         for (cat_name, cmds) in categories {
             items.push(SelectorItem::header(cat_name));
             for &cmd in *cmds {
+                categorized.insert(cmd);
                 let desc = cmd_defs.get(cmd).copied().unwrap_or("");
                 let label = format!("{:<18} {}", cmd, desc);
                 items.push(SelectorItem::entry(&label, cmd));
+            }
+        }
+
+        let mut uncategorized: Vec<&str> = crate::completion::SLASH_COMMANDS
+            .iter()
+            .map(|c| c.name)
+            .filter(|name| !categorized.contains(name))
+            .collect();
+        uncategorized.sort_unstable();
+        if !uncategorized.is_empty() {
+            items.push(SelectorItem::header("More"));
+            for cmd in uncategorized {
+                let desc = cmd_defs.get(cmd).copied().unwrap_or("");
+                let label = format!("{:<18} {}", cmd, desc);
+                items.push(SelectorItem::entry(&label, cmd));
+            }
+        }
+
+        if !self.custom_commands.is_empty() {
+            items.push(SelectorItem::header("Custom"));
+            let mut custom = self.custom_commands.clone();
+            custom.sort_by(|a, b| a.name.cmp(&b.name));
+            for cmd in custom {
+                let slash_name = format!("/{}", cmd.name);
+                let label = format!("{:<18} {}", slash_name, cmd.description);
+                items.push(SelectorItem::entry(&label, &slash_name));
             }
         }
 
@@ -2687,6 +2833,197 @@ impl App {
             items,
             "",
         ));
+    }
+
+    pub fn open_settings_panel(&mut self) {
+        use crate::components::settings_panel::*;
+
+        let on_off = |b: bool| if b { "On" } else { "Off" }.to_string();
+
+        let rows = vec![
+            SettingsRow::Header("Display".into()),
+            SettingsRow::Item(SettingItem {
+                key: "theme".into(),
+                label: "Theme".into(),
+                description: "Color scheme for the entire interface".into(),
+                kind: SettingKind::SubMenu,
+                current_value: self.theme.preset.display_name().to_string(),
+            }),
+            SettingsRow::Item(SettingItem {
+                key: "accent".into(),
+                label: "Accent".into(),
+                description: "Highlight color for active elements".into(),
+                kind: SettingKind::SubMenu,
+                current_value: self.theme.accent_type.name().to_string(),
+            }),
+            SettingsRow::Item(SettingItem {
+                key: "output_style".into(),
+                label: "Output style".into(),
+                description: "Control verbosity of tool call output".into(),
+                kind: SettingKind::Cycle {
+                    options: vec![
+                        "Normal".into(),
+                        "Verbose".into(),
+                        "Minimal".into(),
+                        "Structured".into(),
+                    ],
+                },
+                current_value: format!("{}", self.output_style),
+            }),
+            SettingsRow::Item(SettingItem {
+                key: "show_thinking".into(),
+                label: "Show thinking".into(),
+                description: "Display model reasoning blocks in chat".into(),
+                kind: SettingKind::Toggle,
+                current_value: on_off(self.show_thinking),
+            }),
+            SettingsRow::Header("Agent".into()),
+            SettingsRow::Item(SettingItem {
+                key: "trust_mode".into(),
+                label: "Trust mode".into(),
+                description: "Permission level for agent actions".into(),
+                kind: SettingKind::Cycle {
+                    options: vec![
+                        "Off".into(),
+                        "Limited".into(),
+                        "AutoEdit".into(),
+                        "Full".into(),
+                    ],
+                },
+                current_value: format!("{}", self.trust_mode),
+            }),
+            SettingsRow::Item(SettingItem {
+                key: "plan_mode".into(),
+                label: "Plan mode".into(),
+                description: "Agent creates plans before executing".into(),
+                kind: SettingKind::Toggle,
+                current_value: on_off(self.plan_mode),
+            }),
+            SettingsRow::Header("Session".into()),
+            SettingsRow::Item(SettingItem {
+                key: "bell".into(),
+                label: "Notifications".into(),
+                description: "Terminal bell on agent completion".into(),
+                kind: SettingKind::Toggle,
+                current_value: on_off(self.notify.bell),
+            }),
+        ];
+
+        self.settings_panel = Some(SettingsPanel::new(rows));
+    }
+
+    fn handle_settings_action(
+        &mut self,
+        action: crate::components::settings_panel::SettingsAction,
+    ) {
+        use crate::components::settings_panel::SettingsAction;
+        let on_off = |b: bool| if b { "On" } else { "Off" };
+
+        match action {
+            SettingsAction::Toggle(key) => match key.as_str() {
+                "show_thinking" => {
+                    self.show_thinking = !self.show_thinking;
+                    if let Some(p) = &mut self.settings_panel {
+                        p.update_value("show_thinking", on_off(self.show_thinking));
+                    }
+                }
+                "plan_mode" => {
+                    self.plan_mode = !self.plan_mode;
+                    if let Some(p) = &mut self.settings_panel {
+                        p.update_value("plan_mode", on_off(self.plan_mode));
+                    }
+                }
+                "bell" => {
+                    self.notify.bell = !self.notify.bell;
+                    if let Some(p) = &mut self.settings_panel {
+                        p.update_value("bell", on_off(self.notify.bell));
+                    }
+                }
+                _ => {}
+            },
+            SettingsAction::CycleNext(ref key) | SettingsAction::CyclePrev(ref key) => {
+                let forward = matches!(action, SettingsAction::CycleNext(_));
+                match key.as_str() {
+                    "output_style" => {
+                        self.output_style = if forward {
+                            match self.output_style {
+                                nyzhi_config::OutputStyle::Normal => {
+                                    nyzhi_config::OutputStyle::Verbose
+                                }
+                                nyzhi_config::OutputStyle::Verbose => {
+                                    nyzhi_config::OutputStyle::Minimal
+                                }
+                                nyzhi_config::OutputStyle::Minimal => {
+                                    nyzhi_config::OutputStyle::Structured
+                                }
+                                nyzhi_config::OutputStyle::Structured => {
+                                    nyzhi_config::OutputStyle::Normal
+                                }
+                            }
+                        } else {
+                            match self.output_style {
+                                nyzhi_config::OutputStyle::Normal => {
+                                    nyzhi_config::OutputStyle::Structured
+                                }
+                                nyzhi_config::OutputStyle::Verbose => {
+                                    nyzhi_config::OutputStyle::Normal
+                                }
+                                nyzhi_config::OutputStyle::Minimal => {
+                                    nyzhi_config::OutputStyle::Verbose
+                                }
+                                nyzhi_config::OutputStyle::Structured => {
+                                    nyzhi_config::OutputStyle::Minimal
+                                }
+                            }
+                        };
+                        if let Some(p) = &mut self.settings_panel {
+                            p.update_value("output_style", &format!("{}", self.output_style));
+                        }
+                    }
+                    "trust_mode" => {
+                        self.trust_mode = if forward {
+                            match self.trust_mode {
+                                nyzhi_config::TrustMode::Off => nyzhi_config::TrustMode::Limited,
+                                nyzhi_config::TrustMode::Limited => {
+                                    nyzhi_config::TrustMode::AutoEdit
+                                }
+                                nyzhi_config::TrustMode::AutoEdit => {
+                                    nyzhi_config::TrustMode::Full
+                                }
+                                nyzhi_config::TrustMode::Full => nyzhi_config::TrustMode::Off,
+                            }
+                        } else {
+                            match self.trust_mode {
+                                nyzhi_config::TrustMode::Off => nyzhi_config::TrustMode::Full,
+                                nyzhi_config::TrustMode::Limited => nyzhi_config::TrustMode::Off,
+                                nyzhi_config::TrustMode::AutoEdit => {
+                                    nyzhi_config::TrustMode::Limited
+                                }
+                                nyzhi_config::TrustMode::Full => {
+                                    nyzhi_config::TrustMode::AutoEdit
+                                }
+                            }
+                        };
+                        if let Some(p) = &mut self.settings_panel {
+                            p.update_value("trust_mode", &format!("{}", self.trust_mode));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            SettingsAction::OpenSub(key) => {
+                self.settings_panel = None;
+                match key.as_str() {
+                    "theme" => self.open_theme_selector(),
+                    "accent" => self.open_accent_selector(),
+                    _ => {}
+                }
+            }
+            SettingsAction::Close => {
+                self.settings_panel = None;
+            }
+            SettingsAction::None => {}
+        }
     }
 
     pub fn open_trust_selector(&mut self) {
@@ -2780,6 +3117,8 @@ impl App {
     }
 
     async fn respond_approval(&mut self, approved: bool) {
+        self.pending_approval_context = None;
+        self.approval_cursor = 0;
         if let Some(respond) = self.pending_approval.take() {
             let mut guard = respond.lock().await;
             if let Some(sender) = guard.take() {

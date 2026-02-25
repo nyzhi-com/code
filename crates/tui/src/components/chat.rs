@@ -39,7 +39,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 render_message(&mut lines, role, content, theme, &app.highlighter, dark);
             }
             DisplayItem::Thinking(content) => {
-                render_thinking(&mut lines, content, theme, false);
+                if app.show_thinking {
+                    render_thinking(&mut lines, content, theme);
+                } else {
+                    lines.push(Line::from(Span::styled(
+                        "  ... thinking (hidden)",
+                        Style::default().fg(theme.text_disabled).italic(),
+                    )));
+                }
             }
             DisplayItem::ToolCall {
                 name,
@@ -91,8 +98,15 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     }
 
     if !app.thinking_stream.is_empty() && app.current_stream.is_empty() {
-        lines.push(Line::from(""));
-        render_thinking_stream(&mut lines, &app.thinking_stream, theme);
+        if app.show_thinking {
+            lines.push(Line::from(""));
+            render_thinking_stream(&mut lines, &app.thinking_stream, theme);
+        } else {
+            lines.push(Line::from(Span::styled(
+                "  ... thinking (hidden)",
+                Style::default().fg(theme.text_disabled).italic(),
+            )));
+        }
     }
 
     if !app.current_stream.is_empty() {
@@ -172,27 +186,11 @@ fn prepend_bar(lines: &mut [Line<'_>], color: Color) {
     }
 }
 
-fn role_label<'a>(role: &str, theme: &Theme) -> (Vec<Span<'a>>, Color) {
-    match role {
-        "user" => {
-            let spans = vec![
-                Span::styled("  You", Style::default().fg(theme.info).bold()),
-            ];
-            (spans, theme.info)
-        }
-        "system" => {
-            let spans = vec![
-                Span::styled("  system", Style::default().fg(theme.text_disabled).italic()),
-            ];
-            (spans, theme.text_disabled)
-        }
-        _ => {
-            let spans = vec![
-                Span::styled("  Nizzy", Style::default().fg(theme.accent).bold()),
-            ];
-            (spans, theme.accent)
-        }
-    }
+fn is_error_content(content: &str) -> bool {
+    content.starts_with("Error:")
+        || content.starts_with("Turn error:")
+        || content.starts_with("Task panicked:")
+        || content.starts_with("Failed")
 }
 
 fn render_message<'a>(
@@ -203,38 +201,92 @@ fn render_message<'a>(
     highlighter: &SyntaxHighlighter,
     dark: bool,
 ) {
-    lines.push(Line::from(""));
-    let bar_start = lines.len();
-
-    let (label_spans, bar_color) = role_label(role, theme);
-    lines.push(Line::from(label_spans));
-
     match role {
-        "user" => {
-            for line in content.lines() {
-                lines.push(Line::from(Span::styled(
-                    format!("  {line}"),
-                    Style::default().fg(theme.text_primary).bold(),
-                )));
-            }
-        }
-        "system" => {
-            for line in content.lines() {
-                lines.push(Line::from(Span::styled(
-                    format!("  {line}"),
-                    Style::default().fg(theme.text_secondary).italic(),
-                )));
-            }
-        }
-        _ => {
-            render_highlighted_content(lines, content, theme, highlighter, dark);
-        }
+        "user" => render_user_message(lines, content, theme),
+        "system" if is_error_content(content) => render_error_message(lines, content, theme),
+        "system" => render_system_message(lines, content, theme),
+        _ => render_assistant_message(lines, content, theme, highlighter, dark),
     }
-
-    prepend_bar(&mut lines[bar_start..], bar_color);
 }
 
-fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, _streaming: bool) {
+fn render_user_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  You",
+        Style::default().fg(theme.info).bold(),
+    )));
+    for line in content.lines() {
+        lines.push(Line::from(Span::styled(
+            format!("  {line}"),
+            Style::default().fg(theme.text_primary).bold(),
+        )));
+    }
+}
+
+fn render_assistant_message<'a>(
+    lines: &mut Vec<Line<'a>>,
+    content: &str,
+    theme: &Theme,
+    highlighter: &SyntaxHighlighter,
+    dark: bool,
+) {
+    lines.push(Line::from(""));
+    let bar_start = lines.len();
+    lines.push(Line::from(Span::styled(
+        "  Nizzy",
+        Style::default().fg(theme.accent).bold(),
+    )));
+    render_highlighted_content(lines, content, theme, highlighter, dark);
+    prepend_bar(&mut lines[bar_start..], theme.accent);
+}
+
+fn render_system_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
+    lines.push(Line::from(""));
+    let first = content.lines().next().unwrap_or(content);
+    let rest_count = content.lines().count().saturating_sub(1);
+
+    let mut spans = vec![
+        Span::styled("    \u{2500} ", Style::default().fg(theme.text_disabled)),
+        Span::styled(
+            first.to_string(),
+            Style::default().fg(theme.text_tertiary).italic(),
+        ),
+    ];
+    if rest_count > 4 {
+        spans.push(Span::styled(
+            format!(" (+{rest_count} lines)"),
+            Style::default().fg(theme.text_disabled),
+        ));
+    }
+    lines.push(Line::from(spans));
+
+    if rest_count > 0 && rest_count <= 4 {
+        for line in content.lines().skip(1) {
+            lines.push(Line::from(Span::styled(
+                format!("      {line}"),
+                Style::default().fg(theme.text_tertiary).italic(),
+            )));
+        }
+    }
+}
+
+fn render_error_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
+    lines.push(Line::from(""));
+    let bar_start = lines.len();
+    lines.push(Line::from(Span::styled(
+        "  \u{2717} error",
+        Style::default().fg(theme.danger).bold(),
+    )));
+    for line in content.lines() {
+        lines.push(Line::from(Span::styled(
+            format!("  {line}"),
+            Style::default().fg(theme.danger),
+        )));
+    }
+    prepend_bar(&mut lines[bar_start..], theme.danger);
+}
+
+fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
     lines.push(Line::from(""));
     let think_start = lines.len();
     let dim = Style::default()
@@ -312,6 +364,17 @@ fn render_highlighted_content<'a>(
                         code_bg,
                     ));
                 }
+            }
+            highlight::Segment::Table(table_lines) => {
+                lines.push(Line::from(""));
+                let table = highlight::format_table_lines(
+                    &table_lines,
+                    theme.accent,
+                    theme.text_primary,
+                    theme.border_default,
+                );
+                lines.extend(table);
+                lines.push(Line::from(""));
             }
             highlight::Segment::CodeBlock { lang, code } => {
                 let lang_label = lang.unwrap_or("text");

@@ -104,6 +104,7 @@ impl Tool for TaskTool {
             plan_mode: false,
             act_after_plan: false,
             auto_context: false,
+            auto_context_chunks: 0,
         };
 
         let mut child_thread = Thread::new();

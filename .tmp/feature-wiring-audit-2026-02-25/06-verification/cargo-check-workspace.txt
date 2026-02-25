@@ -1,0 +1,6 @@
+    Checking nyzhi-provider v1.2.0 (/Users/staticpayload/nyzhi/code/crates/provider)
+    Checking nyzhi-index v1.2.0 (/Users/staticpayload/nyzhi/code/crates/index)
+    Checking nyzhi-core v1.2.0 (/Users/staticpayload/nyzhi/code/crates/core)
+    Checking nyzhi-tui v1.2.0 (/Users/staticpayload/nyzhi/code/crates/tui)
+    Checking nyzhi v1.2.0 (/Users/staticpayload/nyzhi/code/crates/cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.17s

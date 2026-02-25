@@ -1,0 +1,139 @@
+    Checking nyzhi-provider v1.2.0 (/Users/staticpayload/nyzhi/code/crates/provider)
+    Checking nyzhi-core v1.2.0 (/Users/staticpayload/nyzhi/code/crates/core)
+error: stripping a prefix manually
+   --> crates/core/src/agent/mod.rs:449:34
+    |
+449 | ...                   Some(t[22..].to_string())
+    |                            ^^^^^^^
+    |
+note: the prefix was tested here
+   --> crates/core/src/agent/mod.rs:448:25
+    |
+448 |                         if t.starts_with("[Conversation summary]") {
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#manual_strip
+    = note: `-D clippy::manual-strip` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_strip)]`
+help: try using the `strip_prefix` method
+    |
+448 ~                         if let Some(<stripped>) = t.strip_prefix("[Conversation summary]") {
+449 ~                             Some(<stripped>.to_string())
+    |
+
+error: this `map_or` can be simplified
+   --> crates/core/src/agent/mod.rs:499:41
+    |
+499 | ...                   e.path().extension().map_or(false, |ext| ext == "md")
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#unnecessary_map_or
+    = note: `-D clippy::unnecessary-map-or` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_map_or)]`
+help: use is_some_and instead
+    |
+499 -                                         e.path().extension().map_or(false, |ext| ext == "md")
+499 +                                         e.path().extension().is_some_and(|ext| ext == "md")
+    |
+
+error: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/core/src/checkpoint.rs:103:43
+    |
+103 |     pub fn restore(&mut self, id: u32) -> Result<Option<(Vec<Message>, Vec<(PathBuf, String)>)>> {
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#type_complexity
+    = note: `-D clippy::type-complexity` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`
+
+error: you seem to want to iterate on a map's values
+   --> crates/core/src/checkpoint.rs:114:38
+    |
+114 |         for (_path_str, snapshot) in &checkpoint.file_snapshots {
+    |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#for_kv_map
+    = note: `-D clippy::for-kv-map` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::for_kv_map)]`
+help: use the corresponding method
+    |
+114 -         for (_path_str, snapshot) in &checkpoint.file_snapshots {
+114 +         for snapshot in checkpoint.file_snapshots.values() {
+    |
+
+error: writing `&mut Vec` instead of `&mut [_]` involves a new object where a slice will do
+   --> crates/core/src/context/mod.rs:293:37
+    |
+293 | pub fn dedup_tool_results(messages: &mut Vec<Message>) -> usize {
+    |                                     ^^^^^^^^^^^^^^^^^ help: change this to: `&mut [Message]`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#ptr_arg
+    = note: `-D clippy::ptr-arg` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::ptr_arg)]`
+
+error: writing `&mut Vec` instead of `&mut [_]` involves a new object where a slice will do
+   --> crates/core/src/context/mod.rs:380:35
+    |
+380 | pub fn supersede_writes(messages: &mut Vec<Message>) -> usize {
+    |                                   ^^^^^^^^^^^^^^^^^ help: change this to: `&mut [Message]`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#ptr_arg
+
+error: this `impl` can be derived
+  --> crates/core/src/keywords.rs:12:1
+   |
+12 | / impl Default for AgentMode {
+13 | |     fn default() -> Self {
+14 | |         Self::Execute
+15 | |     }
+16 | | }
+   | |_^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#derivable_impls
+   = note: `-D clippy::derivable-impls` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::derivable_impls)]`
+help: replace the manual implementation with a derive attribute and mark the default variant
+   |
+ 6 + #[derive(Default)]
+ 7 | pub enum AgentMode {
+ 8 ~     #[default]
+ 9 ~     Execute,
+   |
+
+error: stripping a prefix manually
+   --> crates/core/src/tools/apply_patch.rs:288:26
+    |
+288 |             let target = line[4..].trim();
+    |                          ^^^^^^^^^
+    |
+note: the prefix was tested here
+   --> crates/core/src/tools/apply_patch.rs:277:9
+    |
+277 |         if line.starts_with("+++ ") {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#manual_strip
+help: try using the `strip_prefix` method
+    |
+277 ~         if let Some(<stripped>) = line.strip_prefix("+++ ") {
+278 |             if let Some(hunk) = current_hunk.take() {
+...
+287 |             }
+288 ~             let target = <stripped>.trim();
+    |
+
+error: items after a test module
+   --> crates/core/src/skills.rs:139:1
+    |
+139 | mod tests {
+    | ^^^^^^^^^
+...
+179 | pub fn build_skill_template(name: &str, description: &str, patterns: &[String]) -> String {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#items_after_test_module
+    = note: `-D clippy::items-after-test-module` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::items_after_test_module)]`
+    = help: move the items to before the test module was defined
+
+error: could not compile `nyzhi-core` (lib) due to 8 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `nyzhi-core` (lib test) due to 9 previous errors

@@ -1,0 +1,151 @@
+feature_id,domain,feature_name,expected_behavior,observed_wiring_status,behavior_verdict,evidence
+slash_001,tui_slash_command,/accent,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_002,tui_slash_command,/agents,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_003,tui_slash_command,/autopilot,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_004,tui_slash_command,/background,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with
+slash_005,tui_slash_command,/bg,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_006,tui_slash_command,/bug,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_007,tui_slash_command,/changes,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_008,tui_slash_command,/clear,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_009,tui_slash_command,/clear queue,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_010,tui_slash_command,/commands,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_011,tui_slash_command,/compact,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_012,tui_slash_command,/connect,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_013,tui_slash_command,/context,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_014,tui_slash_command,/diff,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_015,tui_slash_command,/doctor,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_016,tui_slash_command,/editor,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_017,tui_slash_command,/enable_exa,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_018,tui_slash_command,/exit,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_019,tui_slash_command,/export,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_020,tui_slash_command,/handoff,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_021,tui_slash_command,/help,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_022,tui_slash_command,/hooks,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_023,tui_slash_command,/image,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_024,tui_slash_command,/index,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with
+slash_025,tui_slash_command,/index off,feature advertised/registered should be executable through its documented trigger,wired_via_parent_handler,pass,parent_handler
+slash_026,tui_slash_command,/index status,feature advertised/registered should be executable through its documented trigger,wired_via_parent_handler,pass,parent_handler
+slash_027,tui_slash_command,/init,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_028,tui_slash_command,/init-deep,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_029,tui_slash_command,/learn,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_030,tui_slash_command,/login,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_031,tui_slash_command,/mcp,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_032,tui_slash_command,/model,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;strip_prefix;in_selector
+slash_033,tui_slash_command,/notepad,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_034,tui_slash_command,/notify,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_035,tui_slash_command,/persist,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_036,tui_slash_command,/plan,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_037,tui_slash_command,/qa,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_038,tui_slash_command,/quit,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_039,tui_slash_command,/refactor,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with
+slash_040,tui_slash_command,/resume,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;strip_prefix;in_selector
+slash_041,tui_slash_command,/review,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with
+slash_042,tui_slash_command,/retry,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_043,tui_slash_command,/search,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_044,tui_slash_command,/session delete,feature advertised/registered should be executable through its documented trigger,arg_only_or_partial,pass,strip_prefix
+slash_045,tui_slash_command,/session rename,feature advertised/registered should be executable through its documented trigger,arg_only_or_partial,pass,strip_prefix
+slash_046,tui_slash_command,/sessions,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;strip_prefix;in_selector
+slash_047,tui_slash_command,/status,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_048,tui_slash_command,/stop,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_049,tui_slash_command,/style,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;strip_prefix;in_selector
+slash_050,tui_slash_command,/thinking toggle,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_051,tui_slash_command,/settings,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_052,tui_slash_command,/team,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_053,tui_slash_command,/theme,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_054,tui_slash_command,/think,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_055,tui_slash_command,/thinking,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;strip_prefix;in_selector
+slash_056,tui_slash_command,/todo,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with;in_selector
+slash_057,tui_slash_command,/todo enforce on,feature advertised/registered should be executable through its documented trigger,wired_via_parent_handler,pass,parent_handler
+slash_058,tui_slash_command,/todo enforce off,feature advertised/registered should be executable through its documented trigger,wired_via_parent_handler,pass,parent_handler
+slash_059,tui_slash_command,/todo clear,feature advertised/registered should be executable through its documented trigger,wired_via_parent_handler,pass,parent_handler
+slash_060,tui_slash_command,/trust,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;strip_prefix;in_selector
+slash_061,tui_slash_command,/undo,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_062,tui_slash_command,/undo all,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_063,tui_slash_command,/undo git,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_064,tui_slash_command,/verify,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;in_selector
+slash_065,tui_slash_command,/quick,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with
+slash_066,tui_slash_command,/map,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_067,tui_slash_command,/init-project,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+slash_068,tui_slash_command,/profile,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with
+slash_069,tui_slash_command,/worktree,feature advertised/registered should be executable through its documented trigger,wired,pass,exact;starts_with
+slash_070,tui_slash_command,/worktree create,feature advertised/registered should be executable through its documented trigger,wired_via_parent_handler,pass,parent_handler
+slash_071,tui_slash_command,/worktree list,feature advertised/registered should be executable through its documented trigger,wired_via_parent_handler,pass,parent_handler
+slash_072,tui_slash_command,/worktree merge,feature advertised/registered should be executable through its documented trigger,wired_via_parent_handler,pass,parent_handler
+slash_073,tui_slash_command,/worktree remove,feature advertised/registered should be executable through its documented trigger,wired_via_parent_handler,pass,parent_handler
+slash_074,tui_slash_command,/resume-work,feature advertised/registered should be executable through its documented trigger,wired,pass,exact
+cli_001,cli_command,Run,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_002,cli_command,Login,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_003,cli_command,Logout,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_004,cli_command,Whoami,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_005,cli_command,Config,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_006,cli_command,Init,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_007,cli_command,Mcp,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_008,cli_command,Sessions,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_009,cli_command,Export,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_010,cli_command,Session,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_011,cli_command,Stats,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_012,cli_command,Cost,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_013,cli_command,Deepinit,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_014,cli_command,Teams,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_015,cli_command,Skills,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_016,cli_command,Wait,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_017,cli_command,Replay,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_018,cli_command,Update,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_019,cli_command,Uninstall,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+cli_020,cli_command,CiFix,feature advertised/registered should be executable through its documented trigger,wired,pass,match_arm
+tool_001,core_tool_registry,bash::BashTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_002,core_tool_registry,read::ReadTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_003,core_tool_registry,write::WriteTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_004,core_tool_registry,edit::EditTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_005,core_tool_registry,glob::GlobTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_006,core_tool_registry,grep::GrepTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_007,core_tool_registry,git::GitStatusTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_008,core_tool_registry,git::GitDiffTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_009,core_tool_registry,git::GitLogTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_010,core_tool_registry,git::GitShowTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_011,core_tool_registry,git::GitBranchTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_012,core_tool_registry,git::GitCommitTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_013,core_tool_registry,git::GitCheckoutTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_014,core_tool_registry,todo::TodoReadTool::with_store(todo_store.clone()),feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_015,core_tool_registry,filesystem::ListDirTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_016,core_tool_registry,filesystem::DirectoryTreeTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_017,core_tool_registry,filesystem::FileInfoTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_018,core_tool_registry,filesystem::DeleteFileTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_019,core_tool_registry,filesystem::MoveFileTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_020,core_tool_registry,filesystem::CopyFileTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_021,core_tool_registry,filesystem::CreateDirTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_022,core_tool_registry,verify::VerifyTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_023,core_tool_registry,notepad::NotepadWriteTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_024,core_tool_registry,notepad::NotepadReadTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_025,core_tool_registry,lsp::LspDiagnosticsTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_026,core_tool_registry,lsp::AstSearchTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_027,core_tool_registry,lsp::LspGotoDefinitionTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_028,core_tool_registry,lsp::LspFindReferencesTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_029,core_tool_registry,lsp::LspHoverTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_030,core_tool_registry,web::WebFetchTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_031,core_tool_registry,web::WebSearchTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_032,core_tool_registry,tail_file::TailFileTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_033,core_tool_registry,load_skill::LoadSkillTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_034,core_tool_registry,memory::MemoryReadTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_035,core_tool_registry,memory::MemoryWriteTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_036,core_tool_registry,team::TeamCreateTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_037,core_tool_registry,team::TeamDeleteTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_038,core_tool_registry,team::SendMessageTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_039,core_tool_registry,team::TaskCreateTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_040,core_tool_registry,team::TaskUpdateTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_041,core_tool_registry,team::TaskListTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_042,core_tool_registry,team::TeamListTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_043,core_tool_registry,team::ReadInboxTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_044,core_tool_registry,batch::BatchApplyTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_045,core_tool_registry,semantic_search::SemanticSearchTool::new(idx),feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_046,core_tool_registry,fuzzy_find::FuzzyFindTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_047,core_tool_registry,update_plan::UpdatePlanTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_048,core_tool_registry,think::ThinkTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_049,core_tool_registry,ask_user::AskUserTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_050,core_tool_registry,apply_patch::ApplyPatchTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_051,core_tool_registry,apply_patch::MultiEditTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_052,core_tool_registry,browser::BrowserOpenTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_053,core_tool_registry,browser::BrowserScreenshotTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_054,core_tool_registry,browser::BrowserEvaluateTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_055,core_tool_registry,pr::CreatePrTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register
+tool_056,core_tool_registry,pr::ReviewPrTool,feature advertised/registered should be executable through its documented trigger,registered,pass,registry.register

@@ -23,6 +23,7 @@ pub struct Store {
     db_path: PathBuf,
 }
 
+#[derive(Default)]
 struct VectorCache {
     ids: Vec<i64>,
     embeddings: Vec<Vec<f32>>,
@@ -30,19 +31,6 @@ struct VectorCache {
     start_lines: Vec<usize>,
     end_lines: Vec<usize>,
     chunk_texts: Vec<String>,
-}
-
-impl Default for VectorCache {
-    fn default() -> Self {
-        Self {
-            ids: Vec::new(),
-            embeddings: Vec::new(),
-            file_paths: Vec::new(),
-            start_lines: Vec::new(),
-            end_lines: Vec::new(),
-            chunk_texts: Vec::new(),
-        }
-    }
 }
 
 impl Store {
