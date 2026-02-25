@@ -4,160 +4,74 @@ use ratatui::widgets::*;
 use crate::app::{App, AppMode};
 use crate::theme::Theme;
 
-fn format_tokens(count: u64) -> String {
-    if count >= 1_000_000 {
-        format!("{:.1}M", count as f64 / 1_000_000.0)
-    } else if count >= 1_000 {
-        format!("{:.1}k", count as f64 / 1_000.0)
-    } else {
-        count.to_string()
-    }
-}
-
-fn format_cost(usd: f64) -> String {
-    if usd < 0.001 {
-        return String::new();
-    }
-    if usd < 1.0 {
-        format!("${:.3}", usd)
-    } else {
-        format!("${:.2}", usd)
-    }
-}
-
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let left_hint = match app.mode {
+    let context_hints = match app.mode {
         AppMode::Streaming => "esc cancel",
-        AppMode::AwaitingApproval => "y approve  n deny",
+        AppMode::AwaitingApproval => "←→ select  enter confirm",
         AppMode::AwaitingUserQuestion => "↑↓ select  enter confirm",
-        AppMode::Input => {
-            if app.plan_mode {
-                "S-Tab act  ^P panel"
-            } else {
-                "S-Tab plan  ^P panel"
-            }
-        }
+        AppMode::Input => "S-Tab mode  ^P cmds  tab model",
     };
 
-    let mut info_parts: Vec<String> = Vec::new();
+    let mut right_parts: Vec<String> = Vec::new();
 
-    if let nyzhi_config::TrustMode::Full = app.trust_mode {
-        info_parts.push("TRUST:FULL".to_string());
+    if matches!(app.trust_mode, nyzhi_config::TrustMode::Full) {
+        right_parts.push("TRUST:FULL".to_string());
     }
 
     let bg_count = app.background_tasks.len();
     if bg_count > 0 {
-        info_parts.push(format!("bg:{bg_count}"));
-    }
-
-    let usage = &app.session_usage;
-    let total_tokens = usage.total_input_tokens + usage.total_output_tokens;
-    if total_tokens > 0 {
-        let cost = format_cost(usage.total_cost_usd);
-        let tok = format!("{}tok", format_tokens(total_tokens));
-        if cost.is_empty() {
-            info_parts.push(tok);
-        } else {
-            info_parts.push(format!("{tok} {cost}"));
-        }
-    }
-
-    if let Some(ref level) = app.thinking_level {
-        info_parts.push(format!("think:{level}"));
-    }
-
-    if let Some((done, active, total)) = app.todo_progress {
-        if total > 0 {
-            let label = if active > 0 {
-                format!("todos:{done}/{total} ({active})")
-            } else {
-                format!("todos:{done}/{total}")
-            };
-            info_parts.push(label);
-        }
+        right_parts.push(format!("bg:{bg_count}"));
     }
 
     if let Some((indexed, total, complete)) = app.index_progress {
         if complete {
-            if total > 0 {
-                info_parts.push(format!("idx:{total}"));
+            if let Some(ref err) = app.index_error {
+                let short = if err.len() > 30 { &err[..30] } else { err };
+                right_parts.push(format!("idx:⚠ {short}"));
             }
         } else if total > 0 {
-            info_parts.push(format!("idx:{indexed}/{total}"));
+            right_parts.push(format!("idx:{indexed}/{total}"));
         } else {
-            info_parts.push("idx:...".to_string());
+            right_parts.push("idx:…".to_string());
         }
     }
 
-    if app.context_window > 0 && app.context_used_tokens > 0 {
-        let pct = (app.context_used_tokens as f64 / app.context_window as f64 * 100.0) as u8;
-        info_parts.push(format!("ctx:{pct}%"));
-    }
-
-    let queue_count = app.message_queue.len();
-    if queue_count > 0 {
-        info_parts.push(format!("queue:{queue_count}"));
-    }
-
-    let auth = nyzhi_auth::auth_status(&app.provider_name);
-    let model_label = if auth == "not connected" {
-        "not connected".to_string()
-    } else {
-        format!("{} {}", app.provider_name, app.model_name)
-    };
-
-    let info_str = info_parts.join("  ");
-    let right_content_len = if info_str.is_empty() {
-        model_label.len()
-    } else {
-        info_str.len() + 2 + model_label.len()
-    };
-
+    let right_str = right_parts.join("  ");
     let available = area.width as usize;
-    let gap = available.saturating_sub(left_hint.len() + right_content_len + 4);
+    let gap = available.saturating_sub(context_hints.len() + right_str.len() + 3);
 
     let mut spans: Vec<Span> = Vec::new();
-
     spans.push(Span::styled(
-        format!(" {left_hint}"),
+        format!(" {context_hints}"),
         Style::default().fg(theme.text_disabled),
     ));
-
     spans.push(Span::raw(" ".repeat(gap.max(1))));
 
-    if matches!(app.trust_mode, nyzhi_config::TrustMode::Full) {
-        let without_trust: Vec<&str> = info_parts
-            .iter()
-            .filter(|p| *p != "TRUST:FULL")
-            .map(|s| s.as_str())
-            .collect();
-        spans.push(Span::styled(
-            "TRUST:FULL",
-            Style::default().fg(theme.danger).bold(),
-        ));
-        if !without_trust.is_empty() {
+    if !right_parts.is_empty() {
+        if right_parts.iter().any(|p| p == "TRUST:FULL") {
             spans.push(Span::styled(
-                format!("  {}", without_trust.join("  ")),
+                "TRUST:FULL",
+                Style::default().fg(theme.danger).bold(),
+            ));
+            let rest: Vec<&str> = right_parts
+                .iter()
+                .filter(|p| *p != "TRUST:FULL")
+                .map(|s| s.as_str())
+                .collect();
+            if !rest.is_empty() {
+                spans.push(Span::styled(
+                    format!("  {}", rest.join("  ")),
+                    Style::default().fg(theme.text_tertiary),
+                ));
+            }
+        } else {
+            spans.push(Span::styled(
+                right_str,
                 Style::default().fg(theme.text_tertiary),
             ));
         }
-    } else if !info_str.is_empty() {
-        spans.push(Span::styled(
-            info_str,
-            Style::default().fg(theme.text_tertiary),
-        ));
+        spans.push(Span::raw(" "));
     }
-
-    if !info_parts.is_empty() || matches!(app.trust_mode, nyzhi_config::TrustMode::Full) {
-        spans.push(Span::raw("  "));
-    }
-
-    let model_style = if auth == "not connected" {
-        Style::default().fg(theme.text_disabled)
-    } else {
-        Style::default().fg(theme.accent).bold()
-    };
-    spans.push(Span::styled(format!("{model_label} "), model_style));
 
     let line = Line::from(spans);
     let paragraph = Paragraph::new(line).style(Style::default().bg(theme.bg_surface));

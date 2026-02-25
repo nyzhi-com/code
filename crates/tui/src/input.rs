@@ -2999,6 +2999,11 @@ pub async fn handle_key(
                 content: display_content,
             });
 
+            if app.session_title == "nyzhi code" {
+                let title: String = input.chars().take(50).collect();
+                app.session_title = title;
+            }
+
             if has_context {
                 let summary = nyzhi_core::context_files::format_attachment_summary(&context_files);
                 app.items.push(DisplayItem::Message {

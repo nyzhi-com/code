@@ -17,6 +17,42 @@ fn cursor_2d(input: &str, byte_pos: usize) -> (u16, u16) {
 const PROMPT_CHAR: &str = "❯";
 const CONT_CHAR: &str = "·";
 
+fn render_status_line(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    if area.height == 0 {
+        return;
+    }
+    let mode_label = if app.plan_mode { "Plan" } else { "Build" };
+    let mode_color = if app.plan_mode { theme.warning } else { theme.accent };
+
+    let auth = nyzhi_auth::auth_status(&app.provider_name);
+    let provider = if auth == "not connected" {
+        "not connected"
+    } else {
+        &app.provider_name
+    };
+
+    let spans = vec![
+        Span::styled(
+            format!(" {mode_label}"),
+            Style::default().fg(mode_color).bold(),
+        ),
+        Span::styled("  ", Style::default().fg(theme.text_disabled)),
+        Span::styled(
+            app.model_name.clone(),
+            Style::default().fg(theme.text_primary).bold(),
+        ),
+        Span::styled(
+            format!("  {provider}"),
+            Style::default().fg(theme.text_disabled),
+        ),
+    ];
+
+    frame.render_widget(
+        Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg_surface)),
+        area,
+    );
+}
+
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &SpinnerState) {
     let focused = matches!(app.mode, AppMode::Input);
     let border_color = if focused {
@@ -37,24 +73,15 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
         return;
     }
 
-    let show_badge = inner.width >= 50;
-    let content_area = if show_badge {
-        let badge = mode_badge(app, theme);
-        let badge_width = badge.width() as u16 + 1;
-        let badge_area = Rect::new(inner.x, inner.y, badge_width, 1);
-        frame.render_widget(
-            Paragraph::new(badge).style(Style::default().bg(theme.bg_surface)),
-            badge_area,
-        );
-        Rect::new(
-            inner.x + badge_width,
-            inner.y,
-            inner.width.saturating_sub(badge_width),
-            inner.height,
-        )
-    } else {
-        inner
-    };
+    let status_height = 1u16;
+    let content_height = inner.height.saturating_sub(status_height);
+    let content_area = Rect::new(inner.x, inner.y, inner.width, content_height);
+    let status_area = Rect::new(
+        inner.x,
+        inner.y + content_height,
+        inner.width,
+        status_height,
+    );
 
     match app.mode {
         AppMode::Streaming => render_streaming(frame, content_area, app, theme, spinner),
@@ -69,36 +96,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
         }
     }
 
+    render_status_line(frame, status_area, app, theme);
+
     if let Some(state) = &app.completion {
         render_completion_popup(frame, area, state, theme);
-    }
-}
-
-fn mode_badge<'a>(app: &App, theme: &Theme) -> Line<'a> {
-    if app.plan_mode {
-        Line::from(vec![
-            Span::styled(
-                " Plan ",
-                Style::default().fg(theme.bg_page).bg(theme.warning).bold(),
-            ),
-            Span::styled(
-                " S-Tab ",
-                Style::default().fg(theme.text_disabled),
-            ),
-        ])
-    } else {
-        Line::from(vec![
-            Span::styled(
-                " Act ",
-                Style::default()
-                    .fg(theme.text_tertiary)
-                    .bg(theme.bg_elevated),
-            ),
-            Span::styled(
-                " S-Tab ",
-                Style::default().fg(theme.text_disabled),
-            ),
-        ])
     }
 }
 

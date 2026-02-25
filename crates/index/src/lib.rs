@@ -4,6 +4,7 @@ pub mod search;
 pub mod store;
 pub mod watcher;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -19,6 +20,7 @@ pub struct IndexProgress {
     pub indexed: usize,
     pub total: usize,
     pub complete: bool,
+    pub errors: Vec<(String, String)>,
 }
 
 impl Default for IndexProgress {
@@ -28,6 +30,7 @@ impl Default for IndexProgress {
             indexed: 0,
             total: 0,
             complete: false,
+            errors: Vec::new(),
         }
     }
 }
@@ -35,7 +38,9 @@ impl Default for IndexProgress {
 #[derive(Debug, Clone, Default)]
 pub struct IndexOptions {
     pub embedding_mode: String,
+    pub embedding_model: String,
     pub exclude: Vec<String>,
+    pub api_keys: HashMap<String, String>,
 }
 
 pub struct CodebaseIndex {
@@ -47,53 +52,31 @@ pub struct CodebaseIndex {
 }
 
 impl CodebaseIndex {
-    /// Synchronous constructor. Opens (or creates) the SQLite index DB and
-    /// selects the embedding backend. The index is NOT built yet -- call
-    /// `build()` afterwards (typically in a background task).
     pub fn open_sync(project_root: &Path, api_key: Option<String>) -> Result<Self> {
-        Self::open_sync_with_options(project_root, api_key, IndexOptions::default())
+        let mut keys = HashMap::new();
+        if let Some(k) = api_key {
+            keys.insert("openai".to_string(), k);
+        }
+        Self::open_sync_with_options(
+            project_root,
+            IndexOptions {
+                api_keys: keys,
+                ..Default::default()
+            },
+        )
     }
 
     pub fn open_sync_with_options(
         project_root: &Path,
-        api_key: Option<String>,
         options: IndexOptions,
     ) -> Result<Self> {
         let store = store::Store::open(project_root)?;
 
-        let mode = options.embedding_mode.trim().to_ascii_lowercase();
-        let embedder: Arc<dyn embedder::Embedder> = match mode.as_str() {
-            "tfidf" | "local" => Arc::new(embedder::TfIdfEmbedder::new()),
-            "api" | "openai" => {
-                if let Some(key) = api_key {
-                    Arc::new(embedder::ApiEmbedder::new(key))
-                } else {
-                    tracing::warn!(
-                        "index.embedding={} requested but API key unavailable; falling back to tfidf",
-                        mode
-                    );
-                    Arc::new(embedder::TfIdfEmbedder::new())
-                }
-            }
-            "auto" | "" => {
-                if let Some(key) = api_key {
-                    Arc::new(embedder::ApiEmbedder::new(key))
-                } else {
-                    Arc::new(embedder::TfIdfEmbedder::new())
-                }
-            }
-            other => {
-                tracing::warn!(
-                    "Unknown index.embedding mode '{}'; falling back to auto selection",
-                    other
-                );
-                if let Some(key) = api_key {
-                    Arc::new(embedder::ApiEmbedder::new(key))
-                } else {
-                    Arc::new(embedder::TfIdfEmbedder::new())
-                }
-            }
-        };
+        let embedder = embedder::create_embedder(
+            &options.embedding_mode,
+            &options.embedding_model,
+            &options.api_keys,
+        );
 
         Ok(Self {
             store,
@@ -110,10 +93,9 @@ impl CodebaseIndex {
 
     pub async fn open_with_options(
         project_root: &Path,
-        api_key: Option<String>,
         options: IndexOptions,
     ) -> Result<Self> {
-        Self::open_sync_with_options(project_root, api_key, options)
+        Self::open_sync_with_options(project_root, options)
     }
 
     pub async fn build(&self) -> Result<IndexStats> {
@@ -123,7 +105,22 @@ impl CodebaseIndex {
             p.indexed = 0;
             p.total = 0;
             p.complete = false;
+            p.errors.clear();
         }
+
+        // Model change detection: purge if embedding model changed
+        let current_model = self.embedder.model_id().to_string();
+        if let Ok(Some(stored_model)) = self.store.get_meta("embedding_model") {
+            if stored_model != current_model {
+                tracing::debug!(
+                    "Embedding model changed ({} -> {}); purging index",
+                    stored_model,
+                    current_model
+                );
+                self.store.purge_all_chunks()?;
+            }
+        }
+        self.store.set_meta("embedding_model", &current_model)?;
 
         let existing = self.store.file_hashes()?;
         let walk = watcher::walk_project(&self.project_root, &self.exclude)?;
@@ -168,12 +165,21 @@ impl CodebaseIndex {
             }
 
             let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
-            let embeddings = self.embedder.embed(&texts).await?;
-
-            let model_id = self.embedder.model_id();
-            self.store.upsert_file(&rel, &entry.hash, chunks.len())?;
-            self.store
-                .replace_chunks(&rel, &chunks, &embeddings, model_id, dims)?;
+            match self.embedder.embed(&texts).await {
+                Ok(embeddings) => {
+                    let model_id = self.embedder.model_id();
+                    self.store.upsert_file(&rel, &entry.hash, chunks.len())?;
+                    self.store
+                        .replace_chunks(&rel, &chunks, &embeddings, model_id, dims)?;
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    tracing::debug!("Embedding failed for {}: {}", rel, msg);
+                    let mut p = self.progress.lock().await;
+                    p.errors.push((rel.clone(), msg));
+                    // Skip this file but keep building the rest
+                }
+            }
 
             indexed += 1;
             let mut p = self.progress.lock().await;

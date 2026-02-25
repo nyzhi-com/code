@@ -1,27 +1,77 @@
 use ratatui::prelude::*;
-use ratatui::widgets::*;
+use ratatui::widgets::Paragraph;
 
 use crate::app::{App, DiffLineKind, DisplayItem, ToolStatus};
 use crate::highlight::{self, SyntaxHighlighter};
 use crate::theme::{Theme, ThemeMode};
 
-pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.border_default))
-        .title(Line::from(vec![Span::styled(
-            " nyzhi code ",
-            Style::default().fg(theme.accent).bold(),
-        )]))
-        .title_alignment(Alignment::Center)
-        .style(Style::default().bg(theme.bg_page));
+fn format_tokens(count: u64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}k", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
+}
 
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+fn format_cost(usd: f64) -> String {
+    if usd < 0.001 {
+        return String::new();
+    }
+    if usd < 1.0 {
+        format!("${:.3}", usd)
+    } else {
+        format!("${:.2}", usd)
+    }
+}
+
+fn render_session_bar<'a>(app: &App, width: u16, theme: &Theme) -> Line<'a> {
+    let left = format!(" ┃ {}", app.session_title);
+
+    let usage = &app.session_usage;
+    let total_tokens = usage.total_input_tokens + usage.total_output_tokens;
+    let mut right_parts: Vec<String> = Vec::new();
+    if total_tokens > 0 {
+        right_parts.push(format!("{}tok", format_tokens(total_tokens)));
+    }
+    if app.context_window > 0 && app.context_used_tokens > 0 {
+        let pct = (app.context_used_tokens as f64 / app.context_window as f64 * 100.0) as u8;
+        right_parts.push(format!("ctx:{pct}%"));
+    }
+    let cost = format_cost(usage.total_cost_usd);
+    if !cost.is_empty() {
+        right_parts.push(cost);
+    }
+    let right = right_parts.join("  ");
+
+    let left_len = left.len();
+    let right_len = right.len();
+    let gap = (width as usize).saturating_sub(left_len + right_len + 1);
+
+    Line::from(vec![
+        Span::styled(" ┃", Style::default().fg(theme.accent).bold()),
+        Span::styled(
+            format!(" {}", app.session_title),
+            Style::default().fg(theme.text_primary).bold(),
+        ),
+        Span::raw(" ".repeat(gap.max(1))),
+        Span::styled(
+            format!("{right} "),
+            Style::default().fg(theme.text_tertiary),
+        ),
+    ])
+}
+
+pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let inner = area;
     let w = inner.width;
 
     let dark = theme.mode == ThemeMode::Dark;
     let mut lines: Vec<Line> = Vec::new();
+
+    lines.push(render_session_bar(app, w, theme));
+    lines.push(Line::from(""));
 
     let search_q = app.search_query.as_deref();
     let current_match_item = if !app.search_matches.is_empty() {
@@ -38,6 +88,43 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         match item {
             DisplayItem::Message { role, content } => {
                 render_message(&mut lines, role, content, theme, &app.highlighter, dark, w);
+
+                if role == "assistant" {
+                    let is_last_assistant = app.items[item_idx + 1..]
+                        .iter()
+                        .all(|i| !matches!(i, DisplayItem::Message { role, .. } if role == "assistant"));
+                    if is_last_assistant {
+                        let mode_label = if app.plan_mode { "Plan" } else { "Build" };
+                        let mode_color = if app.plan_mode { theme.warning } else { theme.accent };
+                        let mut indicator = vec![
+                            Span::styled("  ■ ", Style::default().fg(mode_color)),
+                            Span::styled(
+                                mode_label,
+                                Style::default().fg(mode_color).bold(),
+                            ),
+                            Span::styled(
+                                format!(" · {}", app.model_name),
+                                Style::default().fg(theme.text_disabled),
+                            ),
+                        ];
+                        if let Some(dur) = app.last_turn_duration {
+                            let dur_str = if dur < 1.0 {
+                                format!("{:.0}ms", dur * 1000.0)
+                            } else if dur < 60.0 {
+                                format!("{dur:.1}s")
+                            } else {
+                                let m = (dur / 60.0) as u64;
+                                let s = (dur % 60.0) as u64;
+                                format!("{m}m{s}s")
+                            };
+                            indicator.push(Span::styled(
+                                format!(" · {dur_str}"),
+                                Style::default().fg(theme.text_disabled),
+                            ));
+                        }
+                        lines.push(Line::from(indicator));
+                    }
+                }
             }
             DisplayItem::Thinking(content) => {
                 if app.show_thinking {

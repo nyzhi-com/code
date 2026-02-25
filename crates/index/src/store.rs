@@ -305,6 +305,33 @@ impl Store {
         Ok(results)
     }
 
+    pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT value FROM meta WHERE key = ?1")?;
+        match stmt.query_row(params![key], |row| row.get::<_, String>(0)) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = ?2",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn purge_all_chunks(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch("DELETE FROM chunks; DELETE FROM files;")?;
+        *self.vectors.write().unwrap() = VectorCache::default();
+        Ok(())
+    }
+
     pub fn vector_count(&self) -> usize {
         self.vectors.read().unwrap().embeddings.len()
     }

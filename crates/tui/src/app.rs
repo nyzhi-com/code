@@ -211,6 +211,9 @@ pub struct App {
     pub model_cache: nyzhi_provider::ModelCacheHandle,
     pub codebase_index: Option<nyzhi_core::tools::IndexHandle>,
     pub index_progress: Option<(usize, usize, bool)>,
+    pub index_error: Option<String>,
+    pub session_title: String,
+    pub last_turn_duration: Option<f64>,
 }
 
 impl App {
@@ -301,6 +304,9 @@ impl App {
             model_cache: nyzhi_provider::ModelCache::handle(),
             codebase_index: None,
             index_progress: None,
+            index_error: None,
+            session_title: String::from("nyzhi code"),
+            last_turn_duration: None,
         }
     }
 
@@ -398,16 +404,20 @@ impl App {
         }
 
         if config.index.enabled && self.codebase_index.is_none() {
-            let api_key = nyzhi_auth::resolve_credential("openai", None)
-                .ok()
-                .map(|c| c.header_value());
+            let mut api_keys = std::collections::HashMap::new();
+            for provider_id in &["openai", "voyage", "perplexity"] {
+                if let Ok(cred) = nyzhi_auth::resolve_credential(provider_id, None) {
+                    api_keys.insert(provider_id.to_string(), cred.header_value());
+                }
+            }
             let index_options = nyzhi_index::IndexOptions {
                 embedding_mode: config.index.embedding.clone(),
+                embedding_model: config.index.embedding_model.clone(),
                 exclude: config.index.exclude.clone(),
+                api_keys,
             };
             match nyzhi_index::CodebaseIndex::open_sync_with_options(
                 &self.workspace.project_root,
-                api_key,
                 index_options,
             ) {
                 Ok(index) => {
@@ -417,16 +427,16 @@ impl App {
                     tokio::spawn(async move {
                         match handle.build().await {
                             Ok(stats) => {
-                                tracing::info!(
+                                tracing::debug!(
                                     "Index built: {} files, {} chunks, {} vectors",
                                     stats.file_count, stats.chunk_count, stats.vector_count
                                 );
                             }
-                            Err(e) => tracing::warn!("Index build failed: {e}"),
+                            Err(e) => tracing::debug!("Index build failed: {e}"),
                         }
                     });
                 }
-                Err(e) => tracing::warn!("Failed to open index: {e}"),
+                Err(e) => tracing::debug!("Failed to open index: {e}"),
             }
         }
 
@@ -692,6 +702,16 @@ impl App {
                         use futures::FutureExt;
                         if let Some(p) = idx.progress().now_or_never() {
                             self.index_progress = Some((p.indexed, p.total, p.complete));
+                            if p.complete && !p.errors.is_empty() {
+                                let n = p.errors.len();
+                                let first = &p.errors[0];
+                                let msg = if n == 1 {
+                                    format!("Index: 1 file skipped ({})", first.1)
+                                } else {
+                                    format!("Index: {} files skipped (first: {})", n, first.1)
+                                };
+                                self.index_error = Some(msg);
+                            }
                         }
                     }
                 }
@@ -1656,6 +1676,7 @@ impl App {
                             });
                         }
                         let turn_elapsed = self.turn_start.map(|t| t.elapsed());
+                        self.last_turn_duration = turn_elapsed.map(|d| d.as_secs_f64());
                         self.stream_start = None;
                         self.stream_token_count = 0;
                         self.turn_start = None;

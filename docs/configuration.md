@@ -49,7 +49,8 @@ All sections are optional.
 - `agent.agents.max_threads = 4`
 - `agent.agents.max_depth = 2`
 - `index.enabled = true`
-- `index.embedding = "auto"` (`auto` | `api` | `tfidf`)
+- `index.embedding = "auto"` (`auto` | `voyage` | `openai` | `perplexity` | `tfidf`)
+- `index.embedding_model = ""` (override model id)
 - `index.auto_context = true`
 - `index.auto_context_chunks = 5`
 - `index.exclude = []`
@@ -197,20 +198,26 @@ See [hooks.md](hooks.md) for event payload behavior.
 ```toml
 [index]
 enabled = true
-embedding = "auto"        # auto | api | tfidf
+embedding = "auto"            # auto | voyage | openai | perplexity | tfidf
+embedding_model = ""          # override model id, e.g. "voyage-code-3"
 auto_context = true
 auto_context_chunks = 5
 exclude = ["vendor/", "generated/"]
 ```
 
 - `enabled`: enables/disables codebase indexing startup in TUI.
-- `embedding`:
-  - `auto`: API embedder when API key exists, otherwise TF-IDF.
-  - `api`: force API embedder (falls back to TF-IDF if key is unavailable).
-  - `tfidf`: force local TF-IDF embedder.
+- `embedding`: selects the embedding provider.
+  - `auto`: picks the best available provider. Priority: Voyage AI > OpenAI > Perplexity > TF-IDF.
+  - `voyage`: use Voyage AI (default model: `voyage-code-3`, 1024d). Set `VOYAGE_API_KEY`.
+  - `openai`: use OpenAI (default model: `text-embedding-3-small`, 1536d). Set `OPENAI_API_KEY`.
+  - `perplexity`: use Perplexity (default model: `pplx-embed-v1-0.6b`, 1024d). Set `PERPLEXITY_API_KEY`.
+  - `tfidf`: local TF-IDF hash embedder, no API key needed.
+- `embedding_model`: override the default model for the selected provider (e.g. `"text-embedding-3-large"`). Leave empty to use the provider default.
 - `auto_context`: whether indexed context is prepended to agent turns.
 - `auto_context_chunks`: number of semantic chunks injected for auto-context.
 - `exclude`: additional glob-like path excludes passed to index walk.
+
+Switching embedding providers or models automatically triggers a full re-index (old vectors with different dimensions are incompatible).
 
 ## MCP config
 

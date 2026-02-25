@@ -76,6 +76,10 @@ fn default_embedding_mode() -> String {
     "auto".to_string()
 }
 
+fn default_embedding_model() -> String {
+    String::new()
+}
+
 fn default_auto_context_chunks() -> usize {
     5
 }
@@ -84,8 +88,13 @@ fn default_auto_context_chunks() -> usize {
 pub struct IndexConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// "auto" | "voyage" | "openai" | "perplexity" | "tfidf"
     #[serde(default = "default_embedding_mode")]
     pub embedding: String,
+    /// Override model id (e.g. "voyage-code-3", "text-embedding-3-large").
+    /// Empty = use provider default.
+    #[serde(default = "default_embedding_model")]
+    pub embedding_model: String,
     #[serde(default = "default_true")]
     pub auto_context: bool,
     #[serde(default = "default_auto_context_chunks")]
@@ -99,6 +108,7 @@ impl Default for IndexConfig {
         Self {
             enabled: true,
             embedding: default_embedding_mode(),
+            embedding_model: default_embedding_model(),
             auto_context: true,
             auto_context_chunks: default_auto_context_chunks(),
             exclude: vec![],
@@ -1089,6 +1099,11 @@ impl Config {
                     project.index.embedding.clone()
                 } else {
                     global.index.embedding.clone()
+                },
+                embedding_model: if project.index.embedding_model != default_embedding_model() {
+                    project.index.embedding_model.clone()
+                } else {
+                    global.index.embedding_model.clone()
                 },
                 auto_context: global.index.auto_context && project.index.auto_context,
                 auto_context_chunks: if project.index.auto_context_chunks
