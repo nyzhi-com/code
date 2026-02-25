@@ -32,9 +32,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         AppMode::AwaitingUserQuestion => "↑↓ select  enter confirm",
         AppMode::Input => {
             if app.plan_mode {
-                "S-Tab act"
+                "S-Tab act  ^P panel"
             } else {
-                "S-Tab plan"
+                "S-Tab plan  ^P panel"
             }
         }
     };

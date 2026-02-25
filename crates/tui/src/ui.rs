@@ -2,8 +2,8 @@ use ratatui::prelude::*;
 
 use crate::app::App;
 use crate::components::{
-    chat, footer, input_box, plan_banner, selector, settings_panel, text_prompt, todo_panel,
-    update_banner, welcome,
+    chat, footer, input_box, plan_banner, plan_panel, selector, settings_panel, text_prompt,
+    todo_panel, update_banner, welcome,
 };
 use crate::spinner::SpinnerState;
 use crate::theme::Theme;
@@ -42,10 +42,26 @@ pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState)
         plan_banner::draw(frame, chunks[1], theme);
     }
 
-    if app.items.is_empty() && app.current_stream.is_empty() {
-        welcome::draw(frame, chunks[2], app, theme);
+    let main_area = chunks[2];
+
+    let (chat_area, panel_area) = if app.show_plan_panel {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
+            .split(main_area);
+        (split[0], Some(split[1]))
     } else {
-        chat::draw(frame, chunks[2], app, theme);
+        (main_area, None)
+    };
+
+    if app.items.is_empty() && app.current_stream.is_empty() {
+        welcome::draw(frame, chat_area, app, theme);
+    } else {
+        chat::draw(frame, chat_area, app, theme);
+    }
+
+    if let Some(panel_rect) = panel_area {
+        plan_panel::draw(frame, panel_rect, &app.plan_panel, theme);
     }
 
     input_box::draw(frame, chunks[3], app, theme, spinner);

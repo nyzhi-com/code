@@ -361,7 +361,7 @@ pub fn default_registry(codebase_index: Option<IndexHandle>) -> RegistryBundle {
     registry.register(Box::new(fuzzy_find::FuzzyFindTool));
 
     // Phase 1.2: Plan-execute mode
-    registry.register(Box::new(update_plan::UpdatePlanTool));
+    registry.register(Box::new(update_plan::CreatePlanTool));
 
     // Phase 1.3: Think tool
     registry.register(Box::new(think::ThinkTool));

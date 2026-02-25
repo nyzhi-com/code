@@ -197,6 +197,9 @@ pub struct App {
         Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<String>>>>>,
     pub plan_mode: bool,
     pub last_plan_name: Option<String>,
+    pub show_plan_panel: bool,
+    pub plan_panel: crate::components::plan_panel::PlanPanelState,
+    pub current_session_id: Option<String>,
     pub todo_store: Option<nyzhi_core::tools::TodoStoreHandle>,
     pub autopilot: Option<nyzhi_core::autopilot::AutopilotState>,
     pub todo_enforcement_paused: bool,
@@ -284,6 +287,9 @@ impl App {
             pending_user_question: None,
             plan_mode: false,
             last_plan_name: None,
+            show_plan_panel: false,
+            plan_panel: crate::components::plan_panel::PlanPanelState::default(),
+            current_session_id: None,
             todo_store: None,
             autopilot: None,
             todo_enforcement_paused: false,
@@ -537,8 +543,20 @@ impl App {
         let change_tracker = std::sync::Arc::new(tokio::sync::Mutex::new(
             nyzhi_core::tools::change_tracker::ChangeTracker::new(),
         ));
+        let sid = thread.as_ref().unwrap().id.clone();
+        self.current_session_id = Some(sid.clone());
+
+        if let Some(ref store) = self.todo_store {
+            let store_c = store.clone();
+            let pr = self.workspace.project_root.clone();
+            let sid_c = sid.clone();
+            tokio::spawn(async move {
+                nyzhi_core::tools::todo::load_todos_into_store(&store_c, &pr, &sid_c).await;
+            });
+        }
+
         let tool_ctx = ToolContext {
-            session_id: thread.as_ref().unwrap().id.clone(),
+            session_id: sid,
             cwd,
             project_root: self.workspace.project_root.clone(),
             depth: 0,
@@ -1432,13 +1450,14 @@ impl App {
                                 }
                             }
                         }
-                        if name == "update_plan" {
+                        if name == "create_plan" || name == "update_plan" {
                             if let Some(plan_name) = output
                                 .strip_prefix("Plan '")
                                 .and_then(|s| s.split('\'').next())
                             {
                                 self.last_plan_name = Some(plan_name.to_string());
                             }
+                            self.reload_plan_panel();
                         }
                         const FILE_TOOLS: &[&str] =
                             &["edit", "write", "delete_file", "move_file", "copy_file"];
@@ -2207,53 +2226,6 @@ impl App {
                     }
                     SelectorKind::PlanTransition => {
                         self.selector = None;
-                        match value.as_str() {
-                            "build" => {
-                                self.plan_mode = false;
-                                let plan_content = self.last_plan_name.as_ref().and_then(|name| {
-                                    nyzhi_core::planning::load_plan(
-                                        &std::env::current_dir().unwrap_or_default(),
-                                        name,
-                                    )
-                                    .ok()
-                                    .flatten()
-                                });
-
-                                let msg = if let Some(ref content) = plan_content {
-                                    format!(
-                                        "Execute the following plan step by step. Use `update_plan` to mark steps complete (- [x]) as you finish them.\n\n{content}"
-                                    )
-                                } else {
-                                    "Execute the plan above step by step. Use `update_plan` to mark steps complete as you go.".to_string()
-                                };
-
-                                self.items.push(DisplayItem::Message {
-                                    role: "system".to_string(),
-                                    content: "Switched to Act mode -- executing plan".to_string(),
-                                });
-                                self.items.push(DisplayItem::Message {
-                                    role: "user".to_string(),
-                                    content: msg.clone(),
-                                });
-                                self.turn_request = Some(TurnRequest {
-                                    input: msg,
-                                    content: None,
-                                    is_background: false,
-                                    label: "execute plan".to_string(),
-                                });
-                                self.mode = AppMode::Streaming;
-                            }
-                            "keep-editing" => {
-                                self.plan_mode = false;
-                                self.items.push(DisplayItem::Message {
-                                    role: "system".to_string(),
-                                    content: "Switched to Act mode".to_string(),
-                                });
-                            }
-                            _ => {
-                                // "stay" or any other -- remain in plan mode
-                            }
-                        }
                         return;
                     }
                 }
@@ -2435,23 +2407,55 @@ impl App {
         ));
     }
 
-    pub fn open_plan_transition_selector(&mut self) {
-        use crate::components::selector::{SelectorItem, SelectorKind, SelectorState};
+    pub fn toggle_plan_panel(&mut self) {
+        self.show_plan_panel = !self.show_plan_panel;
+        if self.show_plan_panel {
+            self.reload_plan_panel();
+        }
+    }
 
-        let mut items = vec![];
-        items.push(SelectorItem::entry("Build -- execute the plan", "build"));
-        items.push(SelectorItem::entry(
-            "Keep editing -- switch to Act, prompt yourself",
-            "keep-editing",
-        ));
-        items.push(SelectorItem::entry("Stay in Plan", "stay"));
+    pub fn reload_plan_panel(&mut self) {
+        let project_root = std::env::current_dir().unwrap_or_default();
+        if let Some(sid) = &self.current_session_id {
+            if let Ok(Some(plan)) = nyzhi_core::planning::load_session_plan(&project_root, sid) {
+                self.plan_panel.load(plan);
+            }
+        }
+    }
 
-        self.selector = Some(SelectorState::new(
-            SelectorKind::PlanTransition,
-            "Exit Plan Mode",
-            items,
-            "",
-        ));
+    pub fn exit_plan_mode_and_execute(&mut self) {
+        self.plan_mode = false;
+        let project_root = std::env::current_dir().unwrap_or_default();
+        let plan_content = self.current_session_id.as_ref().and_then(|sid| {
+            nyzhi_core::planning::load_session_plan(&project_root, sid)
+                .ok()
+                .flatten()
+                .map(|p| nyzhi_core::planning::serialize_plan(&p))
+        });
+
+        let msg = if let Some(ref content) = plan_content {
+            format!(
+                "Execute the following plan step by step. Use `create_plan` to update todo statuses as you complete them.\n\n{content}"
+            )
+        } else {
+            "Execute the plan above step by step. Use `create_plan` to update todo statuses as you go.".to_string()
+        };
+
+        self.items.push(DisplayItem::Message {
+            role: "system".to_string(),
+            content: "Switched to Act mode -- executing plan".to_string(),
+        });
+        self.items.push(DisplayItem::Message {
+            role: "user".to_string(),
+            content: msg.clone(),
+        });
+        self.turn_request = Some(TurnRequest {
+            input: msg,
+            content: None,
+            is_background: false,
+            label: "execute plan".to_string(),
+        });
+        self.mode = AppMode::Streaming;
     }
 
     pub fn open_model_selector(&mut self) {

@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -19,7 +20,33 @@ pub struct TodoItem {
     pub blocks: Vec<String>,
 }
 
-type TodoStore = Arc<Mutex<HashMap<String, Vec<TodoItem>>>>;
+pub type TodoStore = Arc<Mutex<HashMap<String, Vec<TodoItem>>>>;
+
+fn todos_path(project_root: &Path, session_id: &str) -> PathBuf {
+    project_root
+        .join(".nyzhi")
+        .join("todos")
+        .join(format!("{session_id}.json"))
+}
+
+fn persist_todos(project_root: &Path, session_id: &str, items: &[TodoItem]) {
+    let path = todos_path(project_root, session_id);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, serde_json::to_string_pretty(items).unwrap_or_default());
+}
+
+pub fn load_todos(project_root: &Path, session_id: &str) -> Vec<TodoItem> {
+    let path = todos_path(project_root, session_id);
+    if !path.exists() {
+        return vec![];
+    }
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
 
 pub struct TodoWriteTool {
     store: TodoStore,
@@ -67,6 +94,14 @@ impl TodoReadTool {
 
 pub fn shared_store() -> TodoStore {
     Arc::new(Mutex::new(HashMap::new()))
+}
+
+pub async fn load_todos_into_store(store: &TodoStore, project_root: &Path, session_id: &str) {
+    let items = load_todos(project_root, session_id);
+    if !items.is_empty() {
+        let mut s = store.lock().await;
+        s.insert(session_id.to_string(), items);
+    }
 }
 
 pub async fn progress_summary(
@@ -210,6 +245,8 @@ impl Tool for TodoWriteTool {
                 session_todos.push(item.clone());
             }
         }
+
+        persist_todos(&ctx.project_root, &ctx.session_id, session_todos);
 
         let summary: Vec<String> = session_todos
             .iter()

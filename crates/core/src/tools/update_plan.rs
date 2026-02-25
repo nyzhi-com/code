@@ -3,35 +3,57 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::{Tool, ToolContext, ToolResult};
+use crate::planning::{self, PlanFile, PlanFrontmatter, PlanTodo, TodoStatus};
 use crate::tools::permission::ToolPermission;
 
-pub struct UpdatePlanTool;
+pub struct CreatePlanTool;
 
 #[async_trait]
-impl Tool for UpdatePlanTool {
+impl Tool for CreatePlanTool {
     fn name(&self) -> &str {
-        "update_plan"
+        "create_plan"
     }
 
     fn description(&self) -> &str {
-        "Update the current execution plan. Use this to track progress, add/remove steps, \
-         or refine the plan during execution. The plan is saved to .nyzhi/plans/."
+        "Create or update the execution plan for this session. The plan is saved as a \
+         .plan.md file with YAML frontmatter containing todos. On subsequent calls, \
+         todos are merged by id and the body is replaced."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "plan_name": {
+                "name": {
                     "type": "string",
-                    "description": "Name for the plan (used as filename)"
+                    "description": "Short title for the plan"
                 },
-                "plan_content": {
+                "overview": {
                     "type": "string",
-                    "description": "Full plan content in Markdown. Use checkboxes (- [ ] / - [x]) for steps."
+                    "description": "1-2 sentence summary of what the plan achieves"
+                },
+                "plan": {
+                    "type": "string",
+                    "description": "Full plan content in Markdown"
+                },
+                "todos": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "string" },
+                            "content": { "type": "string" },
+                            "status": {
+                                "type": "string",
+                                "enum": ["pending", "in_progress", "completed", "cancelled"]
+                            }
+                        },
+                        "required": ["id", "content"]
+                    },
+                    "description": "Task checklist items for the plan"
                 }
             },
-            "required": ["plan_name", "plan_content"]
+            "required": ["name", "plan", "todos"]
         })
     }
 
@@ -41,45 +63,77 @@ impl Tool for UpdatePlanTool {
 
     async fn execute(&self, args: Value, ctx: &ToolContext) -> Result<ToolResult> {
         let name = args
-            .get("plan_name")
+            .get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: plan_name"))?;
-        let content = args
-            .get("plan_content")
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: name"))?;
+        let overview = args
+            .get("overview")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: plan_content"))?;
+            .unwrap_or("");
+        let body = args
+            .get("plan")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing required parameter: plan"))?;
 
-        let dir = ctx.project_root.join(".nyzhi").join("plans");
-        std::fs::create_dir_all(&dir)?;
+        let new_todos: Vec<PlanTodo> = if let Some(arr) = args.get("todos").and_then(|v| v.as_array()) {
+            arr.iter()
+                .filter_map(|item| {
+                    let id = item.get("id")?.as_str()?;
+                    let content = item.get("content")?.as_str()?;
+                    let status = match item.get("status").and_then(|v| v.as_str()) {
+                        Some("in_progress") => TodoStatus::InProgress,
+                        Some("completed") => TodoStatus::Completed,
+                        Some("cancelled") => TodoStatus::Cancelled,
+                        _ => TodoStatus::Pending,
+                    };
+                    Some(PlanTodo {
+                        id: id.to_string(),
+                        content: content.to_string(),
+                        status,
+                    })
+                })
+                .collect()
+        } else {
+            vec![]
+        };
 
-        let safe_name: String = name
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' || c == '_' {
-                    c
+        let existing = planning::load_session_plan(&ctx.project_root, &ctx.session_id)?;
+
+        let todos = if let Some(ref existing) = existing {
+            let mut merged = existing.frontmatter.todos.clone();
+            for new_todo in &new_todos {
+                if let Some(pos) = merged.iter().position(|t| t.id == new_todo.id) {
+                    merged[pos] = new_todo.clone();
                 } else {
-                    '-'
+                    merged.push(new_todo.clone());
                 }
-            })
-            .collect();
-        let path = dir.join(format!("{safe_name}.md"));
-        std::fs::write(&path, content)?;
+            }
+            merged
+        } else {
+            new_todos
+        };
 
-        let completed = content.matches("- [x]").count();
-        let total = completed + content.matches("- [ ]").count();
+        let plan = PlanFile {
+            frontmatter: PlanFrontmatter {
+                name: name.to_string(),
+                overview: overview.to_string(),
+                todos,
+            },
+            body: body.to_string(),
+        };
+
+        let (done, total) = plan.progress();
+        let path = planning::save_session_plan(&ctx.project_root, &ctx.session_id, &plan)?;
 
         Ok(ToolResult {
             output: format!(
                 "Plan '{}' saved ({}/{} steps complete)\nPath: {}",
-                name,
-                completed,
-                total,
-                path.display()
+                name, done, total, path.display()
             ),
-            title: format!("update_plan: {name}"),
+            title: format!("create_plan: {name}"),
             metadata: json!({
                 "plan_name": name,
-                "completed_steps": completed,
+                "completed_steps": done,
                 "total_steps": total,
                 "path": path.to_string_lossy(),
             }),

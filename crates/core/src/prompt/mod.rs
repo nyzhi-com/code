@@ -62,67 +62,30 @@ pub fn plan_mode_instructions() -> &'static str {
 
 # PLAN MODE (READ-ONLY)
 
-You are currently in **Plan Mode**. This separates thinking from execution.
+You are in **Plan Mode**. Analyze the codebase, design an approach, then persist a plan.
 
 ## Restrictions
-- You MUST NOT create, edit, delete, or execute any files or commands.
-- You may ONLY use read-only tools: read, grep, glob, fuzzy_find, semantic_search, think, ask_user, update_plan, web_search, web_fetch.
-- Any attempt to use write, edit, bash, or other mutating tools will be blocked.
+- Only read-only tools: read, grep, glob, fuzzy_find, semantic_search, think, ask_user, create_plan, web_search, web_fetch.
+- Mutating tools (write, edit, bash) are blocked.
 
-## Workflow Phases
+## Workflow
+1. **Understand**: Read relevant code. Ask clarifying questions if needed.
+2. **Design**: Propose an approach with trade-offs.
+3. **Persist**: Use `create_plan` to save the plan with a name, overview, todos, and markdown body.
 
-### Phase 1: Understand
-- Read the relevant code paths using read-only tools.
-- Ask the user clarifying questions with `ask_user` when requirements are ambiguous.
-- Identify constraints, dependencies, and affected files.
-
-### Phase 2: Design
-- Propose an implementation approach with clear trade-offs.
-- Identify alternative approaches and explain why you recommend one over others.
-- Call out risks, edge cases, and potential breaking changes.
-
-### Phase 3: Persist the Plan
-- You MUST use the `update_plan` tool to save a structured plan with checkbox steps.
-- The plan MUST include:
-  - Numbered, actionable steps using `- [ ]` checkboxes.
-  - Specific file paths and code references for each step.
-  - A brief rationale section at the top.
-- Do NOT just output the plan as text. Always persist it with `update_plan`.
-
-## Interview Protocol (BEFORE writing the plan)
-Before creating any plan, interview the user to ensure you build the right thing:
-1. Confirm your understanding of the core objective in 1-2 sentences. Ask "Is this right?"
-2. Ask about scope boundaries: what's IN vs what's explicitly OUT.
-3. Surface ambiguities that could derail implementation: "I see X could mean A or B. Which do you intend?"
-4. Confirm technical approach and hard constraints (language, framework, existing patterns to follow).
-5. Ask about test strategy: "Should I add tests? What level of coverage?"
-
-Use `ask_user` for structured questions. Do NOT write the plan until requirements are clear.
-Only skip the interview if the user's request is already precise and unambiguous (specific files, clear command, narrow scope).
-
-## Transition
-When the user is satisfied, they will press Shift+Tab and select "Build" to switch to Act mode. The saved plan will be loaded and execution begins automatically."#
+The plan is saved to `.nyzhi/plans/<session-id>.plan.md`. When the user presses Shift+Tab, the plan is loaded and execution begins."#
 }
 
 pub fn act_after_plan_instructions() -> String {
     r#"
 # EXECUTING PLAN
 
-Plan mode has ended. You are now in Act mode with a plan to execute.
+Plan mode has ended. Execute the plan step by step.
 
-## Plan Verification (before execution)
-Before writing any code, quickly verify the plan:
-1. Are all steps specific and actionable (exact file paths, clear actions)?
-2. Are there any missing steps or dependencies between steps?
-3. Does the plan address the user's actual requirements?
-If you find gaps, state them briefly and proceed with your best judgment. Do not re-plan unless the user asks.
-
-## Execution Directives
-- Execute the plan step by step. Do not re-plan unless the user explicitly asks.
-- After completing each step, use `update_plan` to mark it done: change `- [ ]` to `- [x]`.
-- If a step fails or is blocked, note why, skip it, and continue with the next step.
-- Focus on implementation. Be concise in your responses.
-- Run relevant tests/checks after each significant change to catch regressions early."#
+- Use `create_plan` to update todo statuses as you complete each step.
+- If a step fails or is blocked, note why and continue.
+- Run tests/checks after significant changes.
+- Do not re-plan unless explicitly asked."#
         .to_string()
 }
 

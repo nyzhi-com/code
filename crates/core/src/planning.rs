@@ -2,27 +2,58 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TodoStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Cancelled,
+}
+
+impl std::fmt::Display for TodoStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pending => write!(f, "pending"),
+            Self::InProgress => write!(f, "in_progress"),
+            Self::Completed => write!(f, "completed"),
+            Self::Cancelled => write!(f, "cancelled"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Plan {
+pub struct PlanTodo {
+    pub id: String,
+    pub content: String,
+    pub status: TodoStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlanFrontmatter {
     pub name: String,
-    pub rounds: Vec<PlanRound>,
-    pub final_plan: String,
+    #[serde(default)]
+    pub overview: String,
+    #[serde(default)]
+    pub todos: Vec<PlanTodo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlanRound {
-    pub round: u32,
-    pub planner_output: String,
-    pub critic_output: String,
+#[derive(Debug, Clone)]
+pub struct PlanFile {
+    pub frontmatter: PlanFrontmatter,
+    pub body: String,
 }
 
-pub struct PlanConfig {
-    pub max_rounds: u32,
-}
-
-impl Default for PlanConfig {
-    fn default() -> Self {
-        Self { max_rounds: 3 }
+impl PlanFile {
+    pub fn progress(&self) -> (usize, usize) {
+        let total = self.frontmatter.todos.len();
+        let done = self
+            .frontmatter
+            .todos
+            .iter()
+            .filter(|t| matches!(t.status, TodoStatus::Completed | TodoStatus::Cancelled))
+            .count();
+        (done, total)
     }
 }
 
@@ -30,32 +61,51 @@ fn plans_dir(project_root: &Path) -> PathBuf {
     project_root.join(".nyzhi").join("plans")
 }
 
-pub fn save_plan(project_root: &Path, plan: &Plan) -> Result<PathBuf> {
+pub fn parse_plan(raw: &str) -> Result<PlanFile> {
+    let trimmed = raw.trim_start();
+    if !trimmed.starts_with("---") {
+        return Ok(PlanFile {
+            frontmatter: PlanFrontmatter {
+                name: "Untitled".to_string(),
+                overview: String::new(),
+                todos: vec![],
+            },
+            body: raw.to_string(),
+        });
+    }
+
+    let after_first = &trimmed[3..];
+    let end = after_first
+        .find("\n---")
+        .ok_or_else(|| anyhow::anyhow!("Missing closing --- in frontmatter"))?;
+
+    let yaml_str = &after_first[..end];
+    let body_start = 3 + end + 4; // "---" + yaml + "\n---"
+    let body = trimmed[body_start..].trim_start_matches('\n').to_string();
+
+    let frontmatter: PlanFrontmatter = serde_yaml::from_str(yaml_str)?;
+    Ok(PlanFile { frontmatter, body })
+}
+
+pub fn serialize_plan(plan: &PlanFile) -> String {
+    let yaml = serde_yaml::to_string(&plan.frontmatter).unwrap_or_default();
+    format!("---\n{}---\n\n{}", yaml, plan.body)
+}
+
+pub fn load_session_plan(project_root: &Path, session_id: &str) -> Result<Option<PlanFile>> {
+    let path = plans_dir(project_root).join(format!("{session_id}.plan.md"));
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&path)?;
+    Ok(Some(parse_plan(&raw)?))
+}
+
+pub fn save_session_plan(project_root: &Path, session_id: &str, plan: &PlanFile) -> Result<PathBuf> {
     let dir = plans_dir(project_root);
     std::fs::create_dir_all(&dir)?;
-
-    let safe_name: String = plan
-        .name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    let path = dir.join(format!("{safe_name}.md"));
-
-    let mut content = format!("# Plan: {}\n\n", plan.name);
-    for round in &plan.rounds {
-        content.push_str(&format!("## Round {}\n\n", round.round));
-        content.push_str(&format!("### Planner\n{}\n\n", round.planner_output));
-        content.push_str(&format!("### Critic\n{}\n\n", round.critic_output));
-    }
-    content.push_str(&format!("## Final Plan\n\n{}", plan.final_plan));
-
-    std::fs::write(&path, &content)?;
+    let path = dir.join(format!("{session_id}.plan.md"));
+    std::fs::write(&path, serialize_plan(plan))?;
     Ok(path)
 }
 
@@ -75,7 +125,12 @@ pub fn load_plan(project_root: &Path, name: &str) -> Result<Option<String>> {
     if path.exists() {
         Ok(Some(std::fs::read_to_string(&path)?))
     } else {
-        Ok(None)
+        let plan_path = dir.join(format!("{safe_name}.plan.md"));
+        if plan_path.exists() {
+            Ok(Some(std::fs::read_to_string(&plan_path)?))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -88,39 +143,13 @@ pub fn list_plans(project_root: &Path) -> Result<Vec<String>> {
     for entry in std::fs::read_dir(&dir)? {
         let entry = entry?;
         if let Some(name) = entry.file_name().to_str() {
-            if let Some(stem) = name.strip_suffix(".md") {
+            if let Some(stem) = name.strip_suffix(".plan.md") {
+                names.push(stem.to_string());
+            } else if let Some(stem) = name.strip_suffix(".md") {
                 names.push(stem.to_string());
             }
         }
     }
     names.sort();
     Ok(names)
-}
-
-pub fn build_planner_prompt(task: &str) -> String {
-    format!(
-        "You are a planning agent. Create a detailed, step-by-step implementation plan for:\n\n\
-         {task}\n\n\
-         Break it down into:\n\
-         1. Requirements analysis\n\
-         2. Design decisions\n\
-         3. Implementation steps (ordered by dependency)\n\
-         4. Testing strategy\n\
-         5. Potential risks\n\n\
-         Be specific about files, functions, and data structures."
-    )
-}
-
-pub fn build_critic_prompt(plan: &str) -> String {
-    format!(
-        "You are a critic agent reviewing a plan. Challenge assumptions, find gaps, and suggest improvements:\n\n\
-         {plan}\n\n\
-         Focus on:\n\
-         - Missing edge cases\n\
-         - Unclear dependencies\n\
-         - Better alternatives\n\
-         - Risk mitigation\n\
-         - Testing gaps\n\n\
-         Be specific and actionable."
-    )
 }

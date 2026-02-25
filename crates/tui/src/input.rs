@@ -40,6 +40,11 @@ pub async fn handle_key(
         return;
     }
 
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('p') {
+        app.toggle_plan_panel();
+        return;
+    }
+
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('u') {
         app.input.drain(..app.cursor_pos);
         app.cursor_pos = 0;
@@ -115,9 +120,10 @@ pub async fn handle_key(
         }
         KeyCode::BackTab if app.completion.is_none() && app.input.is_empty() => {
             if app.plan_mode {
-                app.open_plan_transition_selector();
+                app.exit_plan_mode_and_execute();
             } else {
                 app.plan_mode = true;
+                app.show_plan_panel = true;
                 app.items.push(DisplayItem::Message {
                     role: "system".to_string(),
                     content: "Switched to Plan mode".to_string(),

@@ -18,6 +18,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    let w = inner.width;
 
     let dark = theme.mode == ThemeMode::Dark;
     let mut lines: Vec<Line> = Vec::new();
@@ -36,11 +37,11 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
         match item {
             DisplayItem::Message { role, content } => {
-                render_message(&mut lines, role, content, theme, &app.highlighter, dark);
+                render_message(&mut lines, role, content, theme, &app.highlighter, dark, w);
             }
             DisplayItem::Thinking(content) => {
                 if app.show_thinking {
-                    render_thinking(&mut lines, content, theme);
+                    render_thinking(&mut lines, content, theme, w);
                 } else {
                     lines.push(Line::from(Span::styled(
                         "  ... thinking (hidden)",
@@ -72,14 +73,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                         );
                     }
                 }
-                prepend_bar(&mut lines[tool_start..], theme.text_disabled);
+                prepend_bar_vec(&mut lines, tool_start, theme.text_disabled, w);
             }
             DisplayItem::Diff {
                 file,
                 hunks,
                 is_new_file,
             } => {
-                render_diff(&mut lines, file, hunks, *is_new_file, theme);
+                render_diff(&mut lines, file, hunks, *is_new_file, theme, w);
             }
         }
 
@@ -100,7 +101,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     if !app.thinking_stream.is_empty() && app.current_stream.is_empty() {
         if app.show_thinking {
             lines.push(Line::from(""));
-            render_thinking_stream(&mut lines, &app.thinking_stream, theme);
+            render_thinking_stream(&mut lines, &app.thinking_stream, theme, w);
         } else {
             lines.push(Line::from(Span::styled(
                 "  ... thinking (hidden)",
@@ -123,7 +124,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             Span::raw("  "),
             Span::styled("█", Style::default().fg(theme.accent)),
         ]));
-        prepend_bar(&mut lines[stream_start..], theme.accent);
+        prepend_bar_vec(&mut lines, stream_start, theme.accent, w);
     }
 
     let total_lines = lines.len() as u16;
@@ -137,7 +138,6 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     };
 
     let paragraph = Paragraph::new(lines)
-        .wrap(Wrap { trim: false })
         .scroll((scroll, 0))
         .style(Style::default().bg(theme.bg_page));
 
@@ -179,11 +179,65 @@ fn highlight_search_in_line<'a>(line: Line<'a>, query: &str, hl_style: Style) ->
     Line::from(new_spans)
 }
 
-fn prepend_bar(lines: &mut [Line<'_>], color: Color) {
-    for line in lines.iter_mut() {
-        line.spans
-            .insert(0, Span::styled(" ┃ ", Style::default().fg(color)));
+fn prepend_bar_vec(lines: &mut Vec<Line<'_>>, start: usize, color: Color, max_width: u16) {
+    let bar_span = Span::styled(" ┃ ", Style::default().fg(color));
+    let content_width = (max_width as usize).saturating_sub(3);
+
+    let tail: Vec<Line<'_>> = lines.drain(start..).collect();
+    for line in tail {
+        let total_len: usize = line.spans.iter().map(|s| s.content.len()).sum();
+        if total_len <= content_width || content_width == 0 {
+            let mut spans = vec![bar_span.clone()];
+            spans.extend(line.spans);
+            lines.push(Line::from(spans));
+        } else {
+            let wrapped = wrap_line_spans(&line, content_width);
+            for wl in wrapped {
+                let mut spans = vec![bar_span.clone()];
+                spans.extend(wl.spans);
+                lines.push(Line::from(spans));
+            }
+        }
     }
+}
+
+fn wrap_line_spans<'a>(line: &Line<'a>, max_width: usize) -> Vec<Line<'a>> {
+    let mut rows: Vec<Vec<Span<'a>>> = vec![vec![]];
+    let mut cur_len = 0;
+
+    for span in &line.spans {
+        let text = &span.content;
+        let style = span.style;
+
+        if text.is_empty() {
+            continue;
+        }
+
+        let mut remaining = text.as_ref();
+        while !remaining.is_empty() {
+            let available = max_width.saturating_sub(cur_len);
+            if available == 0 {
+                rows.push(vec![]);
+                cur_len = 0;
+                continue;
+            }
+
+            let take = remaining.len().min(available);
+            let (chunk, rest) = remaining.split_at(take);
+            rows.last_mut()
+                .unwrap()
+                .push(Span::styled(chunk.to_string(), style));
+            cur_len += take;
+            remaining = rest;
+
+            if !remaining.is_empty() {
+                rows.push(vec![]);
+                cur_len = 0;
+            }
+        }
+    }
+
+    rows.into_iter().map(Line::from).collect()
 }
 
 fn is_error_content(content: &str) -> bool {
@@ -200,12 +254,13 @@ fn render_message<'a>(
     theme: &Theme,
     highlighter: &SyntaxHighlighter,
     dark: bool,
+    width: u16,
 ) {
     match role {
         "user" => render_user_message(lines, content, theme),
-        "system" if is_error_content(content) => render_error_message(lines, content, theme),
+        "system" if is_error_content(content) => render_error_message(lines, content, theme, width),
         "system" => render_system_message(lines, content, theme),
-        _ => render_assistant_message(lines, content, theme, highlighter, dark),
+        _ => render_assistant_message(lines, content, theme, highlighter, dark, width),
     }
 }
 
@@ -229,6 +284,7 @@ fn render_assistant_message<'a>(
     theme: &Theme,
     highlighter: &SyntaxHighlighter,
     dark: bool,
+    width: u16,
 ) {
     lines.push(Line::from(""));
     let bar_start = lines.len();
@@ -237,40 +293,45 @@ fn render_assistant_message<'a>(
         Style::default().fg(theme.accent).bold(),
     )));
     render_highlighted_content(lines, content, theme, highlighter, dark);
-    prepend_bar(&mut lines[bar_start..], theme.accent);
+    prepend_bar_vec(lines, bar_start, theme.accent, width);
 }
 
 fn render_system_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
     lines.push(Line::from(""));
-    let first = content.lines().next().unwrap_or(content);
-    let rest_count = content.lines().count().saturating_sub(1);
+    let all_lines: Vec<&str> = content.lines().collect();
+    let first = all_lines.first().copied().unwrap_or(content);
+    let rest_count = all_lines.len().saturating_sub(1);
 
-    let mut spans = vec![
+    lines.push(Line::from(vec![
         Span::styled("    \u{2500} ", Style::default().fg(theme.text_disabled)),
         Span::styled(
             first.to_string(),
             Style::default().fg(theme.text_tertiary).italic(),
         ),
-    ];
-    if rest_count > 4 {
-        spans.push(Span::styled(
-            format!(" (+{rest_count} lines)"),
-            Style::default().fg(theme.text_disabled),
-        ));
-    }
-    lines.push(Line::from(spans));
+    ]));
 
-    if rest_count > 0 && rest_count <= 4 {
-        for line in content.lines().skip(1) {
+    if rest_count > 0 && rest_count <= 30 {
+        for line in all_lines.iter().skip(1) {
             lines.push(Line::from(Span::styled(
                 format!("      {line}"),
                 Style::default().fg(theme.text_tertiary).italic(),
             )));
         }
+    } else if rest_count > 30 {
+        for line in all_lines.iter().skip(1).take(20) {
+            lines.push(Line::from(Span::styled(
+                format!("      {line}"),
+                Style::default().fg(theme.text_tertiary).italic(),
+            )));
+        }
+        lines.push(Line::from(Span::styled(
+            format!("      ... +{} more lines", rest_count - 20),
+            Style::default().fg(theme.text_disabled),
+        )));
     }
 }
 
-fn render_error_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
+fn render_error_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, width: u16) {
     lines.push(Line::from(""));
     let bar_start = lines.len();
     lines.push(Line::from(Span::styled(
@@ -283,10 +344,10 @@ fn render_error_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Th
             Style::default().fg(theme.danger),
         )));
     }
-    prepend_bar(&mut lines[bar_start..], theme.danger);
+    prepend_bar_vec(lines, bar_start, theme.danger, width);
 }
 
-fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
+fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, width: u16) {
     lines.push(Line::from(""));
     let think_start = lines.len();
     let dim = Style::default()
@@ -315,10 +376,10 @@ fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) 
             Style::default().fg(theme.text_disabled),
         )));
     }
-    prepend_bar(&mut lines[think_start..], theme.text_disabled);
+    prepend_bar_vec(lines, think_start, theme.text_disabled, width);
 }
 
-fn render_thinking_stream<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
+fn render_thinking_stream<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, width: u16) {
     let think_start = lines.len();
     let dim = Style::default()
         .fg(theme.text_disabled)
@@ -340,7 +401,7 @@ fn render_thinking_stream<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &
         };
         lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
     }
-    prepend_bar(&mut lines[think_start..], theme.text_disabled);
+    prepend_bar_vec(lines, think_start, theme.text_disabled, width);
 }
 
 fn render_highlighted_content<'a>(
@@ -532,6 +593,7 @@ fn render_diff<'a>(
     hunks: &[crate::app::DiffHunk],
     is_new_file: bool,
     theme: &Theme,
+    width: u16,
 ) {
     lines.push(Line::from(""));
     let diff_start = lines.len();
@@ -580,7 +642,8 @@ fn render_diff<'a>(
         )));
     }
 
-    prepend_bar(&mut lines[diff_start..], if is_new_file { theme.success } else { theme.warning });
+    let bar_color = if is_new_file { theme.success } else { theme.warning };
+    prepend_bar_vec(lines, diff_start, bar_color, width);
 }
 
 fn render_diff_line<'a>(line: &str, theme: &Theme) -> Line<'a> {

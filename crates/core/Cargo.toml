@@ -38,3 +38,4 @@ tar = "0.4"
 tempfile = "3"
 keyring.workspace = true
 url = "2"
+serde_yaml = "0.9.34"
