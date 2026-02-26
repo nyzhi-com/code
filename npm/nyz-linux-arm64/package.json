@@ -1,6 +1,6 @@
 {
   "name": "nyz-linux-arm64",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "nyz binary for Linux ARM64",
   "license": "GPL-3.0-or-later",
   "repository": {

@@ -1,6 +1,6 @@
 {
   "name": "nyzhi",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "AI coding agent for the terminal",
   "license": "GPL-3.0-or-later",
   "repository": {
@@ -24,10 +24,10 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "nyz-darwin-arm64": "1.2.4",
-    "nyz-darwin-x64": "1.2.4",
-    "nyz-linux-x64": "1.2.4",
-    "nyz-linux-arm64": "1.2.4"
+    "nyz-darwin-arm64": "1.2.5",
+    "nyz-darwin-x64": "1.2.5",
+    "nyz-linux-x64": "1.2.5",
+    "nyz-linux-arm64": "1.2.5"
   },
   "os": [
     "darwin",

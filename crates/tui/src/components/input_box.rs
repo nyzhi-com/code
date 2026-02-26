@@ -19,16 +19,27 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
         return;
     }
 
-    let status_h = 1u16;
-    let input_h = area.height.saturating_sub(status_h);
-
-    let input_area = Rect::new(area.x, area.y, area.width, input_h);
-    let status_area = Rect::new(area.x, area.y + input_h, area.width, status_h);
-
     frame.render_widget(
-        Block::default().style(Style::default().bg(theme.bg_page)),
-        input_area,
+        Block::default().style(Style::default().bg(theme.bg_surface)),
+        area,
     );
+
+    let border_area = Rect::new(area.x, area.y, area.width, 1);
+    let rule = "─".repeat(area.width as usize);
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            rule,
+            Style::default().fg(theme.border_default),
+        ))
+        .style(Style::default().bg(theme.bg_surface)),
+        border_area,
+    );
+
+    let status_h = 1u16;
+    let content_y = area.y + 1;
+    let content_h = area.height.saturating_sub(1 + status_h);
+    let input_area = Rect::new(area.x, content_y, area.width, content_h.max(1));
+    let status_area = Rect::new(area.x, content_y + content_h.max(1), area.width, status_h);
 
     match app.mode {
         AppMode::Streaming => render_streaming(frame, input_area, app, theme, spinner),
@@ -100,6 +111,15 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     if app.input.is_empty() {
+        let placeholder = " Ask anything... \"What is the tech stack of this project?\"";
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                placeholder,
+                Style::default().fg(theme.text_disabled),
+            ))
+            .style(Style::default().bg(theme.bg_surface)),
+            area,
+        );
         frame.set_cursor_position(Position::new(area.x + 1, area.y));
         return;
     }
@@ -124,7 +144,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     };
 
     let paragraph = Paragraph::new(lines)
-        .style(Style::default().bg(theme.bg_page))
+        .style(Style::default().bg(theme.bg_surface))
         .scroll((scroll, 0));
     frame.render_widget(paragraph, area);
 
@@ -152,7 +172,7 @@ fn render_streaming(
                 ))
             })
             .collect();
-        let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_page));
+        let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_surface));
         frame.render_widget(paragraph, area);
 
         let queue_hint = format!(" queued:{} ", app.message_queue.len() + 1);
@@ -215,7 +235,7 @@ fn render_streaming(
         ));
 
         frame.render_widget(
-            Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg_page)),
+            Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg_surface)),
             area,
         );
     }
@@ -285,7 +305,7 @@ fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     }
 
     frame.render_widget(
-        Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg_page)),
+        Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg_surface)),
         area,
     );
 }
@@ -299,7 +319,7 @@ fn render_question(frame: &mut Frame, area: Rect, theme: &Theme) {
         ),
     ]);
     frame.render_widget(
-        Paragraph::new(content).style(Style::default().bg(theme.bg_page)),
+        Paragraph::new(content).style(Style::default().bg(theme.bg_surface)),
         area,
     );
 }
@@ -479,7 +499,7 @@ fn render_history_search(
         )));
     }
 
-    let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_page));
+    let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_surface));
     frame.render_widget(paragraph, area);
 
     let cursor_col = " search: ".len() as u16 + search.query.len() as u16;

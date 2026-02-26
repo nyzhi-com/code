@@ -94,6 +94,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                         .iter()
                         .all(|i| !matches!(i, DisplayItem::Message { role, .. } if role == "assistant"));
                     if is_last_assistant {
+                        lines.push(Line::from(""));
                         let mode_label = if app.plan_mode { "Plan" } else { "Build" };
                         let mode_color = if app.plan_mode { theme.warning } else { theme.accent };
                         let mut indicator = vec![
