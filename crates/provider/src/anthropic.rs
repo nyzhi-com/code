@@ -136,6 +136,7 @@ impl AnthropicProvider {
                                 ContentPart::ToolResult {
                                     tool_use_id,
                                     content,
+                                    ..
                                 } => json!({
                                     "type": "tool_result",
                                     "tool_use_id": tool_use_id,
@@ -238,10 +239,43 @@ impl Provider for AnthropicProvider {
         }
 
         let data: serde_json::Value = resp.json().await?;
-        let content = data["content"][0]["text"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let msg_content = if let Some(blocks) = data["content"].as_array() {
+            let mut parts = Vec::new();
+            for b in blocks {
+                match b["type"].as_str() {
+                    Some("text") => {
+                        if let Some(t) = b["text"].as_str() {
+                            if !t.is_empty() {
+                                parts.push(ContentPart::Text {
+                                    text: t.to_string(),
+                                });
+                            }
+                        }
+                    }
+                    Some("tool_use") => {
+                        parts.push(ContentPart::ToolUse {
+                            id: b["id"].as_str().unwrap_or("").to_string(),
+                            name: b["name"].as_str().unwrap_or("").to_string(),
+                            input: b["input"].clone(),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            if parts.len() == 1 {
+                if let ContentPart::Text { text } = &parts[0] {
+                    MessageContent::Text(text.clone())
+                } else {
+                    MessageContent::Parts(parts)
+                }
+            } else if parts.is_empty() {
+                MessageContent::Text(String::new())
+            } else {
+                MessageContent::Parts(parts)
+            }
+        } else {
+            MessageContent::Text(String::new())
+        };
 
         let cache_read = data["usage"]["cache_read_input_tokens"]
             .as_u64()
@@ -254,7 +288,7 @@ impl Provider for AnthropicProvider {
         Ok(ChatResponse {
             message: Message {
                 role: Role::Assistant,
-                content: MessageContent::Text(content),
+                content: msg_content,
             },
             usage: Some(Usage {
                 input_tokens: uncached + cache_read + cache_creation,

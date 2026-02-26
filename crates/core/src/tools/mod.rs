@@ -94,7 +94,8 @@ pub struct ToolRegistry {
     /// The agent can discover them via tool_search and they expand on first use.
     deferred: std::collections::HashSet<String>,
     /// Session-level cache of deferred tools that have been expanded (used at least once).
-    expanded: std::collections::HashSet<String>,
+    /// Uses interior mutability so expansion works through `&self`.
+    expanded: std::sync::RwLock<std::collections::HashSet<String>>,
 }
 
 impl ToolRegistry {
@@ -102,7 +103,7 @@ impl ToolRegistry {
         Self {
             tools: HashMap::new(),
             deferred: std::collections::HashSet::new(),
-            expanded: std::collections::HashSet::new(),
+            expanded: std::sync::RwLock::new(std::collections::HashSet::new()),
         }
     }
 
@@ -118,15 +119,23 @@ impl ToolRegistry {
     }
 
     /// Mark a deferred tool as expanded (it will now be included in definitions).
-    pub fn expand_deferred(&mut self, name: &str) {
+    /// Takes `&self` thanks to interior mutability.
+    pub fn expand_deferred(&self, name: &str) {
         if self.deferred.contains(name) {
-            self.expanded.insert(name.to_string());
+            if let Ok(mut expanded) = self.expanded.write() {
+                expanded.insert(name.to_string());
+            }
         }
     }
 
     /// Check if a tool is deferred and not yet expanded.
     pub fn is_deferred(&self, name: &str) -> bool {
-        self.deferred.contains(name) && !self.expanded.contains(name)
+        self.deferred.contains(name)
+            && !self
+                .expanded
+                .read()
+                .map(|e| e.contains(name))
+                .unwrap_or(false)
     }
 
     pub fn get(&self, name: &str) -> Option<&dyn Tool> {
@@ -135,10 +144,11 @@ impl ToolRegistry {
 
     /// Return definitions for all non-deferred tools plus any expanded deferred tools.
     pub fn definitions(&self) -> Vec<nyzhi_provider::ToolDefinition> {
+        let expanded = self.expanded.read().unwrap_or_else(|e| e.into_inner());
         let mut defs: Vec<_> = self
             .tools
             .values()
-            .filter(|t| !self.deferred.contains(t.name()) || self.expanded.contains(t.name()))
+            .filter(|t| !self.deferred.contains(t.name()) || expanded.contains(t.name()))
             .map(|t| nyzhi_provider::ToolDefinition {
                 name: t.name().to_string(),
                 description: t.description().to_string(),
@@ -151,11 +161,12 @@ impl ToolRegistry {
 
     /// Return definitions for read-only tools only (plan mode).
     pub fn definitions_read_only(&self) -> Vec<nyzhi_provider::ToolDefinition> {
+        let expanded = self.expanded.read().unwrap_or_else(|e| e.into_inner());
         let mut defs: Vec<_> = self
             .tools
             .values()
             .filter(|t| t.permission() == permission::ToolPermission::ReadOnly)
-            .filter(|t| !self.deferred.contains(t.name()) || self.expanded.contains(t.name()))
+            .filter(|t| !self.deferred.contains(t.name()) || expanded.contains(t.name()))
             .map(|t| nyzhi_provider::ToolDefinition {
                 name: t.name().to_string(),
                 description: t.description().to_string(),
@@ -167,14 +178,20 @@ impl ToolRegistry {
     }
 
     pub fn deferred_count(&self) -> usize {
-        self.deferred.len().saturating_sub(self.expanded.len())
+        let expanded_count = self
+            .expanded
+            .read()
+            .map(|e| e.len())
+            .unwrap_or(0);
+        self.deferred.len().saturating_sub(expanded_count)
     }
 
     /// Build the deferred tool index for tool_search.
     pub fn deferred_index(&self) -> Vec<tool_search::DeferredToolEntry> {
+        let expanded = self.expanded.read().unwrap_or_else(|e| e.into_inner());
         self.deferred
             .iter()
-            .filter(|name| !self.expanded.contains(name.as_str()))
+            .filter(|name| !expanded.contains(name.as_str()))
             .filter_map(|name| {
                 self.tools
                     .get(name)

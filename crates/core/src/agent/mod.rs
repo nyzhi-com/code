@@ -344,12 +344,14 @@ pub async fn run_turn_with_content(
         content: final_content,
     });
 
-    let tool_defs = if config.plan_mode {
-        registry.definitions_read_only()
-    } else if let Some(allowed) = &ctx.allowed_tool_names {
-        registry.definitions_filtered(allowed)
-    } else {
-        registry.definitions()
+    let build_tool_defs = || -> Vec<nyzhi_provider::ToolDefinition> {
+        if config.plan_mode {
+            registry.definitions_read_only()
+        } else if let Some(allowed) = &ctx.allowed_tool_names {
+            registry.definitions_filtered(allowed)
+        } else {
+            registry.definitions()
+        }
     };
     let system_prompt = if config.plan_mode {
         format!(
@@ -550,7 +552,7 @@ pub async fn run_turn_with_content(
         let request = ChatRequest {
             model: model_id.clone(),
             messages: thread.messages().to_vec(),
-            tools: tool_defs.clone(),
+            tools: build_tool_defs(),
             max_tokens,
             temperature: None,
             system: Some(system_prompt.clone()),
@@ -627,7 +629,7 @@ pub async fn run_turn_with_content(
                     }
                     StreamEvent::Error(e) => {
                         let _ = event_tx.send(AgentEvent::Error(e.clone()));
-                        return Ok(());
+                        return Err(anyhow::anyhow!("{e}"));
                     }
                     _ => {}
                 }
@@ -781,11 +783,8 @@ pub async fn run_turn_with_content(
                 .into_iter()
                 .map(|(i, output)| {
                     let tc = &acc.tool_calls[i];
-                    // Auto-expand deferred tools on first use
                     if registry.is_deferred(&tc.name) {
-                        // Safety: we can't mutate registry here since it's &, but the
-                        // expansion is tracked via the agent loop re-building tool_defs.
-                        // The tool executed successfully, so it exists.
+                        registry.expand_deferred(&tc.name);
                     }
                     let final_output = crate::context::offload_tool_result_to_file(
                         &tc.name,
@@ -796,6 +795,7 @@ pub async fn run_turn_with_content(
                     .unwrap_or(output);
                     ContentPart::ToolResult {
                         tool_use_id: tc.id.clone(),
+                        tool_name: Some(tc.name.clone()),
                         content: final_output,
                     }
                 })

@@ -256,6 +256,8 @@ pub enum ContentPart {
     #[serde(rename = "tool_result")]
     ToolResult {
         tool_use_id: String,
+        #[serde(default)]
+        tool_name: Option<String>,
         content: String,
     },
 }

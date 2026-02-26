@@ -354,6 +354,33 @@ fn encode_bidi_append_request(hex_data: &str, request_id: &str, append_seqno: u6
     ])
 }
 
+fn format_message_content(content: &MessageContent) -> String {
+    match content {
+        MessageContent::Text(s) => s.clone(),
+        MessageContent::Parts(parts) => {
+            let mut buf = String::new();
+            for part in parts {
+                match part {
+                    ContentPart::Text { text } => buf.push_str(text),
+                    ContentPart::ToolUse { name, input, .. } => {
+                        buf.push_str(&format!("[Tool call: {name}({input})]"));
+                    }
+                    ContentPart::ToolResult {
+                        content,
+                        tool_name,
+                        tool_use_id,
+                    } => {
+                        let label = tool_name.as_deref().unwrap_or(tool_use_id);
+                        buf.push_str(&format!("[Tool result ({label}): {content}]"));
+                    }
+                    ContentPart::Image { .. } => buf.push_str("[Image]"),
+                }
+            }
+            buf
+        }
+    }
+}
+
 fn build_prompt_text(request: &ChatRequest) -> String {
     let mut parts = Vec::new();
     if let Some(sys) = &request.system {
@@ -364,14 +391,17 @@ fn build_prompt_text(request: &ChatRequest) -> String {
     for msg in &request.messages {
         let prefix = match msg.role {
             Role::System => {
-                parts.push(msg.content.as_text().to_string());
+                parts.push(format_message_content(&msg.content));
                 continue;
             }
             Role::User => "User",
             Role::Assistant => "Assistant",
             Role::Tool => "Tool",
         };
-        parts.push(format!("{prefix}: {}", msg.content.as_text()));
+        let text = format_message_content(&msg.content);
+        if !text.is_empty() {
+            parts.push(format!("{prefix}: {text}"));
+        }
     }
     parts.join("\n\n")
 }

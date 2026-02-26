@@ -33,9 +33,13 @@ impl StreamAccumulator {
                 });
             }
             StreamEvent::ToolCallDelta {
-                arguments_delta, ..
+                index,
+                arguments_delta,
             } => {
-                if let Some(tc) = self.tool_calls.last_mut() {
+                let idx = *index as usize;
+                if let Some(tc) = self.tool_calls.get_mut(idx) {
+                    tc.arguments.push_str(arguments_delta);
+                } else if let Some(tc) = self.tool_calls.last_mut() {
                     tc.arguments.push_str(arguments_delta);
                 }
             }

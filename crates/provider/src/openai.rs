@@ -173,6 +173,7 @@ impl OpenAIProvider {
                             ContentPart::ToolResult {
                                 tool_use_id,
                                 content,
+                                ..
                             } => json!({
                                 "role": "tool",
                                 "tool_call_id": tool_use_id,
@@ -317,10 +318,41 @@ impl Provider for OpenAIProvider {
 
         let data: serde_json::Value = resp.json().await?;
         let choice = &data["choices"][0];
-        let content = choice["message"]["content"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let message = &choice["message"];
+
+        let msg_content = {
+            let mut parts = Vec::new();
+            if let Some(text) = message["content"].as_str() {
+                if !text.is_empty() {
+                    parts.push(ContentPart::Text {
+                        text: text.to_string(),
+                    });
+                }
+            }
+            if let Some(tool_calls) = message["tool_calls"].as_array() {
+                for tc in tool_calls {
+                    parts.push(ContentPart::ToolUse {
+                        id: tc["id"].as_str().unwrap_or("").to_string(),
+                        name: tc["function"]["name"].as_str().unwrap_or("").to_string(),
+                        input: serde_json::from_str(
+                            tc["function"]["arguments"].as_str().unwrap_or("{}"),
+                        )
+                        .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                    });
+                }
+            }
+            if parts.len() == 1 {
+                if let ContentPart::Text { text } = &parts[0] {
+                    MessageContent::Text(text.clone())
+                } else {
+                    MessageContent::Parts(parts)
+                }
+            } else if parts.is_empty() {
+                MessageContent::Text(String::new())
+            } else {
+                MessageContent::Parts(parts)
+            }
+        };
 
         let cached = data["usage"]["prompt_tokens_details"]["cached_tokens"]
             .as_u64()
@@ -329,7 +361,7 @@ impl Provider for OpenAIProvider {
         Ok(ChatResponse {
             message: Message {
                 role: Role::Assistant,
-                content: MessageContent::Text(content),
+                content: msg_content,
             },
             usage: Some(Usage {
                 input_tokens: data["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
@@ -429,11 +461,16 @@ impl Provider for OpenAIProvider {
                     }));
                 }
 
-                if data["choices"][0]["finish_reason"].is_string() {
+                let choice = &data["choices"][0];
+                if choice.is_null() {
+                    return Ok(StreamEvent::TextDelta(String::new()));
+                }
+
+                if choice["finish_reason"].is_string() {
                     return Ok(StreamEvent::Done);
                 }
 
-                let delta = &data["choices"][0]["delta"];
+                let delta = &choice["delta"];
 
                 if let Some(content) = delta["content"].as_str() {
                     return Ok(StreamEvent::TextDelta(content.to_string()));
@@ -496,6 +533,7 @@ impl OpenAIProvider {
                             ContentPart::ToolResult {
                                 tool_use_id,
                                 content,
+                                ..
                             } => json!({
                                 "role": "tool",
                                 "tool_call_id": tool_use_id,

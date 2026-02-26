@@ -262,6 +262,7 @@ pub fn microcompact(messages: &mut [Message], storage_dir: &Path) -> usize {
                 if let ContentPart::ToolResult {
                     tool_use_id,
                     content,
+                    ..
                 } = part
                 {
                     if content.len() < MICROCOMPACT_THRESHOLD {
@@ -652,6 +653,7 @@ mod tests {
             role: Role::User,
             content: MessageContent::Parts(vec![ContentPart::ToolResult {
                 tool_use_id: tool_use_id.to_string(),
+                tool_name: None,
                 content: content.to_string(),
             }]),
         }

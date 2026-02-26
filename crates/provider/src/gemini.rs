@@ -194,10 +194,11 @@ impl GeminiProvider {
                             }),
                             ContentPart::ToolResult {
                                 tool_use_id,
+                                tool_name,
                                 content,
                             } => json!({
                                 "functionResponse": {
-                                    "name": tool_use_id,
+                                    "name": tool_name.as_deref().unwrap_or(tool_use_id),
                                     "response": {"result": content},
                                 }
                             }),
@@ -287,10 +288,42 @@ impl Provider for GeminiProvider {
         }
 
         let data: serde_json::Value = resp.json().await?;
-        let content = data["candidates"][0]["content"]["parts"][0]["text"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+
+        let msg_content = if let Some(parts) = data["candidates"][0]["content"]["parts"].as_array()
+        {
+            let mut content_parts = Vec::new();
+            for part in parts {
+                if let Some(text) = part["text"].as_str() {
+                    if !text.is_empty() {
+                        content_parts.push(ContentPart::Text {
+                            text: text.to_string(),
+                        });
+                    }
+                }
+                if let Some(fc) = part.get("functionCall") {
+                    content_parts.push(ContentPart::ToolUse {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        name: fc["name"].as_str().unwrap_or("").to_string(),
+                        input: fc.get("args").cloned().unwrap_or(serde_json::Value::Object(
+                            serde_json::Map::new(),
+                        )),
+                    });
+                }
+            }
+            if content_parts.len() == 1 {
+                if let ContentPart::Text { text } = &content_parts[0] {
+                    MessageContent::Text(text.clone())
+                } else {
+                    MessageContent::Parts(content_parts)
+                }
+            } else if content_parts.is_empty() {
+                MessageContent::Text(String::new())
+            } else {
+                MessageContent::Parts(content_parts)
+            }
+        } else {
+            MessageContent::Text(String::new())
+        };
 
         let cached = data["usageMetadata"]["cachedContentTokenCount"]
             .as_u64()
@@ -299,7 +332,7 @@ impl Provider for GeminiProvider {
         Ok(ChatResponse {
             message: Message {
                 role: Role::Assistant,
-                content: MessageContent::Text(content),
+                content: msg_content,
             },
             usage: Some(Usage {
                 input_tokens: data["usageMetadata"]["promptTokenCount"]
@@ -422,14 +455,26 @@ impl Provider for GeminiProvider {
                             if let Some(text) = part["text"].as_str() {
                                 evts.push(Ok(StreamEvent::TextDelta(text.to_string())));
                             }
-                            if part.get("functionCall").is_some() {
+                            if let Some(fc) = part.get("functionCall") {
+                                let tc_index = evts
+                                    .iter()
+                                    .filter(|e| {
+                                        matches!(e, Ok(StreamEvent::ToolCallStart { .. }))
+                                    })
+                                    .count() as u32;
+                                let tc_id = uuid::Uuid::new_v4().to_string();
                                 evts.push(Ok(StreamEvent::ToolCallStart {
-                                    index: 0,
-                                    id: uuid::Uuid::new_v4().to_string(),
-                                    name: part["functionCall"]["name"]
-                                        .as_str()
-                                        .unwrap_or("")
-                                        .to_string(),
+                                    index: tc_index,
+                                    id: tc_id.clone(),
+                                    name: fc["name"].as_str().unwrap_or("").to_string(),
+                                }));
+                                let args =
+                                    fc.get("args").cloned().unwrap_or(serde_json::Value::Object(
+                                        serde_json::Map::new(),
+                                    ));
+                                evts.push(Ok(StreamEvent::ToolCallDelta {
+                                    index: tc_index,
+                                    arguments_delta: args.to_string(),
                                 }));
                             }
                         }
