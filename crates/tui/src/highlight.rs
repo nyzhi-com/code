@@ -197,17 +197,22 @@ impl SyntaxHighlighter {
 
             match h.highlight_line(line_text, &self.ps) {
                 Ok(ranges) => {
-                    for segment in ranges {
-                        if let Ok(span) = syntect_tui::into_span(segment) {
-                            line_spans
-                                .push(Span::styled(span.content.to_string(), span.style.bg(bg)));
-                        }
+                    for (style, text) in ranges {
+                        let fg = Color::Rgb(
+                            style.foreground.r,
+                            style.foreground.g,
+                            style.foreground.b,
+                        );
+                        line_spans.push(Span::styled(
+                            text.to_string(),
+                            Style::default().fg(fg).bg(bg),
+                        ));
                     }
                 }
                 Err(_) => {
                     line_spans.push(Span::styled(
                         line_text.to_string(),
-                        Style::default().fg(gutter_color),
+                        Style::default().fg(gutter_color).bg(bg),
                     ));
                 }
             }
