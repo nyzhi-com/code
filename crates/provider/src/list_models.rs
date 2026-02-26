@@ -414,17 +414,27 @@ async fn fetch_together(base_url: &str, api_key: Option<&str>) -> Result<Vec<Mod
         .collect())
 }
 
-/// GET https://api.cursor.com/v0/models (Cursor Background Agents API)
+/// POST https://api2.cursor.sh/aiserver.v1.AiService/GetUsableModels (Connect JSON)
 async fn fetch_cursor(api_key: Option<&str>) -> Result<Vec<ModelInfo>> {
     let key = api_key.unwrap_or_default();
     if key.is_empty() {
         return Ok(vec![]);
     }
 
-    let url = "https://api.cursor.com/v0/models";
+    let token = key.split(":::").next().unwrap_or(key);
+    let checksum = crate::cursor::generate_checksum_for_listing(token);
+
+    let url = "https://api2.cursor.sh/aiserver.v1.AiService/GetUsableModels";
     let resp = client()
-        .get(url)
-        .header("Authorization", format!("Bearer {key}"))
+        .post(url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .header("accept", "application/json")
+        .header("connect-protocol-version", "1")
+        .header("x-cursor-checksum", &checksum)
+        .header("x-cursor-client-version", "cli-2025.11.25-d5b3271")
+        .header("x-cursor-client-type", "cli")
+        .body("{}")
         .send()
         .await?;
 
@@ -433,15 +443,29 @@ async fn fetch_cursor(api_key: Option<&str>) -> Result<Vec<ModelInfo>> {
     }
 
     let data: Value = resp.json().await?;
-    let models = data["models"].as_array().cloned().unwrap_or_default();
 
-    Ok(models
-        .iter()
-        .filter_map(|m| {
-            let id = m.as_str()?;
-            Some(ModelInfo {
+    let mut models = Vec::new();
+    if let Some(arr) = data.get("models").and_then(|v| v.as_array()) {
+        for m in arr {
+            let id = m
+                .get("modelId")
+                .or_else(|| m.get("displayModelId"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if id.is_empty() {
+                continue;
+            }
+            let name = m
+                .get("displayName")
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| {
+                    m.get("displayNameShort")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(id)
+                });
+            models.push(ModelInfo {
                 id: id.to_string(),
-                name: humanize_model_id(id),
+                name: name.to_string(),
                 provider: "cursor".to_string(),
                 context_window: 200_000,
                 max_output_tokens: 64_000,
@@ -454,9 +478,36 @@ async fn fetch_cursor(api_key: Option<&str>) -> Result<Vec<ModelInfo>> {
                 cache_write_price_per_m: 0.0,
                 tier: ModelTier::Medium,
                 thinking: None,
-            })
-        })
-        .collect())
+            });
+        }
+    }
+
+    if models.is_empty() {
+        if let Some(arr) = data.get("models").and_then(|v| v.as_array()) {
+            for m in arr {
+                if let Some(id) = m.as_str() {
+                    models.push(ModelInfo {
+                        id: id.to_string(),
+                        name: humanize_model_id(id),
+                        provider: "cursor".to_string(),
+                        context_window: 200_000,
+                        max_output_tokens: 64_000,
+                        supports_tools: true,
+                        supports_streaming: true,
+                        supports_vision: true,
+                        input_price_per_m: 0.0,
+                        output_price_per_m: 0.0,
+                        cache_read_price_per_m: 0.0,
+                        cache_write_price_per_m: 0.0,
+                        tier: ModelTier::Medium,
+                        thinking: None,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(models)
 }
 
 fn humanize_model_id(id: &str) -> String {

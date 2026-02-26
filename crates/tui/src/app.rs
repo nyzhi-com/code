@@ -5,8 +5,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use crossterm::event::{
-    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyCode, KeyModifiers,
+    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyModifiers,
 };
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
@@ -363,6 +362,18 @@ impl App {
         self.search_match_idx = 0;
     }
 
+    fn try_save_session(&self, thread: Option<&nyzhi_core::conversation::Thread>) {
+        if let Some(t) = thread {
+            if t.message_count() > 0 {
+                let _ = nyzhi_core::session::save_session(
+                    t,
+                    &self.provider_name,
+                    &self.model_name,
+                );
+            }
+        }
+    }
+
     pub async fn run(
         &mut self,
         mut provider: Option<std::sync::Arc<dyn Provider>>,
@@ -443,7 +454,6 @@ impl App {
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
         io::stdout().execute(EnableBracketedPaste)?;
-        io::stdout().execute(EnableMouseCapture)?;
 
         let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
@@ -826,36 +836,37 @@ impl App {
                             if let Some(fg) = self.foreground_task.take() {
                                 fg.join_handle.abort();
                                 thread = Some(fg.thread_snapshot);
-                                if !self.current_stream.is_empty() {
-                                    self.items.push(DisplayItem::Message {
-                                        role: "assistant".to_string(),
-                                        content: std::mem::take(&mut self.current_stream),
-                                    });
+                            }
+                            if !self.current_stream.is_empty() {
+                                self.items.push(DisplayItem::Message {
+                                    role: "assistant".to_string(),
+                                    content: std::mem::take(&mut self.current_stream),
+                                });
+                            }
+                            self.thinking_stream.clear();
+                            self.stream_start = None;
+                            self.stream_token_count = 0;
+                            self.turn_start = None;
+                            self.mode = AppMode::Input;
+                            self.try_save_session(thread.as_ref());
+                            if self.autopilot.is_some() {
+                                if let Some(ref mut ap) = self.autopilot {
+                                    ap.cancel();
+                                    let _ = nyzhi_core::autopilot::save_state(
+                                        &tool_ctx.project_root,
+                                        ap,
+                                    );
                                 }
-                                self.thinking_stream.clear();
-                                self.stream_start = None;
-                                self.stream_token_count = 0;
-                                self.turn_start = None;
-                                self.mode = AppMode::Input;
-                                if self.autopilot.is_some() {
-                                    if let Some(ref mut ap) = self.autopilot {
-                                        ap.cancel();
-                                        let _ = nyzhi_core::autopilot::save_state(
-                                            &tool_ctx.project_root,
-                                            ap,
-                                        );
-                                    }
-                                    self.autopilot = None;
-                                    self.items.push(DisplayItem::Message {
-                                        role: "system".to_string(),
-                                        content: "Autopilot cancelled.".to_string(),
-                                    });
-                                } else {
-                                    self.items.push(DisplayItem::Message {
-                                        role: "system".to_string(),
-                                        content: "Cancelled.".to_string(),
-                                    });
-                                }
+                                self.autopilot = None;
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Autopilot cancelled.".to_string(),
+                                });
+                            } else {
+                                self.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: "Cancelled.".to_string(),
+                                });
                             }
                         } else if key.code == KeyCode::Char('f')
                             && key.modifiers.contains(KeyModifiers::CONTROL)
@@ -884,11 +895,11 @@ impl App {
                             }
                         } else if matches!(self.mode, AppMode::AwaitingApproval) {
                             match key.code {
+                                KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                                    self.respond_approval(false).await;
+                                }
                                 KeyCode::Char('y') | KeyCode::Char('Y') => {
                                     self.respond_approval(true).await;
-                                }
-                                KeyCode::Char('n') | KeyCode::Char('N') => {
-                                    self.respond_approval(false).await;
                                 }
                                 KeyCode::Left => {
                                     if self.approval_cursor > 0 {
@@ -940,23 +951,7 @@ impl App {
                             .await;
                         }
                     }
-                    Event::Mouse(mouse) => match mouse.kind {
-                        crossterm::event::MouseEventKind::ScrollUp => {
-                            if let Some(ref mut tp) = self.todo_panel {
-                                tp.scroll_up();
-                            } else {
-                                self.scroll_offset = self.scroll_offset.saturating_add(3);
-                            }
-                        }
-                        crossterm::event::MouseEventKind::ScrollDown => {
-                            if let Some(ref mut tp) = self.todo_panel {
-                                tp.scroll_down();
-                            } else {
-                                self.scroll_offset = self.scroll_offset.saturating_sub(3);
-                            }
-                        }
-                        _ => {}
-                    },
+                    Event::Mouse(_) => {},
                     _ => {}
                 }
             }
@@ -1238,6 +1233,7 @@ impl App {
                 self.stream_token_count = 0;
                 self.turn_start = None;
                 self.mode = AppMode::Input;
+                self.try_save_session(thread.as_ref());
             }
 
             // --- Background task completion ---
@@ -1721,15 +1717,7 @@ impl App {
                                 });
                             }
                         }
-                        if let Some(t) = thread.as_ref() {
-                            if t.message_count() > 0 {
-                                let _ = nyzhi_core::session::save_session(
-                                    t,
-                                    &self.provider_name,
-                                    &self.model_name,
-                                );
-                            }
-                        }
+                        self.try_save_session(thread.as_ref());
                         if !self.hooks_config.is_empty() {
                             let hooks = self.hooks_config.clone();
                             let hook_cwd = tool_ctx.cwd.clone();
@@ -1930,9 +1918,9 @@ impl App {
         if let Some(fg) = self.foreground_task.take() {
             fg.join_handle.abort();
         }
+        self.try_save_session(thread.as_ref());
         self.history.save();
 
-        io::stdout().execute(DisableMouseCapture)?;
         io::stdout().execute(DisableBracketedPaste)?;
         terminal::disable_raw_mode()?;
         io::stdout().execute(LeaveAlternateScreen)?;
@@ -3225,7 +3213,6 @@ impl App {
         let tmp_path = std::env::temp_dir().join(format!("nyzhi_edit_{}.md", std::process::id()));
         std::fs::write(&tmp_path, &self.input)?;
 
-        io::stdout().execute(DisableMouseCapture)?;
         terminal::disable_raw_mode()?;
         io::stdout().execute(LeaveAlternateScreen)?;
 
@@ -3242,7 +3229,6 @@ impl App {
 
         terminal::enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
-        io::stdout().execute(EnableMouseCapture)?;
         io::stdout().flush()?;
         // Force full redraw
         terminal.clear()?;

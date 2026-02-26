@@ -135,6 +135,9 @@ pub async fn handle_key(
                 app.completion = None;
             } else if app.search_query.is_some() {
                 app.clear_search();
+            } else if !app.input.is_empty() {
+                app.input.clear();
+                app.cursor_pos = 0;
             }
         }
         KeyCode::Enter => {

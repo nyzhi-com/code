@@ -5,73 +5,12 @@ use crate::app::{App, DiffLineKind, DisplayItem, ToolStatus};
 use crate::highlight::{self, SyntaxHighlighter};
 use crate::theme::{Theme, ThemeMode};
 
-fn format_tokens(count: u64) -> String {
-    if count >= 1_000_000 {
-        format!("{:.1}M", count as f64 / 1_000_000.0)
-    } else if count >= 1_000 {
-        format!("{:.1}k", count as f64 / 1_000.0)
-    } else {
-        count.to_string()
-    }
-}
-
-fn format_cost(usd: f64) -> String {
-    if usd < 0.001 {
-        return String::new();
-    }
-    if usd < 1.0 {
-        format!("${:.3}", usd)
-    } else {
-        format!("${:.2}", usd)
-    }
-}
-
-fn render_session_bar<'a>(app: &App, width: u16, theme: &Theme) -> Line<'a> {
-    let left = format!(" ┃ {}", app.session_title);
-
-    let usage = &app.session_usage;
-    let total_tokens = usage.total_input_tokens + usage.total_output_tokens;
-    let mut right_parts: Vec<String> = Vec::new();
-    if total_tokens > 0 {
-        right_parts.push(format!("{}tok", format_tokens(total_tokens)));
-    }
-    if app.context_window > 0 && app.context_used_tokens > 0 {
-        let pct = (app.context_used_tokens as f64 / app.context_window as f64 * 100.0) as u8;
-        right_parts.push(format!("ctx:{pct}%"));
-    }
-    let cost = format_cost(usage.total_cost_usd);
-    if !cost.is_empty() {
-        right_parts.push(cost);
-    }
-    let right = right_parts.join("  ");
-
-    let left_len = left.len();
-    let right_len = right.len();
-    let gap = (width as usize).saturating_sub(left_len + right_len + 1);
-
-    Line::from(vec![
-        Span::styled(" ┃", Style::default().fg(theme.accent).bold()),
-        Span::styled(
-            format!(" {}", app.session_title),
-            Style::default().fg(theme.text_primary).bold(),
-        ),
-        Span::raw(" ".repeat(gap.max(1))),
-        Span::styled(
-            format!("{right} "),
-            Style::default().fg(theme.text_tertiary),
-        ),
-    ])
-}
-
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let inner = area;
     let w = inner.width;
 
     let dark = theme.mode == ThemeMode::Dark;
     let mut lines: Vec<Line> = Vec::new();
-
-    lines.push(render_session_bar(app, w, theme));
-    lines.push(Line::from(""));
 
     let search_q = app.search_query.as_deref();
     let current_match_item = if !app.search_matches.is_empty() {

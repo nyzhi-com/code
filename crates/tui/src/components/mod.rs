@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod footer;
+pub mod header;
 pub mod input_box;
 pub mod plan_banner;
 pub mod plan_panel;
