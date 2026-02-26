@@ -24,22 +24,29 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
         area,
     );
 
-    let border_area = Rect::new(area.x, area.y, area.width, 1);
-    let rule = "─".repeat(area.width as usize);
-    frame.render_widget(
-        Paragraph::new(Span::styled(
-            rule,
-            Style::default().fg(theme.border_default),
-        ))
-        .style(Style::default().bg(theme.bg_surface)),
-        border_area,
+    let accent_w = 1u16;
+    for row in 0..area.height {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                "┃",
+                Style::default().fg(theme.accent),
+            ))
+            .style(Style::default().bg(theme.bg_surface)),
+            Rect::new(area.x, area.y + row, accent_w, 1),
+        );
+    }
+
+    let inner = Rect::new(
+        area.x + accent_w + 1,
+        area.y,
+        area.width.saturating_sub(accent_w + 1),
+        area.height,
     );
 
     let status_h = 1u16;
-    let content_y = area.y + 1;
-    let content_h = area.height.saturating_sub(1 + status_h);
-    let input_area = Rect::new(area.x, content_y, area.width, content_h.max(1));
-    let status_area = Rect::new(area.x, content_y + content_h.max(1), area.width, status_h);
+    let content_h = inner.height.saturating_sub(status_h);
+    let input_area = Rect::new(inner.x, inner.y, inner.width, content_h.max(1));
+    let status_area = Rect::new(inner.x, inner.y + content_h.max(1), inner.width, status_h);
 
     match app.mode {
         AppMode::Streaming => render_streaming(frame, input_area, app, theme, spinner),
@@ -83,7 +90,7 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let mut spans: Vec<Span> = vec![
         Span::styled(
-            format!(" {mode_label}"),
+            mode_label.to_string(),
             Style::default().fg(mode_color).bold(),
         ),
         Span::styled("  ", Style::default()),
@@ -110,17 +117,25 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
+    let pad_top = if area.height > 2 { 1u16 } else { 0 };
+    let content_area = Rect::new(
+        area.x,
+        area.y + pad_top,
+        area.width,
+        area.height.saturating_sub(pad_top),
+    );
+
     if app.input.is_empty() {
-        let placeholder = " Ask anything... \"What is the tech stack of this project?\"";
+        let placeholder = "Ask anything... \"What is the tech stack of this project?\"";
         frame.render_widget(
             Paragraph::new(Span::styled(
                 placeholder,
                 Style::default().fg(theme.text_disabled),
             ))
             .style(Style::default().bg(theme.bg_surface)),
-            area,
+            content_area,
         );
-        frame.set_cursor_position(Position::new(area.x + 1, area.y));
+        frame.set_cursor_position(Position::new(content_area.x, content_area.y));
         return;
     }
 
@@ -129,14 +144,14 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         .split('\n')
         .map(|text| {
             Line::from(Span::styled(
-                format!(" {text}"),
+                text.to_string(),
                 Style::default().fg(theme.text_primary),
             ))
         })
         .collect();
 
     let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
-    let visible_height = area.height;
+    let visible_height = content_area.height;
     let scroll = if visible_height > 0 && cursor_row >= visible_height {
         cursor_row - visible_height + 1
     } else {
@@ -146,11 +161,11 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let paragraph = Paragraph::new(lines)
         .style(Style::default().bg(theme.bg_surface))
         .scroll((scroll, 0));
-    frame.render_widget(paragraph, area);
+    frame.render_widget(paragraph, content_area);
 
     frame.set_cursor_position(Position::new(
-        area.x + 1 + cursor_col,
-        area.y + cursor_row - scroll,
+        content_area.x + cursor_col,
+        content_area.y + cursor_row - scroll,
     ));
 }
 
@@ -161,24 +176,33 @@ fn render_streaming(
     theme: &Theme,
     spinner: &SpinnerState,
 ) {
+    let pad_top = if area.height > 2 { 1u16 } else { 0 };
+    let content_area = Rect::new(
+        area.x,
+        area.y + pad_top,
+        area.width,
+        area.height.saturating_sub(pad_top),
+    );
+
     if !app.input.is_empty() {
         let lines: Vec<Line> = app
             .input
             .split('\n')
             .map(|text| {
                 Line::from(Span::styled(
-                    format!(" {text}"),
+                    text.to_string(),
                     Style::default().fg(theme.text_primary),
                 ))
             })
             .collect();
         let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_surface));
-        frame.render_widget(paragraph, area);
+        frame.render_widget(paragraph, content_area);
 
         let queue_hint = format!(" queued:{} ", app.message_queue.len() + 1);
         let hint_w = queue_hint.len() as u16;
-        if area.width > hint_w + 2 {
-            let hint_area = Rect::new(area.x + area.width - hint_w, area.y, hint_w, 1);
+        if content_area.width > hint_w + 2 {
+            let hint_area =
+                Rect::new(content_area.x + content_area.width - hint_w, content_area.y, hint_w, 1);
             frame.render_widget(
                 Paragraph::new(Span::styled(
                     queue_hint,
@@ -192,13 +216,13 @@ fn render_streaming(
 
         let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
         frame.set_cursor_position(Position::new(
-            area.x + 1 + cursor_col,
-            area.y + cursor_row,
+            content_area.x + cursor_col,
+            content_area.y + cursor_row,
         ));
     } else {
         let mut spans: Vec<Span> = vec![
             Span::styled(
-                format!(" {} ", spinner.current_frame()),
+                format!("{} ", spinner.current_frame()),
                 Style::default().fg(theme.accent),
             ),
             Span::styled("thinking", Style::default().fg(theme.text_tertiary)),
@@ -236,7 +260,7 @@ fn render_streaming(
 
         frame.render_widget(
             Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg_surface)),
-            area,
+            content_area,
         );
     }
 }
@@ -249,7 +273,7 @@ fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     if let Some((ref tool, ref args)) = app.pending_approval_context {
         spans.push(Span::styled(
-            " ? ",
+            "? ",
             Style::default().fg(theme.warning).bold(),
         ));
         spans.push(Span::styled(
@@ -272,7 +296,7 @@ fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         }
     } else {
         spans.push(Span::styled(
-            " ? ",
+            "? ",
             Style::default().fg(theme.warning).bold(),
         ));
         spans.push(Span::styled(
@@ -312,7 +336,7 @@ fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
 fn render_question(frame: &mut Frame, area: Rect, theme: &Theme) {
     let content = Line::from(vec![
-        Span::styled(" ? ", Style::default().fg(theme.info).bold()),
+        Span::styled("? ", Style::default().fg(theme.info).bold()),
         Span::styled(
             "select an option above",
             Style::default().fg(theme.text_secondary),
@@ -471,7 +495,7 @@ fn render_history_search(
 
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::from(vec![
-        Span::styled(" search: ", Style::default().fg(theme.accent).bold()),
+        Span::styled("search: ", Style::default().fg(theme.accent).bold()),
         Span::styled(&search.query, Style::default().fg(theme.text_primary)),
     ]));
 
@@ -483,12 +507,12 @@ fn render_history_search(
             display
         };
         lines.push(Line::from(Span::styled(
-            format!(" {truncated}"),
+            truncated,
             Style::default().fg(theme.text_secondary),
         )));
         if matches.len() > 1 {
             lines.push(Line::from(Span::styled(
-                format!("  [{}/{}]", search.selected + 1, matches.len()),
+                format!(" [{}/{}]", search.selected + 1, matches.len()),
                 Style::default().fg(theme.text_tertiary),
             )));
         }
@@ -502,6 +526,6 @@ fn render_history_search(
     let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_surface));
     frame.render_widget(paragraph, area);
 
-    let cursor_col = " search: ".len() as u16 + search.query.len() as u16;
+    let cursor_col = "search: ".len() as u16 + search.query.len() as u16;
     frame.set_cursor_position(Position::new(area.x + cursor_col, area.y));
 }

@@ -19,7 +19,7 @@ pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState)
     } else {
         app.input.lines().count().max(1) as u16
     };
-    let input_height = (input_lines + 2).max(3).min(11);
+    let input_height = (input_lines + 2).max(4).min(12);
     let banner_height = update_banner::height(&app.update_status);
     let plan_height = plan_banner::height(app.plan_mode);
 
