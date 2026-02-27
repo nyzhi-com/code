@@ -1,174 +1,136 @@
 # Authentication
 
-`nyzhi-auth` supports API keys, OAuth tokens, token refresh, and multi-account rotation.
+Source of truth:
 
-## Credential resolution order
+- `crates/auth/src/lib.rs`
+- `crates/auth/src/token_store.rs`
+- `crates/auth/src/oauth/*`
+- `crates/cli/src/main.rs` (`login`, `logout`, `whoami`)
+- `crates/tui/src/app.rs` + `crates/tui/src/input.rs` (`/connect`)
 
-### Synchronous path (`resolve_credential`)
+## Default Auth Flow
 
-1. Config key (`[provider.<id>].api_key`)
-2. Environment variable (derived from provider definition)
-3. Token store (`auth.json`)
-   - if token has refresh token and is **not expired**, use bearer token
-   - if token has no refresh token, treat as API key
-4. Error with provider/env hint
+For interactive use, default to:
 
-### Async path (`resolve_credential_async`)
+- `nyz` -> `/connect`
 
-1. Config key
-2. Environment variable
-3. `refresh_if_needed(provider)` (refreshes expired OAuth token when possible)
-4. Token store fallback
-5. Error with provider/env hint
+`/connect` opens provider selection and then uses:
 
-## API key auth
+- OAuth when available
+- API key entry as fallback
+
+CLI fallback remains:
+
+- `nyz login [provider]`
+
+## Credential Resolution Order
+
+`resolve_credential(provider, config_key)` resolves in this order:
+
+1. provider `api_key` from config (`[provider.<id>].api_key`)
+2. provider env var (`OPENAI_API_KEY`, etc.)
+3. stored token/account from local token store
+
+If no credentials are found:
+
+- error includes expected env var name
+- OAuth-capable providers include hint to use `/connect` or run `nyz login <provider>`
+
+## Async Resolution
+
+`resolve_credential_async` follows similar precedence, but can refresh OAuth token via `oauth::refresh::refresh_if_needed` before fallback to stored token.
+
+## CLI Commands
 
 ```bash
-export OPENAI_API_KEY="..."
-export ANTHROPIC_API_KEY="..."
-export GEMINI_API_KEY="..."
+nyz login [provider]
+nyz logout <provider>
+nyz whoami
 ```
 
-Or store inline:
+Behavior:
 
-```toml
-[provider.openai]
-api_key = "..."
-```
+- `login` without provider shows built-in provider picker
+- OAuth is attempted for OAuth-capable providers
+- API key prompt is used when OAuth is unavailable or fails
+- `logout` removes stored token entries for provider
+- `whoami` prints status for built-ins plus custom configured providers
 
-## OAuth flows
+## Auth Status Values
 
-Implemented OAuth entrypoints:
+`auth_status(provider)` returns:
 
-- `openai` (PKCE)
-- `gemini` / `google` (PKCE)
-- `anthropic` (PKCE)
-- `chatgpt` (delegates to OpenAI login and relabels provider)
-- `cursor` (local Cursor credential extraction)
+- `env` when env var is available
+- `connected` when token/account exists in store
+- `not connected` otherwise
 
-### OpenAI PKCE
+## Token Store and Multi-account Model
 
-- authorize URL: `https://auth.openai.com/oauth/authorize`
-- token URL: `https://auth.openai.com/oauth/token`
-- fixed redirect: `http://localhost:1455/auth/callback`
-- scope: `openid profile email offline_access`
+Token storage is JSON-based (`auth.json`) and supports multi-account per provider.
 
-### Google/Gemini PKCE
+Important structures:
 
-- authorize URL: `https://accounts.google.com/o/oauth2/v2/auth`
-- token URL: `https://oauth2.googleapis.com/token`
-- redirect: random local port (`127.0.0.1:<port>/oauth2callback`)
-- scopes include:
-  - `openid`
-  - `email`
-  - `cloud-platform`
-  - `generative-language`
-  - `cloudaicompanion`
+- `StoredToken`:
+  - `access_token`
+  - `refresh_token`
+  - `expires_at`
+  - `provider`
+- `AccountEntry`:
+  - `label`
+  - `token`
+  - `active`
+  - `rate_limited_until`
 
-### Anthropic PKCE
+Capabilities:
 
-- authorize URL: `https://console.anthropic.com/oauth/authorize`
-- token URL: `https://console.anthropic.com/oauth/token`
-- redirect: random local port (`127.0.0.1:<port>/oauth2callback`)
-- scope: `user:inference`
+- active-account selection
+- labeled account storage
+- account listing/removal
+- rate-limit rotation (`rotate_on_rate_limit`)
 
-### ChatGPT
+## Rate Limit Rotation
 
-`chatgpt::login()` reuses OpenAI login and stores the token under provider id `chatgpt`.
+`handle_rate_limit(provider)` attempts rotation to another account for 60 seconds.
 
-### Cursor
+If another account is available:
 
-Cursor auth is not browser OAuth in nyzhi:
+- active account is marked rate-limited
+- next eligible account becomes active
+- credential is returned to runtime
 
-- reads Cursor SQLite state DB (`state.vscdb`) from OS-specific Cursor global storage path
-- extracts:
-  - `cursorAuth/accessToken`
-  - `cursorAuth/cachedSignUpType` (machine id)
-- stores combined value as `access_token:::machine_id`
+If no eligible fallback account exists:
 
-## CLI login behavior
+- returns `None`
 
-`nyz login`:
+## Storage Locations
 
-- prompts for provider when omitted
-- attempts OAuth if the provider definition says `supports_oauth = true`
-- on OAuth failure (or non-OAuth provider), falls back to API key prompt
+- auth store: `<data_local_dir>/nyzhi/auth.json`
+  - typically `~/.local/share/nyzhi/auth.json` (platform dependent)
+- migration from legacy keyring entries exists for selected providers
 
-## Token storage
+## Provider Env Vars
 
-Auth data is persisted at:
-
-- `<data_local_dir>/nyzhi/auth.json`
-
-Schema supports multiple accounts per provider:
-
-```json
-{
-  "openai": [
-    {
-      "label": "account-2",
-      "token": {
-        "access_token": "...",
-        "refresh_token": "...",
-        "expires_at": 1760000000,
-        "provider": "openai"
-      },
-      "active": true,
-      "rate_limited_until": null
-    }
-  ]
-}
-```
-
-Legacy keyring migration still exists (`migrate_from_keyring()`).
-
-## Refresh behavior
-
-Expired check uses a 60-second buffer:
-
-- expired when `now >= expires_at - 60`
-
-Refresh providers:
-
-- `gemini` / `google`
-- `openai` / `chatgpt`
-- `anthropic`
-
-If refresh succeeds, token is overwritten in store.
-
-## Multi-account rotation on 429
-
-`handle_rate_limit(provider)` can rotate to next account:
-
-- marks active account as rate-limited for `wait_seconds`
-- activates next available non-rate-limited account
-- if none available, restores first account active and returns `None`
-
-## Auth status
-
-`nyz whoami` status values:
-
-- `env`
-- `connected`
-- `not connected`
-
-For providers with multiple accounts, CLI prints account labels, active marker, and rate-limit marker.
-
-## Provider env vars
+Provider env vars are defined in `BUILT_IN_PROVIDERS` (`crates/config/src/lib.rs`), including:
 
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY`
 - `CURSOR_API_KEY`
+- `GITHUB_COPILOT_TOKEN`
 - `OPENROUTER_API_KEY`
 - `GROQ_API_KEY`
 - `TOGETHER_API_KEY`
 - `DEEPSEEK_API_KEY`
 - `OLLAMA_API_KEY`
 - `MOONSHOT_API_KEY`
-- `KIMI_CODING_API_KEY`
 - `MINIMAX_API_KEY`
-- `MINIMAX_CODING_API_KEY`
 - `ZHIPU_API_KEY`
-- `ZHIPU_CODING_API_KEY`
-- `CODEX_API_KEY`
+- provider-specific coding-plan variants
+
+See `docs/providers.md` for full provider metadata.
+
+## Security Notes
+
+- `nyz logout <provider>` clears local stored token entries for that provider.
+- Do not commit config files containing `api_key`.
+- Prefer environment variables or OAuth token storage for shared repositories.

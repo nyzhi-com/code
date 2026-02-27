@@ -25,12 +25,20 @@ pub fn memory_dir(root: &Path) -> PathBuf {
         .join("memory")
 }
 
-/// User-level memory file.
-pub fn user_memory_path() -> PathBuf {
-    dirs::data_dir()
+fn nyzhi_home() -> PathBuf {
+    dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nyzhi")
-        .join("MEMORY.md")
+        .join(".nyzhi")
+}
+
+/// User-level memory file (~/.nyzhi/MEMORY.md).
+pub fn user_memory_path() -> PathBuf {
+    nyzhi_home().join("MEMORY.md")
+}
+
+/// User-level rules directory (~/.nyzhi/rules/).
+pub fn user_rules_dir() -> PathBuf {
+    nyzhi_home().join("rules")
 }
 
 /// Read the MEMORY.md index for a project. Returns the first MAX_INJECTION_LINES lines.

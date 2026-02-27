@@ -1,25 +1,19 @@
 # Hooks
 
-Hooks execute automation around agent events (formatting, checks, policy gates, teammate feedback).
+Source of truth:
 
-## Config schema
+- `crates/config/src/lib.rs` (`HookConfig`, `HookEvent`, `HookType`)
+- `crates/core/src/hooks.rs`
 
-```toml
-[[agent.hooks]]
-event = "after_edit"
-command = "cargo fmt -- {file}"
-pattern = "*.rs"
-timeout = 30
-block = false
-tool_name = "write,edit"
-hook_type = "command" # command | prompt | agent
-```
+## Hook Configuration
 
-Fields come from `HookConfig`:
+Hooks are configured under `[[agent.hooks]]`.
 
-- `event`
-- `command`
-- `hook_type`
+Fields:
+
+- `event` (required)
+- `command` (optional for `prompt`/`agent` types when `prompt`/`instructions` are provided)
+- `hook_type` (`command`, `prompt`, `agent`; default `command`)
 - `prompt`
 - `instructions`
 - `tools`
@@ -27,9 +21,11 @@ Fields come from `HookConfig`:
 - `pattern`
 - `tool_name`
 - `block`
-- `timeout`
+- `timeout` (seconds, default `30`)
 
-## Event names (exact)
+## Events
+
+Supported `HookEvent` values:
 
 - `session_start`
 - `user_prompt_submit`
@@ -49,93 +45,98 @@ Fields come from `HookConfig`:
 - `teammate_idle`
 - `task_completed`
 
-## Built-in execution paths
+## Hook Types
 
-Primary runtime helpers in `core/hooks.rs`:
+### `command`
 
-- `run_after_edit_hooks(...)`
-- `run_after_turn_hooks(...)`
-- `run_pre_tool_hooks(...)`
-- `run_post_tool_hooks(...)`
-- `run_teammate_idle_hooks(...)`
-- `run_task_completed_hooks(...)`
+- executes shell command
+- receives optional JSON stdin context for event-driven hooks
+- returns stdout/stderr/exit code
 
-## Pattern behavior
+### `prompt`
+
+- injects prompt text (`prompt` or `instructions`) into hook output channel
+- optional `command` can append command output as context
+- if both prompt/instructions are empty and command exists, falls back to command execution
+
+### `agent`
+
+- emits agent instructions (`instructions` or `prompt`)
+- optional `command` output can be appended as context
+- if no instructions/prompt and no command fallback, returns non-zero error result
+
+## Filtering
+
+Optional filters:
+
+- `pattern`: file pattern matching (for edit/file-related hooks)
+- `tool_name`: comma-separated tool names for tool-use events
 
 `pattern` matching supports:
 
-- extension style: `*.rs`
-- comma lists: `*.ts,*.tsx`
-- substring path checks: `src/`
+- `*.ext` style suffix checks
+- substring checks
 
-## Placeholder behavior
+## Blocking Semantics
 
-`after_edit` hooks replace `{file}` in command with changed file path.
+### Pre-tool blocking
 
-## Tool filters
+`run_pre_tool_hooks` returns `(results, blocked)`.
 
-`tool_name` supports comma-separated values and matches against `context.tool_name`.
+A pre-tool hook can block execution when:
 
-## Blocking semantics
+- event is `pre_tool_use`
+- hook has `block = true`
+- corresponding hook execution returns non-zero exit code
 
-`block = true` is honored for pre-tool hooks:
+### Teammate/task feedback semantics
 
-- non-zero hook result can block tool execution
+For:
 
-## Hook types
+- `teammate_idle`
+- `task_completed`
 
-- `command`: real shell command (`sh -c`), timeout, optional JSON stdin context.
-- `prompt`: currently runs `command` as fallback when provided; without a command it fails closed with non-zero exit.
-- `agent`: currently runs `command` as fallback when provided; without a command it fails closed with non-zero exit.
+exit code `2` is interpreted as feedback signal:
 
-`command` remains the production path until native prompt/agent hook execution is implemented.
-
-## Team hook special code
-
-For `teammate_idle` and `task_completed` handlers:
-
-- exit code `2` is treated as rejection/feedback signal
-- feedback is taken from hook `stderr`
-
-## Result object
-
-Every run returns:
-
-- `command`
-- `stdout`
-- `stderr`
-- `exit_code`
-- `timed_out`
-- `hook_type`
+- teammate idle: keep teammate working with stderr feedback
+- task completed: reject completion with stderr feedback
 
 ## Examples
 
-### Format Rust files after edits
+### After-edit formatter
 
 ```toml
 [[agent.hooks]]
 event = "after_edit"
-command = "cargo fmt -- {file}"
+hook_type = "command"
+command = "cargo fmt --all"
 pattern = "*.rs"
-timeout = 30
+timeout = 60
 ```
 
-### Gate commits with tests
+### Pre-tool policy gate
 
 ```toml
 [[agent.hooks]]
 event = "pre_tool_use"
-tool_name = "git_commit"
-command = "cargo test -q"
+hook_type = "command"
+tool_name = "git_commit,git_checkout"
+command = "scripts/policy-check.sh"
 block = true
-timeout = 120
 ```
 
-### Run lint after each turn
+### Prompt-injection quality hint
 
 ```toml
 [[agent.hooks]]
 event = "after_turn"
-command = "cargo clippy --all-targets --all-features -- -D warnings"
-timeout = 120
+hook_type = "prompt"
+prompt = "Before finalizing, confirm tests and lint were run."
 ```
+
+## Operational Guidance
+
+- keep hooks deterministic and fast
+- set explicit `timeout` for network-heavy hooks
+- use `block` sparingly and only for hard policy gates
+- prefer event-specific filtering (`tool_name`, `pattern`) to avoid noisy global hooks

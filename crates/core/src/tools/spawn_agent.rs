@@ -120,15 +120,20 @@ impl Tool for SpawnAgentTool {
 
         apply_role(&mut agent_config, &role);
 
-        if role.model_override.is_none() {
-            if let Some(registry) = &ctx.model_registry {
-                let parent_model = ctx.current_model.as_deref().unwrap_or("");
-                let tiered_model = crate::agent_roles::resolve_model_for_tier(
-                    role.model_tier,
-                    registry,
-                    parent_model,
-                );
-                agent_config.subagent_model = Some(tiered_model);
+        if let Some(ref overrides) = ctx.subagent_model_overrides {
+            let rn = role_name.unwrap_or("default");
+            let runtime_override = overrides.get(rn).await;
+            crate::agent_roles::apply_model_override(&mut agent_config, rn, runtime_override);
+        }
+
+        if let Some(ref shared_ctx) = ctx.shared_context {
+            if let Ok(sc) = shared_ctx.try_lock() {
+                let briefing = sc.build_briefing();
+                if !briefing.is_empty() {
+                    agent_config.system_prompt.push_str(&format!(
+                        "\n\n# Context Briefing (from parent)\n{briefing}"
+                    ));
+                }
             }
         }
 

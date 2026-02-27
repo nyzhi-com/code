@@ -1537,6 +1537,87 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/subagent-config" || input.starts_with("/subagent-config ") {
+                let arg = input
+                    .strip_prefix("/subagent-config")
+                    .unwrap()
+                    .trim();
+                let overrides = &app.subagent_model_overrides;
+                if arg.is_empty() {
+                    let all = overrides.all().await;
+                    let built_in = nyzhi_core::agent_roles::built_in_roles();
+                    let mut lines = Vec::new();
+                    lines.push("## Subagent Model Config\n".to_string());
+                    let mut role_names: Vec<String> = built_in.keys().cloned().collect();
+                    role_names.sort();
+                    for name in &role_names {
+                        let model = all
+                            .get(name)
+                            .cloned()
+                            .or_else(|| {
+                                built_in
+                                    .get(name)
+                                    .and_then(|r| r.model_override.clone())
+                            })
+                            .unwrap_or_else(|| "(inherit parent)".to_string());
+                        lines.push(format!("- **{name}**: {model}"));
+                    }
+                    for (name, model) in &all {
+                        if !role_names.contains(name) {
+                            lines.push(format!("- **{name}**: {model}"));
+                        }
+                    }
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: lines.join("\n"),
+                    });
+                } else if let Some(rest) = arg.strip_prefix("set ") {
+                    let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+                    if parts.len() == 2 {
+                        let role = parts[0].trim();
+                        let model = parts[1].trim();
+                        overrides.set(role, model.to_string()).await;
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Model for `{role}` set to `{model}`."),
+                        });
+                    } else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Usage: /subagent-config set <role> <model>".to_string(),
+                        });
+                    }
+                } else if arg == "reset" {
+                    overrides.clear().await;
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "All subagent model overrides cleared.".to_string(),
+                    });
+                } else if let Some(role) = arg.strip_prefix("reset ") {
+                    let role = role.trim();
+                    if overrides.remove(role).await {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Model override for `{role}` cleared."),
+                        });
+                    } else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("No override set for `{role}`."),
+                        });
+                    }
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /subagent-config [set <role> <model> | reset [role]]"
+                            .to_string(),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
             if input == "/team" || input.starts_with("/team ") {
                 let arg = input.strip_prefix("/team").unwrap().trim();
                 let parts: Vec<&str> = arg.splitn(2, ' ').collect();
@@ -1573,6 +1654,242 @@ pub async fn handle_key(
                         content:
                             "First argument must be a number. Usage: /team 3 refactor auth module"
                                 .to_string(),
+                    });
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/teams-config" || input.starts_with("/teams-config ") {
+                let arg = input
+                    .strip_prefix("/teams-config")
+                    .unwrap()
+                    .trim();
+                if arg.is_empty() {
+                    let teams = nyzhi_core::teams::list_teams();
+                    if teams.is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "No teams found. Create one with the `team_create` tool."
+                                .to_string(),
+                        });
+                    } else {
+                        let mut lines = vec!["## Teams\n".to_string()];
+                        for name in &teams {
+                            if let Ok(tc) = nyzhi_core::teams::config::TeamConfig::load(name) {
+                                let model = tc
+                                    .default_model
+                                    .as_deref()
+                                    .unwrap_or("(inherit)");
+                                let steps = tc
+                                    .max_steps
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| "(default)".to_string());
+                                lines.push(format!(
+                                    "- **{}** — {} members | model: {} | max_steps: {}",
+                                    name,
+                                    tc.members.len(),
+                                    model,
+                                    steps
+                                ));
+                            } else {
+                                lines.push(format!("- **{}** — (config error)", name));
+                            }
+                        }
+                        lines.push(String::new());
+                        lines.push("Use `/teams-config show <team>` for details.".to_string());
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: lines.join("\n"),
+                        });
+                    }
+                } else if let Some(rest) = arg.strip_prefix("show ") {
+                    let team_name = rest.trim();
+                    match nyzhi_core::teams::config::TeamConfig::load(team_name) {
+                        Ok(tc) => {
+                            let mut lines = vec![format!("## Team: {}\n", tc.name)];
+                            lines.push(format!(
+                                "**Default model**: {}",
+                                tc.default_model.as_deref().unwrap_or("(inherit)")
+                            ));
+                            lines.push(format!(
+                                "**Default role**: {}",
+                                tc.default_role.as_deref().unwrap_or("(none)")
+                            ));
+                            lines.push(format!(
+                                "**Max steps**: {}",
+                                tc.max_steps
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| "(default)".to_string())
+                            ));
+                            lines.push(format!("**Created**: {}\n", tc.created_at));
+                            lines.push("### Members\n".to_string());
+                            lines.push("| Name | Type | Role | Model | Worktree |".to_string());
+                            lines.push("|------|------|------|-------|----------|".to_string());
+                            for m in &tc.members {
+                                lines.push(format!(
+                                    "| {} | {} | {} | {} | {} |",
+                                    m.name,
+                                    m.agent_type,
+                                    m.role.as_deref().unwrap_or("-"),
+                                    m.model.as_deref().unwrap_or("(inherit)"),
+                                    m.worktree_path.as_deref().unwrap_or("-"),
+                                ));
+                            }
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: lines.join("\n"),
+                            });
+                        }
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Error loading team '{}': {}", team_name, e),
+                            });
+                        }
+                    }
+                } else if let Some(rest) = arg.strip_prefix("set ") {
+                    let parts: Vec<&str> = rest.splitn(3, ' ').collect();
+                    if parts.len() == 3 {
+                        let team_name = parts[0].trim();
+                        let key = parts[1].trim();
+                        let value = parts[2].trim();
+                        match nyzhi_core::teams::config::TeamConfig::load(team_name) {
+                            Ok(mut tc) => {
+                                let msg = match key {
+                                    "model" => {
+                                        tc.default_model = Some(value.to_string());
+                                        let _ = tc.save();
+                                        format!("Team '{}' default model set to `{}`.", team_name, value)
+                                    }
+                                    "max-steps" => {
+                                        if let Ok(n) = value.parse::<u32>() {
+                                            tc.max_steps = Some(n);
+                                            let _ = tc.save();
+                                            format!("Team '{}' max_steps set to {}.", team_name, n)
+                                        } else {
+                                            "max-steps must be a number.".to_string()
+                                        }
+                                    }
+                                    "role" => {
+                                        tc.default_role = Some(value.to_string());
+                                        let _ = tc.save();
+                                        format!("Team '{}' default role set to `{}`.", team_name, value)
+                                    }
+                                    _ => format!("Unknown key '{}'. Use: model, role, max-steps", key),
+                                };
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: msg,
+                                });
+                            }
+                            Err(e) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Error loading team '{}': {}", team_name, e),
+                                });
+                            }
+                        }
+                    } else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Usage: /teams-config set <team> model|role|max-steps <value>"
+                                .to_string(),
+                        });
+                    }
+                } else if let Some(rest) = arg.strip_prefix("member ") {
+                    let parts: Vec<&str> = rest.splitn(4, ' ').collect();
+                    if parts.len() == 4 {
+                        let team_name = parts[0].trim();
+                        let member_name = parts[1].trim();
+                        let key = parts[2].trim();
+                        let value = parts[3].trim();
+                        match nyzhi_core::teams::config::TeamConfig::load(team_name) {
+                            Ok(mut tc) => {
+                                let msg = match key {
+                                    "model" => {
+                                        match tc.update_member(member_name, |m| {
+                                            m.model = Some(value.to_string());
+                                        }) {
+                                            Ok(_) => format!(
+                                                "Member '{}' in team '{}' model set to `{}`.",
+                                                member_name, team_name, value
+                                            ),
+                                            Err(e) => e.to_string(),
+                                        }
+                                    }
+                                    "role" => {
+                                        match tc.update_member(member_name, |m| {
+                                            m.role = Some(value.to_string());
+                                        }) {
+                                            Ok(_) => format!(
+                                                "Member '{}' in team '{}' role set to `{}`.",
+                                                member_name, team_name, value
+                                            ),
+                                            Err(e) => e.to_string(),
+                                        }
+                                    }
+                                    _ => format!("Unknown key '{}'. Use: model, role", key),
+                                };
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: msg,
+                                });
+                            }
+                            Err(e) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Error loading team '{}': {}", team_name, e),
+                                });
+                            }
+                        }
+                    } else {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content:
+                                "Usage: /teams-config member <team> <name> model|role <value>"
+                                    .to_string(),
+                        });
+                    }
+                } else if let Some(rest) = arg.strip_prefix("reset ") {
+                    let team_name = rest.trim();
+                    match nyzhi_core::teams::config::TeamConfig::load(team_name) {
+                        Ok(mut tc) => {
+                            match tc.reset_overrides() {
+                                Ok(_) => {
+                                    app.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: format!(
+                                            "All overrides for team '{}' cleared.",
+                                            team_name
+                                        ),
+                                    });
+                                }
+                                Err(e) => {
+                                    app.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: format!("Error saving: {}", e),
+                                    });
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Error loading team '{}': {}", team_name, e),
+                            });
+                        }
+                    }
+                } else if arg == "reset" {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /teams-config reset <team>".to_string(),
+                    });
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /teams-config [show <team> | set <team> <key> <val> | member <team> <name> <key> <val> | reset <team>]".to_string(),
                     });
                 }
                 app.input.clear();
@@ -1859,6 +2176,76 @@ pub async fn handle_key(
                             ),
                         });
                         app.scroll_offset = 0;
+                    }
+                }
+                app.input.clear();
+                app.cursor_pos = 0;
+                return;
+            }
+
+            if input == "/memory" || input.starts_with("/memory ") {
+                let arg = input.strip_prefix("/memory").unwrap().trim();
+                let root = &app.workspace.project_root;
+                match arg {
+                    "toggle" => {
+                        let current = app.config.memory.auto_memory;
+                        app.config.memory.auto_memory = !current;
+                        let status = if !current { "ON" } else { "OFF" };
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Auto-memory toggled {status}. Takes effect on next turn."),
+                        });
+                    }
+                    "clear" => {
+                        if let Err(e) = nyzhi_core::memory::clear_memory(root) {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("Failed to clear memory: {e}"),
+                            });
+                        } else {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: "All project memory cleared.".to_string(),
+                            });
+                        }
+                    }
+                    "" => {
+                        let status = if app.config.memory.auto_memory {
+                            "ON"
+                        } else {
+                            "OFF"
+                        };
+                        let count = nyzhi_core::memory::memory_count(root);
+                        let topics = nyzhi_core::memory::list_topics(root);
+                        let index = nyzhi_core::memory::read_index(root)
+                            .unwrap_or_else(|_| "No project memories yet.".to_string());
+                        let topic_list = if topics.is_empty() {
+                            "(none)".to_string()
+                        } else {
+                            topics.join(", ")
+                        };
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "## Auto-Memory ({status})\n\nEntries: {count}\nTopics: {topic_list}\n\n{index}"
+                            ),
+                        });
+                    }
+                    topic => {
+                        match nyzhi_core::memory::read_topic(root, topic) {
+                            Ok(content) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("## Memory: {topic}\n\n{content}"),
+                                });
+                            }
+                            Err(e) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Topic '{topic}' not found: {e}"),
+                                });
+                            }
+                        }
                     }
                 }
                 app.input.clear();
@@ -3034,6 +3421,7 @@ pub async fn handle_key(
                         "  send_input, wait, close_agent (manage sub-agents)",
                         "",
                         "Auth:",
+                        "  /connect             Default provider setup (OAuth first, API key fallback)",
                         "  nyzhi login <provider>    Log in via OAuth (gemini, openai)",
                         "  nyzhi logout <provider>   Remove stored OAuth token",
                         "  nyzhi whoami              Show auth status for all providers",

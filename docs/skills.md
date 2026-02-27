@@ -1,136 +1,54 @@
 # Skills
 
-Skills are reusable patterns that Nyzhi learns from your sessions. Once learned, they are available across all future sessions in the same project, giving the agent institutional knowledge about your codebase and workflows.
+Source of truth:
 
----
+- `crates/core/src/skills.rs`
+- `crates/core/src/tools/load_skill.rs`
+- `crates/cli/src/main.rs` (`nyz skills`)
 
-## Learning a Skill
+## What Skills Are
 
-Use `/learn` in the TUI to extract a pattern from the current session:
+Skills are reusable markdown instruction packs stored in project directories and loaded on demand.
 
-```
-/learn api-error-handling
-```
+They are intended to encode domain-specific guidance and repeatable workflows.
 
-This creates a skill template at `.nyzhi/skills/api-error-handling.md`. The agent analyzes the session to extract patterns, conventions, and reusable approaches.
+## Skill Directories
 
-### Skill Template Structure
+Load order:
 
-```markdown
----
-description: How we handle API errors in this project
----
+1. `<project>/.nyzhi/skills/`
+2. `<project>/.claude/skills/` (fallback)
 
-# API Error Handling
+Conflict rule:
 
-## Pattern
+- `.nyzhi/skills` wins by filename on collisions.
 
-All API handlers use the `AppError` type for error responses...
+## Skill File Format
 
-## Examples
+- file extension: `.md`
+- filename stem becomes skill name
+- description extraction:
+  1. `description:` frontmatter line if present
+  2. first non-empty non-heading line fallback
 
-```rust
-async fn get_user(id: Path<Uuid>) -> Result<Json<User>, AppError> {
-    // ...
-}
-```
+## Runtime Usage
 
-## Rules
+- skill index is shown in prompt context as metadata list
+- full skill content is not injected by default
+- use `load_skill` tool to fetch complete content of a selected skill
 
-- Always return structured error responses
-- Log errors at the handler boundary
-- Use specific error variants, not generic strings
-```
+## CLI and TUI Surfaces
 
----
+- CLI: `nyz skills` (list learned skills)
+- TUI slash command: `/learn`
 
-## Storage
+## Template Helper
 
-Skills are stored as markdown files in `.nyzhi/skills/` in the project root:
+`build_skill_template(name, description, patterns)` generates a markdown scaffold for new skill files.
 
-```
-.nyzhi/
-  skills/
-    api-error-handling.md
-    database-migrations.md
-    test-patterns.md
-```
+## Recommendations
 
-Nyzhi also reads `.claude/skills/` for compatibility. If both directories contain a skill with the same name, the `.nyzhi/skills/` version wins.
-
----
-
-## Listing Skills
-
-```bash
-# CLI
-nyz skills
-
-# TUI
-/learn
-```
-
-Shows all learned skills with their descriptions.
-
----
-
-## How Skills Are Used
-
-Skills are loaded lazily to keep the system prompt small:
-
-1. At session start, a compact skill index is included in the system prompt (name + description only).
-2. When the agent determines a skill is relevant, it calls the `load_skill` tool to fetch the full content.
-3. The loaded skill content is injected into the conversation context.
-
-This means skills don't consume context budget until they're actually needed.
-
----
-
-## Creating Skills Manually
-
-You can create skill files directly without using `/learn`:
-
-```markdown
-<!-- .nyzhi/skills/testing.md -->
----
-description: Testing conventions for this project
----
-
-# Testing Conventions
-
-## Structure
-- Unit tests go in `src/tests/`
-- Integration tests go in `tests/`
-- Use `#[cfg(test)]` modules for inline unit tests
-
-## Naming
-- Test functions: `test_<what>_<scenario>`
-- Test modules: `tests` (inline) or `test_<module>` (file)
-
-## Patterns
-- Use `tempfile` for filesystem tests
-- Use `mockall` for mocking traits
-- Assert specific error variants, not just `is_err()`
-```
-
----
-
-## Description Extraction
-
-The skill description (shown in the index) is extracted from:
-
-1. A `description:` field in YAML frontmatter, if present.
-2. Otherwise, the first non-heading, non-empty line of the file.
-
----
-
-## Skill Templates
-
-When you use `/learn <name>`, the agent generates a skill template with:
-
-- A description summarizing the pattern
-- The patterns and conventions observed
-- Concrete code examples from the session
-- Rules and guidelines
-
-You can edit the generated file to refine it.
+- keep one skill per file and one responsibility per skill
+- include concrete examples
+- keep descriptions crisp so skill index remains useful
+- prefer project-local skills for team conventions, fallback `.claude/skills` for shared baseline content

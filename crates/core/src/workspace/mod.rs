@@ -133,6 +133,8 @@ fn detect_git_branch(root: &Path) -> Option<String> {
 }
 
 pub fn load_rules(root: &Path) -> Option<String> {
+    let mut sections: Vec<String> = Vec::new();
+
     let candidates = [
         root.join("AGENTS.md"),
         root.join(".nyzhi").join("rules.md"),
@@ -144,11 +146,194 @@ pub fn load_rules(root: &Path) -> Option<String> {
     for path in &candidates {
         if let Ok(content) = std::fs::read_to_string(path) {
             if !content.trim().is_empty() {
-                return Some(content);
+                sections.push(content);
+                break;
             }
         }
     }
-    None
+
+    let local_candidates = [
+        root.join("NYZHI.local.md"),
+        root.join(".nyzhi").join("local.md"),
+    ];
+    for path in &local_candidates {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if !content.trim().is_empty() {
+                sections.push(format!("# Local Preferences\n\n{content}"));
+                break;
+            }
+        }
+    }
+
+    let rules_dir = root.join(".nyzhi").join("rules");
+    if rules_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&rules_dir) {
+            let mut rule_files: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .map(|ext| ext == "md")
+                        .unwrap_or(false)
+                })
+                .collect();
+            rule_files.sort_by_key(|e| e.file_name());
+
+            for entry in rule_files {
+                if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                    if content.trim().is_empty() {
+                        continue;
+                    }
+                    let (body, is_conditional) = strip_paths_frontmatter(&content);
+                    if is_conditional {
+                        continue;
+                    }
+                    sections.push(body);
+                }
+            }
+        }
+    }
+
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
+}
+
+/// Load path-scoped rules that match a given file path.
+pub fn load_conditional_rules(root: &Path, file_path: &str) -> Vec<String> {
+    let rules_dir = root.join(".nyzhi").join("rules");
+    let mut matched = Vec::new();
+    if !rules_dir.is_dir() {
+        return matched;
+    }
+    let entries = match std::fs::read_dir(&rules_dir) {
+        Ok(e) => e,
+        Err(_) => return matched,
+    };
+    for entry in entries.filter_map(|e| e.ok()) {
+        if entry
+            .path()
+            .extension()
+            .map(|ext| ext != "md")
+            .unwrap_or(true)
+        {
+            continue;
+        }
+        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+            if let Some(patterns) = extract_paths_frontmatter(&content) {
+                if patterns.iter().any(|p| glob_matches(p, file_path)) {
+                    let (body, _) = strip_paths_frontmatter(&content);
+                    if !body.trim().is_empty() {
+                        matched.push(body);
+                    }
+                }
+            }
+        }
+    }
+    matched
+}
+
+fn strip_paths_frontmatter(content: &str) -> (String, bool) {
+    if !content.starts_with("---") {
+        return (content.to_string(), false);
+    }
+    let rest = &content[3..];
+    if let Some(end) = rest.find("\n---") {
+        let frontmatter = &rest[..end];
+        let has_paths = frontmatter.contains("paths:");
+        let body = rest[end + 4..].trim_start().to_string();
+        (body, has_paths)
+    } else {
+        (content.to_string(), false)
+    }
+}
+
+fn extract_paths_frontmatter(content: &str) -> Option<Vec<String>> {
+    if !content.starts_with("---") {
+        return None;
+    }
+    let rest = &content[3..];
+    let end = rest.find("\n---")?;
+    let frontmatter = &rest[..end];
+
+    let mut in_paths = false;
+    let mut patterns = Vec::new();
+    for line in frontmatter.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("paths:") {
+            in_paths = true;
+            continue;
+        }
+        if in_paths {
+            if trimmed.starts_with("- ") {
+                let pat = trimmed[2..].trim().trim_matches('"').trim_matches('\'');
+                if !pat.is_empty() {
+                    patterns.push(pat.to_string());
+                }
+            } else if !trimmed.is_empty() {
+                break;
+            }
+        }
+    }
+    if patterns.is_empty() {
+        None
+    } else {
+        Some(patterns)
+    }
+}
+
+fn glob_matches(pattern: &str, path: &str) -> bool {
+    let parts: Vec<&str> = pattern.split("**").collect();
+    if parts.len() == 1 {
+        simple_glob(pattern, path)
+    } else if parts.len() == 2 {
+        let (prefix, suffix) = (parts[0], parts[1]);
+        let suffix = suffix.strip_prefix('/').unwrap_or(suffix);
+        if !prefix.is_empty() && !path.starts_with(prefix) {
+            return false;
+        }
+        let search_in = if prefix.is_empty() {
+            path
+        } else {
+            &path[prefix.len()..]
+        };
+        if suffix.is_empty() {
+            return true;
+        }
+        for i in 0..=search_in.len() {
+            if simple_glob(suffix, &search_in[i..]) {
+                return true;
+            }
+        }
+        false
+    } else {
+        path.contains(pattern)
+    }
+}
+
+fn simple_glob(pattern: &str, text: &str) -> bool {
+    let p_chars: Vec<char> = pattern.chars().collect();
+    let t_chars: Vec<char> = text.chars().collect();
+    let (plen, tlen) = (p_chars.len(), t_chars.len());
+    let mut dp = vec![vec![false; tlen + 1]; plen + 1];
+    dp[0][0] = true;
+    for i in 1..=plen {
+        if p_chars[i - 1] == '*' {
+            dp[i][0] = dp[i - 1][0];
+        }
+    }
+    for i in 1..=plen {
+        for j in 1..=tlen {
+            if p_chars[i - 1] == '*' {
+                dp[i][j] = dp[i - 1][j] || dp[i][j - 1];
+            } else if p_chars[i - 1] == '?' || p_chars[i - 1] == t_chars[j - 1] {
+                dp[i][j] = dp[i - 1][j - 1];
+            }
+        }
+    }
+    dp[plen][tlen]
 }
 
 pub fn rules_source(root: &Path) -> Option<String> {
@@ -222,6 +407,32 @@ Priority: AGENTS.md > .nyzhi/rules.md > .nyzhi/instructions.md > CLAUDE.md > .cu
 "#,
         )?;
         created.push(rules_path);
+    }
+
+    let modular_rules_dir = nyzhi_dir.join("rules");
+    std::fs::create_dir_all(&modular_rules_dir)?;
+
+    let local_md = root.join("NYZHI.local.md");
+    if !local_md.exists() {
+        std::fs::write(
+            &local_md,
+            "# Local Preferences\n\n\
+             Personal project-specific preferences. This file is gitignored.\n\
+             Add your sandbox URLs, test data, or workflow preferences here.\n",
+        )?;
+        created.push(local_md.clone());
+    }
+
+    let gitignore = root.join(".gitignore");
+    if gitignore.exists() {
+        let content = std::fs::read_to_string(&gitignore).unwrap_or_default();
+        if !content.contains("NYZHI.local.md") {
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&gitignore)?;
+            use std::io::Write;
+            writeln!(f, "\n# nyzhi local preferences\nNYZHI.local.md\n.nyzhi/local.md")?;
+        }
     }
 
     let commands_dir = nyzhi_dir.join("commands");
@@ -317,5 +528,68 @@ mod tests {
         std::fs::create_dir_all(dir.path().join(".claude")).unwrap();
         let root = find_project_root(&sub);
         assert_eq!(root, dir.path());
+    }
+
+    #[test]
+    fn modular_rules_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let rules_dir = dir.path().join(".nyzhi").join("rules");
+        std::fs::create_dir_all(&rules_dir).unwrap();
+        std::fs::write(dir.path().join("AGENTS.md"), "base rules").unwrap();
+        std::fs::write(rules_dir.join("testing.md"), "always run tests").unwrap();
+        let rules = load_rules(dir.path()).unwrap();
+        assert!(rules.contains("base rules"));
+        assert!(rules.contains("always run tests"));
+    }
+
+    #[test]
+    fn conditional_rules_skipped_in_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let rules_dir = dir.path().join(".nyzhi").join("rules");
+        std::fs::create_dir_all(&rules_dir).unwrap();
+        std::fs::write(
+            rules_dir.join("api.md"),
+            "---\npaths:\n  - \"src/api/**/*.ts\"\n---\nAPI rules here",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("AGENTS.md"), "base").unwrap();
+        let rules = load_rules(dir.path()).unwrap();
+        assert!(!rules.contains("API rules here"));
+    }
+
+    #[test]
+    fn conditional_rules_match_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let rules_dir = dir.path().join(".nyzhi").join("rules");
+        std::fs::create_dir_all(&rules_dir).unwrap();
+        std::fs::write(
+            rules_dir.join("api.md"),
+            "---\npaths:\n  - \"src/api/**/*.ts\"\n---\nAPI rules",
+        )
+        .unwrap();
+        let matched = load_conditional_rules(dir.path(), "src/api/routes/auth.ts");
+        assert_eq!(matched.len(), 1);
+        assert!(matched[0].contains("API rules"));
+    }
+
+    #[test]
+    fn glob_matches_double_star() {
+        assert!(glob_matches("**/*.ts", "src/api/foo.ts"));
+        assert!(glob_matches("src/**/*.rs", "src/core/lib.rs"));
+        assert!(!glob_matches("src/**/*.rs", "tests/foo.ts"));
+    }
+
+    #[test]
+    fn glob_matches_single_star() {
+        assert!(simple_glob("*.md", "README.md"));
+        assert!(!simple_glob("*.md", "src/foo.rs"));
+    }
+
+    #[test]
+    fn local_md_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("NYZHI.local.md"), "my prefs").unwrap();
+        let rules = load_rules(dir.path()).unwrap();
+        assert!(rules.contains("my prefs"));
     }
 }

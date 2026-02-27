@@ -1,178 +1,228 @@
-# Terminal UI
+# TUI
 
-The TUI (`nyzhi-tui`) is built with `ratatui` and `crossterm`, and drives both interactive chat and tool execution state.
+Source of truth:
 
-## App modes
+- `crates/tui/src/app.rs`
+- `crates/tui/src/input.rs`
+- `crates/tui/src/completion.rs`
 
-- `Input`: normal typing and command mode.
-- `Streaming`: model output/tool execution in progress.
-- `AwaitingApproval`: approval gate waiting for `y` / `n`.
+## App Modes
 
-## Slash commands (completion source)
+The TUI tracks explicit interaction modes:
 
-Current built-in slash commands include:
+- `Input`
+- `Streaming`
+- `AwaitingApproval`
+- `AwaitingUserQuestion`
 
+These modes drive keyboard routing, prompt dispatch, and UI panels.
+
+## Input Model
+
+- single-line input by default
+- multiline insert with:
+  - `Alt+Enter`
+  - `Shift+Enter` (kitty protocol path)
+- `!<shell command>` runs shell command and injects output
+- `& <prompt>` dispatches background task
+- `@path` injects file/directory context references
+- `/editor` opens `$VISUAL` or `$EDITOR` (fallback `vi`)
+
+## Completion Model
+
+Completion contexts (`CompletionContext`):
+
+- `SlashCommand`
+- `AtMention`
+- `FilePath`
+
+Behavior:
+
+- `Tab` opens/cycles completion
+- `Shift+Tab` cycles backward
+- `Esc` closes completion
+- `@` uses fuzzy file search
+- `/image <path>` uses file path completion
+
+## Keybindings
+
+Core keys:
+
+- `Enter`: submit or accept completion
+- `Tab` / `Shift+Tab`: completion forward/backward
+- `Esc`: dismiss completion / clear search / clear input
+- `Up` / `Down`: input history or selector navigation
+- `Ctrl+R`: reverse history search
+- `Ctrl+K`: command palette
+- `Ctrl+T`: theme selector
+- `Ctrl+,`: settings panel
+- `Ctrl+L`: clear session
+- `Ctrl+U`: clear to line start
+- `Ctrl+W`: delete previous word
+- `Ctrl+A` / `Ctrl+E`: line start/end
+- `Ctrl+B`: move current streaming task to background
+- `Ctrl+F` (double press): kill all background tasks
+- `Ctrl+N` / `Ctrl+P`: search next/previous match when session search is active
+- `Ctrl+C`: exit
+
+## Panels and Selectors
+
+Built-in panels include:
+
+- plan panel
+- todo panel
+- settings panel
+- model/provider/theme/accent selectors
+- session picker
+- command palette
+
+## Slash Commands
+
+Slash commands are declared in `SLASH_COMMANDS` and dispatched in `input.rs`.
+
+### General utility
+
+- `/help`
+- `/clear`
+- `/clear queue`
+- `/quit`
+- `/exit`
+- `/status`
+- `/commands`
+- `/settings`
+
+### Provider, model, and auth
+
+- `/model`
+- `/connect`
+- `/login`
+- `/trust`
+- `/thinking`
+- `/thinking toggle`
+- `/think`
+- `/voice`
+
+### Session and context
+
+- `/sessions`
+- `/resume`
+- `/session delete`
+- `/session rename`
+- `/context`
+- `/compact`
+- `/retry`
+- `/search`
+- `/export`
+- `/handoff`
+
+### Project tooling and runtime control
+
+- `/index`
+- `/index status`
+- `/index off`
+- `/mcp`
+- `/hooks`
+- `/memory`
+- `/memory toggle`
+- `/memory clear`
+- `/docs`
+- `/docs add`
+- `/docs get`
+- `/docs clear`
+- `/verify`
+- `/style`
+- `/notify`
+
+### Theme and UX
+
+- `/theme`
 - `/accent`
-- `/agents`
+- `/bg`
+- `/background`
+
+### Planning and execution helpers
+
 - `/autopilot`
-- `/background`, `/bg`
+- `/deep`
+- `/qa`
+- `/review`
+- `/refactor`
+- `/walkthrough`
+- `/quick`
+- `/map`
+- `/profile`
+- `/init-project`
+
+### Teams and subagents
+
+- `/team`
+- `/teams-config`
+- `/teams-config show`
+- `/teams-config set`
+- `/teams-config member`
+- `/teams-config reset`
+- `/subagent-config`
+- `/subagent-config set`
+- `/subagent-config reset`
+
+### Worktree and undo
+
+- `/worktree`
+- `/worktree create`
+- `/worktree list`
+- `/worktree merge`
+- `/worktree remove`
+- `/undo`
+- `/undo all`
+- `/undo git`
+
+### Misc
+
+- `/agents`
+- `/analytics`
 - `/bug`
 - `/changes`
-- `/clear`, `/clear queue`
-- `/commands`
-- `/compact`
-- `/connect`
-- `/context`
+- `/diff`
 - `/doctor`
 - `/editor`
 - `/enable_exa`
-- `/exit`, `/quit`
-- `/export`
-- `/handoff`
-- `/help`
-- `/hooks`
 - `/image`
 - `/init`
 - `/init-deep`
 - `/learn`
-- `/login`
-- `/mcp`
-- `/model`
 - `/notepad`
-- `/notify`
 - `/persist`
 - `/plan`
-- `/qa`
-- `/refactor`
-- `/resume`
-- `/retry`
-- `/search`
-- `/session delete`
-- `/session rename`
-- `/sessions`
-- `/status`
 - `/stop`
-- `/style`
-- `/team`
-- `/theme`
-- `/think`
-- `/thinking`
 - `/todo`
 - `/todo enforce on`
 - `/todo enforce off`
 - `/todo clear`
-- `/trust`
-- `/undo`
-- `/undo all`
-- `/verify`
+- `/resume-work`
 
-`/help` also shows live command guidance and keyboard shortcuts.
+Full list with one-line descriptions: `docs/reference/slash-commands.md`.
 
-## Keybindings
+## Command Kinds
 
-### Global and input editing
+Commands are classified into kinds:
 
-- `Ctrl+C`: quit
-- `Ctrl+K`: open command palette
-- `Ctrl+R`: history search mode
-- `Ctrl+U`: clear input to start
-- `Ctrl+W`: delete previous word
-- `Ctrl+A` / `Ctrl+E`: cursor to start/end of line
+- `Instant`: local handling without model turn
+- `StreamingSafe`: allowed while streaming
+- `Prompt`: turns into agent prompt dispatch
 
-### Completion and send behavior
+## Background Task Model
 
-- `Tab`:
-  - if completion open -> next completion
-  - if input empty -> cycle thinking level
-  - otherwise -> open completion
-- `Shift+Tab`:
-  - if completion open -> previous completion
-  - if input empty and no completion -> enter/open plan transition selector
-- `Enter`: submit (or accept completion if menu open)
-- `Alt+Enter` / `Shift+Enter`: insert newline
+- foreground turns can be moved to background (`Ctrl+B`)
+- background queue is tracked by task id/label/start time
+- message queue supports prompt buffering while runtime is busy
 
-### Search and navigation
+## Team and Subagent UX
 
-- `Ctrl+N` / `Ctrl+P`: next/prev match for active `/search`
-- `Esc`: clear completion/search; during streaming, cancel foreground task
-- `PageUp` / `PageDown`: scroll transcript
+- `/team <N> <task>` asks the model to fan out into multiple subagents
+- `/subagent-config` controls session-scoped role->model overrides
+- `/teams-config` inspects/updates team defaults and member overrides
 
-### Streaming/background task controls
+## Notes and Caveats
 
-- `Ctrl+B` (while streaming): move current task to background
-- `Ctrl+F` (double-press in input mode): kill all background tasks
-- `& <prompt>`: run prompt directly in background queue
-
-## Theme system
-
-Presets:
-
-- `nyzhi-dark`
-- `nyzhi-light`
-- `tokyonight`
-- `catppuccin-mocha`
-- `dracula`
-- `solarized-dark`
-- `solarized-light`
-- `gruvbox-dark`
-
-Accent options:
-
-- `copper` (default)
-- `blue`
-- `orange`
-- `emerald`
-- `violet`
-- `rose`
-- `amber`
-- `cyan`
-- `red`
-- `pink`
-- `teal`
-- `indigo`
-- `lime`
-- `monochrome`
-
-Color overrides are supported via `[tui.colors]` hex values.
-
-## Completion behavior
-
-Completion contexts:
-
-- Slash commands (`/`)
-- `@` mentions (`@path`)
-- file path args for `/image ...`
-
-Candidate limits:
-
-- max candidates: 50
-- max visible rows: 12
-
-## Search, history, and session UX
-
-- `/search <query>` highlights matches in transcript.
-- `/sessions` and `/resume` open selector UIs.
-- `/session rename` and `/session delete` operate on saved sessions.
-- `/export` writes markdown exports.
-
-## Notifications
-
-Turn completion notifications come from `[tui.notify]`:
-
-- bell (`true` by default)
-- desktop (`false` by default)
-- minimum duration threshold (`5000ms` default)
-
-## Trust mode in TUI
-
-`/trust` supports:
-
-- `off`
-- `limited`
-- `autoedit`
-- `full`
-
-## Notes
-
-- Shortcut docs in old guides that mapped `Ctrl+A` to accent cycling are outdated; `Ctrl+A` is cursor-home in current code.
-- Theme/accent pickers are command-driven (`/theme`, `/accent`) and via selector shortcuts (`Ctrl+T` for theme picker).
+- `--teammate-mode` is parsed by CLI, but currently TUI/runtime behavior is effectively in-process.
+- Some slash commands are aliases (`/background` -> `/bg`, `/quit` -> exit path).

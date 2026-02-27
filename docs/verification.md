@@ -1,144 +1,98 @@
 # Verification
 
-Nyzhi can automatically detect and run your project's build, test, and lint checks. The verification system provides structured evidence of pass/fail status, making it easy for the agent to confirm its changes are correct.
+Source of truth:
 
----
+- `crates/core/src/verify.rs`
+- `.github/workflows/ci.yml`
+- `CONTRIBUTING.md`
 
-## Auto-Detection
+## Verification Philosophy
 
-When you run `/verify` or the agent calls the `verify` tool, Nyzhi scans the project root to determine the project type and applicable checks:
+Verification combines:
+
+- build checks
+- tests
+- lint checks
+- optional custom project checks
+
+## Verify Runtime Model
+
+Core types:
+
+- `CheckKind`: `build|test|lint|custom`
+- `VerifyCheck`: `{ kind, command }`
+- `Evidence`: command result + stdout/stderr + timestamp + duration
+- `VerifyReport`: collection of evidence with summary rendering
+
+## Auto-detected Checks
+
+`detect_checks(project_root)` defaults by project type:
 
 ### Rust
 
-| Check | Command |
-|-------|---------|
-| Build | `cargo check` |
-| Test | `cargo test` |
-| Lint | `cargo clippy --all -- -D warnings` |
+- `cargo check`
+- `cargo test`
+- `cargo clippy -- -D warnings`
 
-### Node.js
+### Node
 
-| Check | Command |
-|-------|---------|
-| Build | `npm run build` (if script exists) |
-| Test | `npm test` (if script exists) |
-| Lint | `npx eslint .` (if eslint is configured) |
+- `npm run build`
+- `npm test`
+- optional `npx eslint .` when local eslint binary exists
 
 ### Go
 
-| Check | Command |
-|-------|---------|
-| Build | `go build ./...` |
-| Test | `go test ./...` |
-| Lint | `go vet ./...` |
+- `go build ./...`
+- `go test ./...`
+- `go vet ./...`
 
 ### Python
 
-| Check | Command |
-|-------|---------|
-| Test | `pytest` (if pytest is installed) |
-| Lint | `ruff check .` (if ruff is installed) |
+- `python -m pytest`
+- `python -m ruff check .`
 
-Detection is based on the presence of marker files (`Cargo.toml`, `package.json`, `go.mod`, `pyproject.toml`, etc.).
+## CI Baseline in This Repository
 
----
+From `.github/workflows/ci.yml`:
 
-## Evidence
+- `cargo fmt --all --check`
+- `cargo clippy --workspace --all-targets` (with `RUSTFLAGS=-Dwarnings`)
+- `cargo test --workspace`
 
-Each check produces structured evidence:
+## Recommended Local Commands (This Repo)
 
-```rust
-struct Evidence {
-    kind: CheckKind,       // Build, Test, Lint, Custom
-    command: String,       // the exact command run
-    exit_code: i32,        // process exit code
-    stdout: String,        // standard output
-    stderr: String,        // standard error
-    timestamp: u64,        // when it ran (unix timestamp)
-    elapsed_ms: u64,       // how long it took
-}
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 
-- `passed()` -- true if `exit_code == 0`
-- `is_fresh(max_age)` -- true if the evidence is recent enough
+Optional fast type-check:
 
----
-
-## Verify Report
-
-Multiple checks produce a `VerifyReport`:
-
-```
-Verification Report:
-  ✓ Build (cargo check) — 2.3s
-  ✓ Test (cargo test) — 8.1s
-  ✗ Lint (cargo clippy --all -- -D warnings) — 1.2s
-    error: unused variable `x`
-
-2/3 checks passed
+```bash
+cargo check --workspace
 ```
 
-- `all_passed()` -- true only if every check succeeded
-- `summary()` -- human-readable report with timing and failure details
+## CLI and Agent-facing Verification
 
----
+- `verify` tool runs checks and returns structured pass/fail evidence
+- `nyz ci-fix` can use CI logs to propose and apply fixes
 
-## Usage
+## Evidence Freshness
 
-### In the TUI
+Evidence includes timestamps and can be freshness-checked via `Evidence::is_fresh(max_age)`.
 
-```
-/verify          # show detected checks and run them
-```
+## Failure Reporting
 
-### As a Tool
+`VerifyReport::summary()` prints:
 
-The agent can call `verify` as a tool to check its work:
+- pass/fail status per check
+- command
+- elapsed time
+- tail of relevant stdout/stderr on failures
 
-```
-Tool: verify
-Result:
-  Build: ✓ (2.3s)
-  Test: ✓ (8.1s)
-  Lint: ✓ (1.2s)
-  All checks passed.
-```
+## Best Practices
 
-### In Hooks
-
-Run verification after each turn:
-
-```toml
-[[agent.hooks]]
-event = "after_turn"
-command = "cargo test"
-timeout = 120
-```
-
-### In Persist Mode
-
-`/persist` activates a verify/fix loop: the agent runs checks, identifies failures, fixes them, and re-runs checks until everything passes.
-
----
-
-## Custom Checks
-
-While auto-detection covers common project types, you can run arbitrary commands through hooks:
-
-```toml
-[[agent.hooks]]
-event = "after_turn"
-command = "make lint && make test"
-timeout = 180
-```
-
----
-
-## Check Kinds
-
-| Kind | Description |
-|------|-------------|
-| `Build` | Compilation check (e.g., `cargo check`, `go build`) |
-| `Test` | Test suite (e.g., `cargo test`, `npm test`) |
-| `Lint` | Linter/formatter (e.g., `clippy`, `eslint`, `ruff`) |
-| `Custom` | User-defined check |
+- run checks before commit and before release
+- keep custom checks deterministic and non-interactive
+- for large changes, include both local command output and CI result links in PR description

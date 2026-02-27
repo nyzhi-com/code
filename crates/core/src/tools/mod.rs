@@ -82,10 +82,10 @@ pub struct ToolContext {
     pub index: Option<IndexHandle>,
     /// Sandbox enforcement level for tool execution.
     pub sandbox_level: nyzhi_config::SandboxLevel,
-    /// Model registry for subagent model tiering.
-    pub model_registry: Option<std::sync::Arc<nyzhi_provider::ModelRegistry>>,
-    /// Current model ID (parent agent).
-    pub current_model: Option<String>,
+    /// Runtime model overrides per agent role (session-scoped).
+    pub subagent_model_overrides: Option<crate::agent_roles::SubagentModelOverrides>,
+    /// Shared context for subagent briefings.
+    pub shared_context: Option<std::sync::Arc<tokio::sync::Mutex<crate::context_briefing::SharedContext>>>,
 }
 
 pub struct ToolResult {

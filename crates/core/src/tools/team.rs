@@ -368,6 +368,7 @@ impl Tool for TaskListTool {
 
 use crate::agent::AgentConfig;
 use crate::agent_manager::AgentManager;
+use crate::agent_roles::{resolve_role, apply_role};
 use std::sync::Arc;
 
 pub struct SpawnTeammateTool {
@@ -422,10 +423,28 @@ impl Tool for SpawnTeammateTool {
             .ok_or_else(|| anyhow::anyhow!("Missing: message"))?;
         let role = args.get("role").and_then(|v| v.as_str()).map(String::from);
 
-        let mut config = crate::teams::config::TeamConfig::load(team)?;
-        let color = crate::teams::config::assign_color(config.members.len());
+        let mut team_config = crate::teams::config::TeamConfig::load(team)?;
+        let color = crate::teams::config::assign_color(team_config.members.len());
 
-        let agent_config = AgentConfig {
+        let existing_member = team_config.find_member(name).cloned();
+
+        let effective_model = existing_member
+            .as_ref()
+            .and_then(|m| m.model.clone())
+            .or_else(|| team_config.default_model.clone());
+
+        let effective_role_name = role
+            .clone()
+            .or_else(|| {
+                existing_member
+                    .as_ref()
+                    .and_then(|m| m.role.clone())
+            })
+            .or_else(|| team_config.default_role.clone());
+
+        let effective_max_steps = team_config.max_steps.unwrap_or(100);
+
+        let mut agent_config = AgentConfig {
             name: format!("teammate/{name}"),
             system_prompt: format!(
                 "You are '{}', a teammate in team '{}'. You have your own context window. \
@@ -434,17 +453,49 @@ impl Tool for SpawnTeammateTool {
                  Focus on your assigned work and report findings via messages.",
                 name, team
             ),
-            max_steps: 100,
+            max_steps: effective_max_steps,
             team_name: Some(team.to_string()),
             agent_name: Some(name.to_string()),
             ..AgentConfig::default()
         };
 
+        if let Some(model_id) = &effective_model {
+            agent_config.subagent_model = Some(model_id.clone());
+        }
+
+        if let Some(ref role_name) = effective_role_name {
+            let user_roles = std::collections::HashMap::new();
+            let resolved = resolve_role(Some(role_name.as_str()), &user_roles);
+            apply_role(&mut agent_config, &resolved);
+            agent_config.team_name = Some(team.to_string());
+            agent_config.agent_name = Some(name.to_string());
+            if let Some(model_id) = &effective_model {
+                agent_config.subagent_model = Some(model_id.clone());
+            }
+        }
+
+        if let Some(ref overrides) = ctx.subagent_model_overrides {
+            let rn = effective_role_name.as_deref().unwrap_or("default");
+            let runtime_override = overrides.get(rn).await;
+            crate::agent_roles::apply_model_override(&mut agent_config, rn, runtime_override);
+        }
+
+        if let Some(ref shared_ctx) = ctx.shared_context {
+            if let Ok(sc) = shared_ctx.try_lock() {
+                let briefing = sc.build_briefing();
+                if !briefing.is_empty() {
+                    agent_config.system_prompt.push_str(&format!(
+                        "\n\n# Context Briefing (from parent)\n{briefing}"
+                    ));
+                }
+            }
+        }
+
         match self
             .manager
             .spawn_agent(
                 message.to_string(),
-                role.clone(),
+                effective_role_name.clone(),
                 ctx.depth,
                 ctx,
                 agent_config,
@@ -453,13 +504,13 @@ impl Tool for SpawnTeammateTool {
             .await
         {
             Ok((agent_id, nickname)) => {
-                config.add_member(crate::teams::config::TeamMemberConfig {
+                team_config.add_member(crate::teams::config::TeamMemberConfig {
                     name: name.to_string(),
                     agent_id: Some(agent_id.clone()),
                     agent_type: "general-purpose".to_string(),
                     color: color.clone(),
-                    model: None,
-                    role: role.clone(),
+                    model: effective_model.clone(),
+                    role: effective_role_name.clone(),
                     worktree_path: None,
                 })?;
 
@@ -475,7 +526,8 @@ impl Tool for SpawnTeammateTool {
                         "agent_id": agent_id,
                         "nickname": nickname,
                         "color": color,
-                        "role": role,
+                        "role": effective_role_name,
+                        "model": effective_model,
                     }),
                 })
             }

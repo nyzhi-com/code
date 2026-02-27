@@ -49,7 +49,7 @@ pub fn resolve_credential(provider: &str, config_key: Option<&str>) -> Result<Cr
 
     let env_var = api_key::env_var_name(provider);
     let oauth_hint = if oauth::supports_oauth(provider) {
-        format!(", or run `nyz login {provider}`")
+        format!(", use `/connect` in TUI, or run `nyz login {provider}`")
     } else {
         String::new()
     };
@@ -84,7 +84,7 @@ pub async fn resolve_credential_async(
 
     let env_var = api_key::env_var_name(provider);
     let oauth_hint = if oauth::supports_oauth(provider) {
-        format!(", or run `nyz login {provider}`")
+        format!(", use `/connect` in TUI, or run `nyz login {provider}`")
     } else {
         String::new()
     };

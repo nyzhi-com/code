@@ -1000,7 +1000,9 @@ async fn main() -> Result<()> {
             output_file,
         }) => {
             let Some(ref provider) = provider else {
-                eprintln!("No credentials configured. Set an API key or run `nyz login`.");
+                eprintln!(
+                    "No credentials configured. Use `nyz` + `/connect` (recommended), or run `nyz login`."
+                );
                 std::process::exit(1);
             };
             run_once(
@@ -1033,7 +1035,9 @@ async fn main() -> Result<()> {
             output_file,
         }) => {
             let Some(ref provider) = provider else {
-                eprintln!("No credentials configured. Set an API key or run `nyz login`.");
+                eprintln!(
+                    "No credentials configured. Use `nyz` + `/connect` (recommended), or run `nyz login`."
+                );
                 std::process::exit(1);
             };
 
@@ -1175,7 +1179,9 @@ async fn main() -> Result<()> {
             );
 
             let Some(ref provider) = provider else {
-                eprintln!("No credentials configured. Set an API key or run `nyz login`.");
+                eprintln!(
+                    "No credentials configured. Use `nyz` + `/connect` (recommended), or run `nyz login`."
+                );
                 std::process::exit(1);
             };
             run_once(
@@ -1252,12 +1258,20 @@ async fn run_once(
     let json_mode = opts.json;
     let quiet = opts.quiet;
     let mut thread = Thread::new();
+    let mut sys_prompt = nyzhi_core::prompt::build_system_prompt_with_mcp(
+        Some(workspace),
+        config.agent.custom_instructions.as_deref(),
+        mcp_tools,
+    );
+    if config.memory.auto_memory {
+        let mem = nyzhi_core::memory::load_memory_for_prompt(&workspace.project_root);
+        if !mem.is_empty() {
+            sys_prompt.push_str(&mem);
+        }
+        sys_prompt.push_str(nyzhi_core::prompt::auto_memory_instructions());
+    }
     let agent_config = AgentConfig {
-        system_prompt: nyzhi_core::prompt::build_system_prompt_with_mcp(
-            Some(workspace),
-            config.agent.custom_instructions.as_deref(),
-            mcp_tools,
-        ),
+        system_prompt: sys_prompt,
         max_steps: config.agent.max_steps.unwrap_or(100),
         max_tokens: config.agent.max_tokens,
         trust: config.agent.trust.clone(),
@@ -1290,8 +1304,8 @@ async fn run_once(
         todo_store: None,
         index: None,
         sandbox_level: opts.sandbox_level,
-        model_registry: None,
-        current_model: None,
+        subagent_model_overrides: None,
+        shared_context: None,
     };
 
     let tx = event_tx.clone();

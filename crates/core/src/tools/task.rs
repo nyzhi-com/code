@@ -162,8 +162,8 @@ impl Tool for TaskTool {
             todo_store: ctx.todo_store.clone(),
             index: ctx.index.clone(),
             sandbox_level: ctx.sandbox_level,
-            model_registry: ctx.model_registry.clone(),
-            current_model: ctx.current_model.clone(),
+            subagent_model_overrides: ctx.subagent_model_overrides.clone(),
+            shared_context: ctx.shared_context.clone(),
         };
 
         let mut session_usage = SessionUsage::default();

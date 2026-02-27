@@ -216,6 +216,9 @@ pub struct App {
     pub index_error: Option<String>,
     pub session_title: String,
     pub last_turn_duration: Option<f64>,
+    pub subagent_model_overrides: nyzhi_core::agent_roles::SubagentModelOverrides,
+    pub shared_context: std::sync::Arc<tokio::sync::Mutex<nyzhi_core::context_briefing::SharedContext>>,
+    pub config: nyzhi_config::Config,
 }
 
 impl App {
@@ -314,6 +317,9 @@ impl App {
             index_error: None,
             session_title: String::from("nyzhi code"),
             last_turn_duration: None,
+            subagent_model_overrides: nyzhi_core::agent_roles::SubagentModelOverrides::new(),
+            shared_context: std::sync::Arc::new(tokio::sync::Mutex::new(nyzhi_core::context_briefing::SharedContext::default())),
+            config: nyzhi_config::Config::default(),
         }
     }
 
@@ -391,6 +397,8 @@ impl App {
         mut registry: ToolRegistry,
         config: &nyzhi_config::Config,
     ) -> Result<()> {
+        self.config = config.clone();
+
         // Post-update health check — detect if a recent update broke anything
         let health_warnings = nyzhi_core::updater::startup_health_check();
         for w in &health_warnings {
@@ -560,6 +568,13 @@ impl App {
         if config.agent.auto_commit {
             sys_prompt.push_str(nyzhi_core::prompt::auto_commit_instructions());
         }
+        if config.memory.auto_memory {
+            let mem = nyzhi_core::memory::load_memory_for_prompt(&self.workspace.project_root);
+            if !mem.is_empty() {
+                sys_prompt.push_str(&mem);
+            }
+            sys_prompt.push_str(nyzhi_core::prompt::auto_memory_instructions());
+        }
         let mut agent_config = AgentConfig {
             system_prompt: sys_prompt,
             max_steps: config.agent.max_steps.unwrap_or(100),
@@ -613,8 +628,8 @@ impl App {
             ),
             index: self.codebase_index.clone(),
             sandbox_level: nyzhi_config::SandboxLevel::default(),
-            model_registry: Some(std::sync::Arc::new(nyzhi_provider::ModelRegistry::new())),
-            current_model: Some(self.model_name.clone()),
+            subagent_model_overrides: Some(self.subagent_model_overrides.clone()),
+            shared_context: Some(self.shared_context.clone()),
         };
 
         let agent_manager = if let Some(ref p) = provider {
@@ -1759,6 +1774,56 @@ impl App {
                             }
                         }
                         self.try_save_session(thread.as_ref());
+
+                        {
+                            let change_tracker_clone = tool_ctx.change_tracker.clone();
+                            let shared_ctx = self.shared_context.clone();
+                            let project_root = self.workspace.project_root.clone();
+                            let display_items = self.items.clone();
+                            let todo_store = self.todo_store.clone();
+                            tokio::spawn(async move {
+                                let changes: Vec<String> = {
+                                    let ct = change_tracker_clone.lock().await;
+                                    ct.changed_files()
+                                        .iter()
+                                        .map(|p| p.display().to_string())
+                                        .collect()
+                                };
+                                let messages: Vec<String> = display_items
+                                    .iter()
+                                    .rev()
+                                    .take(5)
+                                    .filter_map(|item| {
+                                        if let DisplayItem::Message { role, content } = item {
+                                            let trunc = if content.len() > 200 {
+                                                format!("{}...", &content[..200])
+                                            } else {
+                                                content.clone()
+                                            };
+                                            Some(format!("[{role}] {trunc}"))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+                                let todos: Vec<(String, String)> = if let Some(ref store) = todo_store {
+                                    let s = store.lock().await;
+                                    s.values()
+                                        .flat_map(|items| items.iter())
+                                        .filter(|t| t.status != "completed")
+                                        .map(|t| (t.id.clone(), t.content.clone()))
+                                        .collect()
+                                } else {
+                                    Vec::new()
+                                };
+                                let mut sc = shared_ctx.lock().await;
+                                sc.update_changes(changes);
+                                sc.update_conversation(messages);
+                                sc.update_todos(todos);
+                                sc.project_root = Some(project_root);
+                            });
+                        }
+
                         if !self.hooks_config.is_empty() {
                             let hooks = self.hooks_config.clone();
                             let hook_cwd = tool_ctx.cwd.clone();
@@ -2518,6 +2583,7 @@ impl App {
             "anthropic",
             "gemini",
             "cursor",
+            "github-copilot",
             "openrouter",
             "deepseek",
             "groq",
@@ -2581,7 +2647,7 @@ impl App {
         }
 
         if !unconnected_providers.is_empty() {
-            items.push(SelectorItem::header("Providers"));
+            items.push(SelectorItem::header("Not Connected"));
             for (provider_id, display_name) in &unconnected_providers {
                 let def = nyzhi_config::find_provider_def(provider_id);
                 let hint = if def.map(|d| d.supports_oauth).unwrap_or(false) {

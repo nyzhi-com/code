@@ -1,128 +1,61 @@
 # Notifications
 
-Nyzhi can notify you when an agent turn completes, both locally (terminal bell, desktop notification) and remotely (webhook, Telegram, Discord, Slack).
+Source of truth:
 
----
+- `crates/config/src/lib.rs` (`tui.notify`, `external_notify`)
+- `crates/tui/src/input.rs` (`/notify` command handling)
+- `crates/core/src/notify.rs`
+- `crates/core/src/agent/mod.rs` (teammate idle mailbox notifications)
 
-## Local Notifications
+## Notification Surfaces
 
-### Terminal Bell
+There are three distinct notification channels:
 
-Plays a terminal bell (`\a`) when a turn finishes. Enabled by default.
+1. TUI local notifications (`[tui.notify]`)
+2. External webhook-style notifications (`[external_notify]`)
+3. Internal team mailbox idle notifications
 
-```toml
-[tui.notify]
-bell = true
-```
+## TUI Notification Config
 
-### Desktop Notifications
+`[tui.notify]`:
 
-Sends a desktop notification via `notify-rust`. Disabled by default.
+- `bell` (default `true`)
+- `desktop` (default `false`)
+- `min_duration_ms` (default `5000`)
 
-```toml
-[tui.notify]
-desktop = true
-```
+TUI slash support:
 
-On macOS, this uses the native notification center. On Linux, it uses `libnotify` or a compatible notification daemon.
+- `/notify`
+- `/notify bell on|off`
+- `/notify desktop on|off`
+- `/notify duration <ms>`
 
-### Duration Threshold
+## External Notification Config
 
-Notifications only fire if the turn took longer than the threshold. This avoids noisy alerts for quick responses.
+Config keys:
 
-```toml
-[tui.notify]
-min_duration_ms = 5000         # default: 5000 (5 seconds)
-```
+- `external_notify.webhook_url`
+- `external_notify.telegram_bot_token`
+- `external_notify.telegram_chat_id`
+- `external_notify.discord_webhook_url`
+- `external_notify.slack_webhook_url`
 
-### TUI Toggle
+Core notify module (`crates/core/src/notify.rs`) includes sender implementations for:
 
-Use `/notify` in the TUI to view and toggle notification settings without editing config.
+- generic webhook JSON payload
+- Telegram bot API
+- Discord webhook
+- Slack webhook
 
----
+## Team Idle Notifications
 
-## External Notifications
+When a non-lead teammate completes a turn, agent runtime can send an idle notification message to the team lead inbox (`MessageType::IdleNotification`).
 
-External notifications are sent via HTTP after agent turns complete. Configure them in the `[notify]` section of config.toml.
+This is team mailbox signaling, not desktop/webhook notification.
 
-### Webhook
+## Practical Guidance
 
-Send a POST request to any URL:
-
-```toml
-[notify]
-webhook = { url = "https://hooks.example.com/nyzhi" }
-```
-
-The payload is a JSON object with the notification message.
-
-### Telegram
-
-Send messages to a Telegram chat via the Bot API:
-
-```toml
-[notify]
-telegram = { bot_token = "123456:ABC-DEF", chat_id = "-1001234567890" }
-```
-
-To set up:
-
-1. Create a bot via [@BotFather](https://t.me/BotFather) and get the bot token.
-2. Add the bot to your group or channel.
-3. Get the chat ID (use `getUpdates` API or a bot like @userinfobot).
-
-### Discord
-
-Send messages to a Discord channel via webhook:
-
-```toml
-[notify]
-discord = { webhook_url = "https://discord.com/api/webhooks/123/abc" }
-```
-
-To set up:
-
-1. Go to your Discord channel settings.
-2. Under Integrations, create a webhook.
-3. Copy the webhook URL.
-
-### Slack
-
-Send messages to a Slack channel via webhook:
-
-```toml
-[notify]
-slack = { webhook_url = "https://hooks.slack.com/services/T00/B00/xxx" }
-```
-
-To set up:
-
-1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps).
-2. Enable Incoming Webhooks.
-3. Add a webhook to your workspace and select a channel.
-4. Copy the webhook URL.
-
----
-
-## Multiple Channels
-
-You can configure multiple notification channels simultaneously. All configured channels receive the notification:
-
-```toml
-[notify]
-webhook = { url = "https://hooks.example.com/nyzhi" }
-telegram = { bot_token = "...", chat_id = "..." }
-discord = { webhook_url = "https://..." }
-slack = { webhook_url = "https://..." }
-```
-
----
-
-## Message Format
-
-Notification messages include:
-
-- A completion indicator
-- The session context (what the agent was working on)
-
-The exact format varies by channel (plain text for Telegram, JSON for webhooks, etc.).
+- enable `desktop` notifications only for long-running tasks
+- tune `min_duration_ms` to avoid noisy short-turn alerts
+- store webhook credentials in private config or environment, not in repository files
+- for team workflows, monitor inbox with `read_inbox` and `/teams-config`

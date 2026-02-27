@@ -1,98 +1,117 @@
 # MCP (Model Context Protocol)
 
-Nyzhi loads MCP servers from both config and `.mcp.json`, connects with `rmcp`, and exposes remote tools as first-class tools.
+Source of truth:
 
-## Supported transports
+- `crates/core/src/mcp/mod.rs`
+- `crates/core/src/mcp/tool_adapter.rs`
+- `crates/cli/src/main.rs` (`nyz mcp ...`)
+- `crates/config/src/lib.rs` (`McpConfig`, `McpServerConfig`)
 
-- `Stdio` (spawn process and speak MCP over stdio)
-- `Http` (streamable HTTP transport)
+## What nyzhi Supports
 
-## Configuration sources
+`nyzhi` supports MCP servers over:
 
-### `config.toml`
+- stdio transport
+- streamable HTTP transport
+
+MCP tools are discovered at startup and registered into the tool registry.
+
+## Config-based Server Definitions
+
+In config:
 
 ```toml
-[mcp.servers.filesystem]
+[mcp.servers.localfs]
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
-env = { NODE_ENV = "production" }
 
 [mcp.servers.remote]
-url = "https://mcp.example.com"
-headers = { Authorization = "Bearer ..." }
+url = "https://example.com/mcp"
 ```
 
-### `.mcp.json` at project root
+Schema forms:
 
-```json
-{
-  "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
-    },
-    "remote": {
-      "url": "https://mcp.example.com"
-    }
-  }
-}
-```
+- stdio:
+  - `command`
+  - `args` (optional)
+  - `env` (optional)
+- http:
+  - `url`
+  - `headers` (optional)
 
-`load_mcp_json()` accepts either `mcpServers` or `mcp_servers` (serde alias).
+## `.mcp.json` Compatibility
 
-## Merge precedence
+`nyzhi` also reads `<project>/.mcp.json` using Claude/Codex-style schema.
 
-Runtime merge order is:
+Loader behavior (`load_mcp_json`):
 
-1. `config.mcp.servers`
-2. `.mcp.json` servers via `extend(...)`
+- supports `mcpServers` alias
+- maps `url` entries to HTTP servers
+- maps `command` entries to stdio servers
+- ignores invalid entries with warnings
 
-If names collide, `.mcp.json` wins.
-
-## CLI commands
+## CLI Management Commands
 
 ```bash
-nyz mcp add <name> -- <command> [args...]
-nyz mcp add <name> --url https://...
+nyz mcp add <name> --url <url> [--scope global|project]
+nyz mcp add <name> [--scope global|project] -- <command> [args...]
 nyz mcp list
-nyz mcp remove <name>
+nyz mcp remove <name> [--scope global|project]
 ```
 
-Scopes for add/remove:
+Scope behavior:
 
-- `--scope global` -> `~/.config/nyzhi/config.toml`
-- `--scope project` (default) -> `.nyzhi/config.toml`
+- `project` (default): writes to `<project>/.nyzhi/config.toml`
+- `global`: writes to `~/.config/nyzhi/config.toml`
 
-Important: CLI add/remove edits `config.toml`, not `.mcp.json`.
+## Runtime Connection Flow
 
-## Runtime lifecycle
+At startup:
 
-1. Startup reads merged server config.
-2. `McpManager::start_all()` attempts connection per server.
-3. `list_tools` is called; discovered tools are registered.
-4. Tool calls route via `McpManager::call_tool(server, tool, args)`.
-5. Failed servers are warned and skipped (startup continues).
+1. merge configured MCP servers from config
+2. merge `.mcp.json` discovered servers
+3. connect each server via `McpManager::start_all`
+4. call `tools/list` on each connected server
+5. register each MCP tool into local `ToolRegistry`
 
-## Tool naming
+## Deferred MCP Tool Mode
 
-MCP tools are wrapped as:
+When many MCP tools are present (`> 15`):
+
+- tools are registered as deferred
+- deferred index is written to `.nyzhi/context/tools/mcp-index.md`
+- model can discover available deferred tools through `tool_search`
+
+This avoids bloating initial tool definition payloads.
+
+## MCP Tool Naming
+
+MCP tools are exposed with adapter naming pattern:
 
 - `mcp__<server_name>__<tool_name>`
 
-Example: `mcp__filesystem__read_file`.
+Adapter wiring occurs in `tool_adapter::McpTool`.
 
-## Deferred behavior for large MCP sets
+## Calling MCP Tools
 
-When total MCP tools > 15:
+`McpManager::call_tool` executes:
 
-- MCP tools are registered deferred.
-- an index file is written to `.nyzhi/context/tools/mcp-index.md`.
-- agent can discover them through `tool_search`.
+- server lookup by name
+- tool call by name + JSON argument map
+- textual output extraction from MCP response content
 
-## Header caveat
+## Server Introspection
 
-`McpServerConfig::Http` includes `headers`, but current connection code does not yet apply custom headers to transport requests.
+Manager APIs include:
 
-## TUI view
+- `all_tools()`
+- `tool_summaries()`
+- `server_info_list()`
+- `connect_server()` (hot-add)
+- `stop_all()`
 
-`/mcp` displays connected server names and tool counts/tool names (`server_info_list()` output).
+## Operational Notes
+
+- failing servers are logged and skipped; startup continues
+- MCP servers can materially increase tool surface area
+- for large MCP fleets, use `tool_search` and narrower prompts

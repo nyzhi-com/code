@@ -1,164 +1,182 @@
 # Tools
 
-Nyzhi registers a large built-in toolset in `nyzhi-core::tools::default_registry()`, then adds agent-management tools dynamically when an `AgentManager` is available.
+Source of truth:
 
-## Permission model
+- `crates/core/src/tools/mod.rs` (registry)
+- `crates/core/src/tools/*.rs` (tool implementations)
+- `crates/tui/src/app.rs` (interactive-only tool registration)
 
-- `ReadOnly`: default for tools unless overridden.
-- `NeedsApproval`: explicit override per tool.
+## Tool Runtime Model
 
-Trust mode then decides whether approval prompts are skipped.
+- Each tool implements the `Tool` trait:
+  - `name()`
+  - `description()`
+  - `parameters_schema()`
+  - `permission()` (defaults to read-only)
+  - `execute()`
+- Tools are registered in `ToolRegistry`.
+- Definitions sent to the model are built from the registry.
+- Deferred tools are hidden initially and discoverable via `tool_search`.
 
-## Built-in tool names
+## Permission Model
 
-### File and filesystem
+Tool permission levels:
 
-- `read`
-- `write`
-- `edit`
-- `apply_patch`
-- `multi_edit`
-- `glob`
-- `grep`
-- `list_dir`
-- `directory_tree`
-- `file_info`
-- `delete_file`
-- `move_file`
-- `copy_file`
-- `create_dir`
+- `ReadOnly`
+- `NeedsApproval`
 
-### Shell and git
+Execution behavior in agent loop:
 
-- `bash`
-- `git_status`
-- `git_diff`
-- `git_log`
-- `git_show`
-- `git_branch`
-- `git_commit`
-- `git_checkout`
+- read-only tool calls can run in parallel
+- mutating/approval-required calls run sequentially
+- trust and sandbox rules can still deny execution even if tool exists
 
-### Agent workflow and planning
+## Availability by Runtime
 
-- `task`
-- `todowrite`
-- `todoread`
-- `notepad_write`
-- `notepad_read`
-- `update_plan`
-- `think`
-- `load_skill`
-- `tool_search`
-- `ask_user`
+| Surface | Notes |
+| --- | --- |
+| TUI (`nyz`) | Registers default tools + subagent lifecycle tools (`spawn_agent`, `send_input`, `wait`, `close_agent`, `resume_agent`, `spawn_teammate`) |
+| CLI `run` / `exec` | Uses default registry; subagent lifecycle tools are not currently registered in this path |
 
-### Code intelligence
+## Tool Inventory
 
-- `verify`
-- `lsp_diagnostics`
-- `ast_search`
-- `lsp_goto_definition`
-- `lsp_find_references`
-- `lsp_hover`
-- `semantic_search`
-- `fuzzy_find`
+### Core code and file tools
 
-### Web and browser
+| Tool | Permission | Purpose |
+| --- | --- | --- |
+| `bash` | approval | Run shell commands |
+| `read` | read-only | Read file contents |
+| `write` | approval | Write or overwrite files |
+| `edit` | approval | Single-location string replace |
+| `apply_patch` | approval | Apply unified diff atomically |
+| `multi_edit` | approval | Transactional multi-file string replacements |
+| `glob` | read-only | File search by glob pattern |
+| `grep` | read-only | Regex search in files |
+| `fuzzy_find` | read-only | Fuzzy filename search |
+| `tail_file` | read-only | Read last N lines of file |
+| `batch_apply` | approval | Apply operation across many files |
 
-- `web_fetch`
-- `web_search`
-- `browser_open`
-- `browser_screenshot`
-- `browser_evaluate`
+### Git tools
 
-### PR and debugging
+| Tool | Permission | Purpose |
+| --- | --- | --- |
+| `git_status` | read-only | Working tree status |
+| `git_diff` | read-only | Staged/unstaged diff |
+| `git_log` | read-only | Commit history |
+| `git_show` | read-only | Single commit details |
+| `git_branch` | read-only | Branch listing |
+| `git_commit` | approval | Stage and commit |
+| `git_checkout` | approval | Switch/create branch |
 
-- `create_pr`
-- `review_pr`
-- `instrument`
-- `remove_instrumentation`
-- `tail_file`
-- `batch_apply`
+### Filesystem metadata and path operations
 
-### Memory and team ops
+| Tool | Permission | Purpose |
+| --- | --- | --- |
+| `list_dir` | read-only | List directory entries |
+| `directory_tree` | read-only | Recursive tree view |
+| `file_info` | read-only | File metadata |
+| `delete_file` | approval | Delete file/empty dir |
+| `move_file` | approval | Move/rename path |
+| `copy_file` | approval | Copy file |
+| `create_dir` | approval | Create directory |
 
-- `memory_read`
-- `memory_write`
-- `team_create`
-- `team_delete`
-- `send_team_message`
-- `task_create`
-- `task_update`
-- `task_list`
-- `team_list`
-- `read_inbox`
+### Code intelligence tools
 
-### Runtime-added agent control tools
+| Tool | Permission | Purpose |
+| --- | --- | --- |
+| `verify` | read-only | Run project verification checks |
+| `lsp_diagnostics` | read-only | LSP diagnostics/capability discovery |
+| `ast_search` | read-only | Structural pattern search |
+| `lsp_goto_definition` | read-only | Symbol definition lookup |
+| `lsp_find_references` | read-only | Symbol references lookup |
+| `lsp_hover` | read-only | Type/docs at position |
+| `semantic_search` | read-only | Embedding-based code retrieval (when index is enabled) |
 
-When TUI initializes agent manager support, it also registers:
+### Planning, orchestration, and user interaction
 
-- `spawn_agent`
-- `send_input`
-- `wait`
-- `close_agent`
-- `resume_agent`
-- `spawn_teammate`
+| Tool | Permission | Purpose |
+| --- | --- | --- |
+| `todowrite` | read-only | Create/update structured todo list |
+| `todoread` | read-only | Read current todo list |
+| `create_plan` | read-only | Create/update session plan markdown |
+| `think` | read-only | Side-effect-free reasoning note |
+| `ask_user` | read-only | Ask user structured multiple-choice question |
+| `tool_search` | read-only | Discover deferred/MCP tools |
 
-## Tools with explicit `NeedsApproval`
+### Memory and knowledge tools
 
-The following built-ins explicitly request approval in code:
+| Tool | Permission | Purpose |
+| --- | --- | --- |
+| `memory_read` | read-only | Read user/project memory index or topic |
+| `memory_write` | approval | Persist memory topics/index entries |
+| `notepad_read` | read-only | Read plan notepad |
+| `notepad_write` | read-only | Record learning/decision/issue |
+| `load_skill` | read-only | Load skill content by name |
 
-- `write`, `edit`, `apply_patch`, `multi_edit`
-- `delete_file`, `move_file`, `copy_file`, `create_dir`
-- `bash`
-- `git_commit`, `git_checkout`
-- `instrument`, `remove_instrumentation`
-- `browser_open`, `browser_screenshot`, `browser_evaluate`
-- `create_pr`
-- `team_create`, `team_delete`, `spawn_teammate`
-- `web_fetch`, `web_search`
+### Web, browser, and PR tools
 
-Everything else is read-only unless changed in code.
+| Tool | Permission | Purpose |
+| --- | --- | --- |
+| `web_fetch` | approval | Fetch URL text content |
+| `web_search` | approval | Search web and return snippets |
+| `browser_open` | approval | Open URL in headless browser |
+| `browser_screenshot` | approval | Capture screenshot |
+| `browser_evaluate` | approval | Evaluate JS in page context |
+| `create_pr` | approval | Create PR (GitHub/GitLab CLI) |
+| `review_pr` | read-only | Retrieve/review PR diff |
 
-## Trust interaction
+### Team and taskboard tools
 
-- `off`: approval prompts for sensitive tools.
-- `limited`: read-only tools generally auto-run; write/exec tools still gated unless allow rules match.
-- `autoedit`: file-editing tools auto-approved (`write`, `edit`, `multi_edit`, `apply_patch`, and file mutation filesystem tools).
-- `full`: all tools auto-approved except denied tools/paths.
+| Tool | Permission | Purpose |
+| --- | --- | --- |
+| `team_create` | approval | Create team + config + inbox/taskboard |
+| `team_delete` | approval | Delete team artifacts |
+| `team_list` | read-only | List teams |
+| `send_team_message` | read-only | Direct/broadcast team message |
+| `read_inbox` | read-only | Read unread team inbox messages |
+| `task_create` | read-only | Create shared team task |
+| `task_update` | read-only | Update task status/owner |
+| `task_list` | read-only | List team tasks |
+| `spawn_teammate` | approval | Spawn agent and register as team member (interactive runtime registration) |
 
-## Deferred tool behavior
+### Subagent lifecycle tools (interactive runtime)
 
-Tool registry supports deferred expansion:
+| Tool | Permission | Purpose |
+| --- | --- | --- |
+| `spawn_agent` | read-only | Spawn sub-agent by role and message |
+| `send_input` | read-only | Send follow-up message to sub-agent |
+| `wait` | read-only | Wait for one/all agents to reach terminal status |
+| `close_agent` | read-only | Close sub-agent and free slot |
+| `resume_agent` | read-only | Resume completed/errored agent for new work |
 
-- deferred tool schemas are omitted from initial LLM tool payload
-- `tool_search` helps discover deferred tools
-- once used, deferred tool is marked expanded and included in later turns
+## Legacy `task` Tool
 
-This is used to keep prompt size manageable with large toolsets.
+`crates/core/src/tools/task.rs` implements a legacy `task` tool that runs a child agent synchronously. It is currently not part of the default CLI/TUI registration path and has largely been superseded by the explicit lifecycle tools above.
 
-## MCP tool naming
+## Deferred and MCP Tools
 
-MCP tools are wrapped as:
+When many MCP tools are present:
 
-- `mcp__<server_name>__<tool_name>`
+- tools can be registered as deferred
+- the model uses `tool_search` to discover them
+- deferred index may be written to `.nyzhi/context/tools/mcp-index.md`
 
-Example: `mcp__filesystem__read_file`.
+See `docs/mcp.md` for MCP wiring details.
 
-See [mcp.md](mcp.md) for merge, transport, and runtime details.
+## ToolContext Fields
 
-## Tool context fields
-
-Every tool receives `ToolContext` with:
+Important runtime context passed to each tool:
 
 - `session_id`
 - `cwd`
 - `project_root`
-- `depth`
-- `event_tx`
-- `change_tracker`
-- `allowed_tool_names`
-- `team_name`
-- `agent_name`
-- `is_team_lead`
+- `depth` (0 for main agent, increments for subagents)
+- `allowed_tool_names` (role filtering)
+- `team_name`, `agent_name`, `is_team_lead`
+- `sandbox_level`
 - `todo_store`
+- `index`
+- `subagent_model_overrides`
+- `shared_context`
+
+These fields are critical for role-scoped behavior, team messaging, and subagent context briefing.

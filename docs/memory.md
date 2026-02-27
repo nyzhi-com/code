@@ -1,127 +1,103 @@
 # Memory
 
-Nyzhi's memory system lets the agent persist knowledge across sessions. Learnings, decisions, architecture notes, and project conventions survive session boundaries and are injected into the system prompt when relevant.
+Source of truth:
 
----
+- `crates/core/src/memory.rs`
+- `crates/core/src/context_briefing.rs`
+- `crates/core/src/tools/memory.rs`
 
-## Two Scopes
+## Memory Model
 
-### User Memory
+`nyzhi` supports two memory scopes:
 
-Global memory that applies across all projects:
+- user memory (`~/.nyzhi/MEMORY.md`)
+- project memory (`<data_dir>/projects/<hash>/memory/`)
 
-- Stored at `~/.local/share/nyzhi/MEMORY.md`
-- Contains preferences, conventions, and general knowledge
+Memory can be read, written, indexed, and injected into prompts.
 
-### Project Memory
+## Paths
 
-Per-project memory scoped to a specific codebase:
+### User scope
 
-- Stored at `~/.local/share/nyzhi/projects/<hash>/memory/`
-- The hash is derived from the canonical project root path
-- Contains project-specific architecture decisions, patterns, and notes
+- memory index: `~/.nyzhi/MEMORY.md`
+- rules directory: `~/.nyzhi/rules/`
 
----
+### Project scope
 
-## Topics
+Project hash is derived from canonical project root path (`SHA256`, first 8 bytes hex).
 
-Memory is organized by topic. Each topic is a markdown file:
+Project memory base:
 
-```
-~/.local/share/nyzhi/projects/<hash>/memory/
-  MEMORY.md          # index of all topics
-  architecture.md    # architecture decisions
-  testing.md         # testing conventions
-  api-design.md      # API design patterns
-```
+- `<data_dir>/nyzhi/projects/<project_hash>/memory/`
 
-### Writing Memory
+Within memory dir:
 
-The agent uses the `memory_write` tool to persist knowledge:
-
-```
-Tool: memory_write
-Args: { "topic": "architecture", "content": "We use hexagonal architecture...", "replace": false }
-```
-
-- `topic` -- the topic name (creates the file if new)
-- `content` -- the content to write
-- `replace` -- if true, replaces the topic entirely. If false, appends.
-
-When a new topic is written, the `MEMORY.md` index is updated automatically.
-
-### Reading Memory
-
-```
-Tool: memory_read
-Args: { "topic": "architecture" }
-```
-
-Returns the full content of the topic. Without a topic argument, returns the index.
-
----
+- `MEMORY.md` index
+- `<topic>.md` topic files
 
 ## Prompt Injection
 
-At the start of each session, Nyzhi loads memory and injects it into the system prompt:
+`load_memory_for_prompt(root)` returns:
 
-1. Reads user memory (`MEMORY.md`)
-2. Reads project memory (all topics for the current project)
-3. Combines and truncates to `MAX_INJECTION_LINES` (200 lines)
-4. Injects into the system prompt under a "Memory" section
+- `## User Memory` section (up to half line budget)
+- `## Project Memory` section (remaining budget)
 
-This means the agent starts every session with awareness of past decisions and conventions.
+Injection cap:
 
----
+- `MAX_INJECTION_LINES = 200`
 
-## Notepad
+If memory is disabled (`memory.auto_memory=false`), memory injection is skipped.
 
-The notepad is a session-scoped scratchpad distinct from persistent memory:
+## Memory APIs
 
-- `notepad_write` -- write an entry to the current session's notepad
-- `notepad_read` -- read notepad entries
+Key functions:
 
-Notepad entries are useful for tracking decisions, open questions, and intermediate results within a single session. They don't persist across sessions (use memory for that).
+- `memory_dir(root)`
+- `user_memory_path()`
+- `load_memory_for_prompt(root)`
+- `memory_count(root)`
+- `read_topic(root, topic)`
+- `write_topic(root, topic, content, replace)`
+- `read_index(root)`
+- `list_topics(root)`
+- `clear_memory(root)`
 
-### In the TUI
+## Topic Write Modes
 
-```
-/notepad              # list all notepad entries
-/notepad architecture # view a specific entry
-```
+`write_topic(..., replace)` behavior:
 
----
+- `replace = true`: overwrite topic file
+- `replace = false`: append with newline separator
 
-## Memory Count
+Index behavior:
 
-The `memory_count()` function reports how many items are stored:
+- writing a topic updates `MEMORY.md` with markdown link entry if missing
 
-- Counts list items (`-` prefixed lines) in the index
-- Counts topic files in the memory directory
+## Memory Tools
 
----
+### `memory_read`
 
-## Clearing Memory
+- without `topic`: returns memory index (`MEMORY.md`)
+- with `topic`: returns topic file content
 
-To reset project memory:
+### `memory_write`
 
-```
-Tool: memory_write
-Args: { "topic": "all", "content": "", "replace": true }
-```
+- writes/appends topic content
+- supports replace mode
+- updates index
 
-Or delete the memory directory manually:
+## Shared Context Briefing Integration
 
-```bash
-rm -rf ~/.local/share/nyzhi/projects/<hash>/memory/
-```
+`SharedContext::build_briefing()` can embed project memory excerpt under `## Project Memory` for subagent context transfer.
 
----
+Briefing caps:
 
-## Best Practices
+- total lines: `MAX_BRIEFING_LINES = 60`
+- recent changes: `MAX_CHANGE_ENTRIES = 20`
+- message preview: `MAX_MESSAGE_PREVIEW = 5`
 
-- **Use memory for conventions**: "We use Result<T, AppError> for all API handlers"
-- **Use memory for architecture decisions**: "Auth uses JWT with refresh tokens stored in httpOnly cookies"
-- **Use notepad for session-specific context**: "Current task: refactor the billing module"
-- **Keep topics focused**: One topic per area (testing, auth, database, etc.)
-- **Let the agent manage memory**: The agent writes to memory when it discovers important patterns. You don't need to manage it manually.
+## Operational Guidance
+
+- keep memory entries concise and stable
+- use topic files for durable decisions and conventions
+- clear project memory when context becomes stale (`/memory clear`)

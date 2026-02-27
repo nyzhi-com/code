@@ -1,64 +1,67 @@
 # Configuration
 
-This page documents the current `nyzhi-config` schema and what the CLI actually loads today.
+Source of truth: `crates/config/src/lib.rs` and merge call sites in `crates/cli/src/main.rs` / `crates/tui/src/app.rs`.
 
-## File locations
+## Config Files
 
-- Global config: `~/.config/nyzhi/config.toml`
-- Project config: `<project_root>/.nyzhi/config.toml`
-- Local helper path exists in code: `<project_root>/.nyzhi/config.local.toml`
+Primary files:
 
-### What is loaded now
+- global: `~/.config/nyzhi/config.toml`
+- project: `<project>/.nyzhi/config.toml`
 
-- `nyz` currently loads global config, then merges project config **if** `.nyzhi/config.toml` exists.
-- `config.local.toml` has a loader in `nyzhi-config`, but is not currently wired in CLI startup.
+Also supported by parser helpers:
 
-## Top-level sections
+- local: `<project>/.nyzhi/config.local.toml` (`Config::load_local`)
 
-```toml
-[provider]
-[models]
-[tui]
-[agent]
-[mcp]
-[external_notify]
-[shell]
-[browser]
-[memory]
-[index]
-[update]
-```
+Important caveat:
 
-All sections are optional.
+- current CLI/TUI runtime path merges `global + project` via `Config::merge`.
+- `config.local.toml` is parsed by helpers but is not currently merged by default entrypoints.
 
-## Defaults (source values)
+## Merge Semantics (Global + Project)
 
-- `provider.default = "openai"`
-- `models.max_tokens = 4096`
-- `models.temperature = null`
-- `tui.theme = "dark"` (maps to `nyzhi-dark`)
-- `tui.accent = "copper"`
-- `tui.markdown = true`
-- `tui.streaming = true`
-- `tui.notify.bell = true`
-- `tui.notify.desktop = false`
-- `tui.notify.min_duration_ms = 5000`
-- `agent.retry.max_retries = 3`
-- `agent.retry.initial_backoff_ms = 1000`
-- `agent.retry.max_backoff_ms = 30000`
-- `agent.agents.max_threads = 4`
-- `agent.agents.max_depth = 2`
-- `index.enabled = true`
-- `index.embedding = "auto"` (`auto` | `voyage` | `openai` | `perplexity` | `tfidf`)
-- `index.embedding_model = ""` (override model id)
-- `index.auto_context = true`
-- `index.auto_context_chunks = 5`
-- `index.exclude = []`
-- `update.enabled = true`
-- `update.check_interval_hours = 4`
-- `update.release_url = "https://get.nyzhi.com"`
+`Config::merge(global, project)` is not a naive overwrite. It applies section-specific rules.
 
-## Provider config
+### High-level rules
+
+- project values override global where explicitly set
+- some lists are appended and deduplicated
+- some booleans use `OR` semantics
+- some booleans use `AND` semantics (more restrictive)
+- update `release_url` is global-only for security
+
+### Notable section behavior
+
+- `provider.providers`: merged per provider entry (`api_key`, `base_url`, `model`, `api_style`, `max_tokens`, `temperature`)
+- `provider.default`: project wins only if project default differs from built-in default (`openai`)
+- `mcp.servers`: project extends global map
+- `agent.trust.deny_tools` and `agent.trust.deny_paths`: union + dedupe
+- `agent.hooks` and `agent.commands`: concatenated (`global` first, then `project`)
+- `agent.agents.roles`: merged map (`project` can add/override role definitions)
+- `browser.headless`: `project.headless && global.headless`
+- `memory.auto_memory`: `project.auto_memory || global.auto_memory`
+- `update.enabled`: `global.enabled && project.enabled`
+- `index.enabled`: `global.enabled && project.enabled`
+- `index.auto_context`: `global.auto_context && project.auto_context`
+- `update.release_url`: taken from global only (project cannot override)
+
+## Top-level Schema
+
+`Config` contains:
+
+- `provider: ProviderConfig`
+- `models: ModelsConfig`
+- `tui: TuiConfig`
+- `agent: AgentSettings`
+- `mcp: McpConfig`
+- `external_notify: ExternalNotifyConfig`
+- `shell: ShellConfig`
+- `browser: BrowserConfig`
+- `memory: MemoryConfig`
+- `update: UpdateConfig`
+- `index: IndexConfig`
+
+## Example Config
 
 ```toml
 [provider]
@@ -66,112 +69,164 @@ default = "openai"
 
 [provider.openai]
 model = "gpt-5.3-codex"
-# api_key = "..."
-# base_url = "https://api.openai.com/v1"
-# api_style = "openai"
-# max_tokens = 4096
-# temperature = 0.2
-```
 
-`[provider.<id>]` fields:
-
-- `api_key`
-- `base_url`
-- `model`
-- `api_style`
-- `max_tokens`
-- `temperature`
-
-### Built-in providers
-
-| id | env var | api_style | oauth | default base URL |
-|---|---|---|---|---|
-| `openai` | `OPENAI_API_KEY` | `openai` | yes | `https://api.openai.com/v1` |
-| `anthropic` | `ANTHROPIC_API_KEY` | `anthropic` | yes | `https://api.anthropic.com/v1` |
-| `gemini` | `GEMINI_API_KEY` | `gemini` | yes | `https://generativelanguage.googleapis.com/v1beta` |
-| `cursor` | `CURSOR_API_KEY` | `cursor` | yes | `https://api2.cursor.sh` |
-| `openrouter` | `OPENROUTER_API_KEY` | `openai` | no | `https://openrouter.ai/api/v1` |
-| `claude-sdk` | `ANTHROPIC_API_KEY` | `claude-sdk` | no | *(empty)* |
-| `codex` | `CODEX_API_KEY` | `codex` | yes | *(empty)* |
-| `groq` | `GROQ_API_KEY` | `openai` | no | `https://api.groq.com/openai/v1` |
-| `together` | `TOGETHER_API_KEY` | `openai` | no | `https://api.together.xyz/v1` |
-| `deepseek` | `DEEPSEEK_API_KEY` | `openai` | no | `https://api.deepseek.com/v1` |
-| `ollama` | `OLLAMA_API_KEY` | `openai` | no | `http://localhost:11434/v1` |
-| `kimi` | `MOONSHOT_API_KEY` | `openai` | no | `https://api.moonshot.ai/v1` |
-| `kimi-coding` | `KIMI_CODING_API_KEY` | `anthropic` | no | `https://api.kimi.com/coding` |
-| `minimax` | `MINIMAX_API_KEY` | `openai` | no | `https://api.minimax.io/v1` |
-| `minimax-coding` | `MINIMAX_CODING_API_KEY` | `anthropic` | no | `https://api.minimax.io/anthropic` |
-| `glm` | `ZHIPU_API_KEY` | `openai` | no | `https://api.z.ai/api/paas/v4` |
-| `glm-coding` | `ZHIPU_CODING_API_KEY` | `openai` | no | `https://api.z.ai/api/coding/paas/v4` |
-
-## TUI config
-
-```toml
 [tui]
 theme = "dark"
 accent = "copper"
-markdown = true
-streaming = true
-output_style = "normal" # normal | verbose | minimal | structured
+show_thinking = true
 
-[tui.notify]
-bell = true
-desktop = false
-min_duration_ms = 5000
-
-[tui.colors]
-bg_page = "#000000"
-accent = "#c49a6c"
-```
-
-Theme names accepted: `dark`, `light`, `nyzhi-dark`, `nyzhi-light`, `tokyonight`, `catppuccin-mocha`, `dracula`, `solarized-dark`, `solarized-light`, `gruvbox-dark`.
-
-Accent names: `copper`, `blue`, `orange`, `emerald`, `violet`, `rose`, `amber`, `cyan`, `red`, `pink`, `teal`, `indigo`, `lime`, `monochrome`.
-
-## Agent config
-
-```toml
 [agent]
 max_steps = 100
-max_tokens = 8192
-custom_instructions = "..."
-auto_compact_threshold = 0.85
-compact_instructions = "..."
-enforce_todos = false
-auto_simplify = false
+auto_compact_threshold = 0.8
+subagent_model = "gpt-5.3-codex-xhigh-fast"
 
 [agent.trust]
-mode = "limited" # off | limited | autoedit | full
-allow_tools = ["edit", "write"]
-allow_paths = ["src/"]
-deny_tools = []
-deny_paths = []
-auto_approve = []
-always_ask = []
-remember_approvals = false
+mode = "limited"
+deny_tools = ["git_commit"]
+deny_paths = [".env", "secrets/"]
 
-[agent.retry]
-max_retries = 3
-initial_backoff_ms = 1000
-max_backoff_ms = 30000
+[agent.agents]
+max_threads = 4
+max_depth = 2
 
-[agent.routing]
-enabled = false
-low_keywords = []
-high_keywords = []
-
-[agent.verify]
-checks = [{ kind = "test", command = "cargo test -q" }]
+[index]
+enabled = true
+embedding = "auto"
+auto_context = true
+auto_context_chunks = 5
+exclude = ["target/**", "node_modules/**"]
 ```
 
-### Trust modes
+## Provider and Models
 
-- `off`: approval required for sensitive tools.
-- `limited`: read-only tools auto-run; write/exec tools still gated unless allow-lists match.
-- `autoedit`: auto-approves file-editing tools (`write`, `edit`, `multi_edit`, `apply_patch`, `delete_file`, `move_file`, `copy_file`, `create_dir`).
-- `full`: auto-approves all tools (except denied via deny-lists).
+### `[provider]`
 
-### Hook events (exact names)
+- `default`: default provider id
+- `[provider.<id>]` entries:
+  - `api_key`
+  - `base_url`
+  - `model`
+  - `api_style`
+  - `max_tokens`
+  - `temperature`
+
+Built-in providers are listed in `BUILT_IN_PROVIDERS`; see `docs/providers.md`.
+
+### `[models]`
+
+- `max_tokens` (default `4096`)
+- `temperature` (optional)
+
+## TUI Section
+
+### `[tui]`
+
+- `markdown` (default `true`)
+- `streaming` (default `true`)
+- `theme` (default `dark`)
+- `accent` (default `copper`)
+- `show_thinking` (default `true`)
+- `output_style`: `normal|verbose|minimal|structured`
+
+### `[tui.notify]`
+
+- `bell` (default `true`)
+- `desktop` (default `false`)
+- `min_duration_ms` (default `5000`)
+
+## Agent Section
+
+### `[agent]`
+
+- `max_steps`
+- `max_tokens`
+- `custom_instructions`
+- `auto_compact_threshold`
+- `compact_instructions`
+- `enforce_todos`
+- `auto_simplify`
+- `auto_commit`
+- `model_profile`
+- `subagent_model`
+
+### `[agent.trust]`
+
+- `mode`: `off|limited|autoedit|full`
+- `allow_tools`, `allow_paths`
+- `deny_tools`, `deny_paths`
+- `auto_approve`
+- `always_ask`
+- `remember_approvals`
+
+Trust parser aliases accepted in CLI/config parser:
+
+- `autoedit`, `auto_edit`, `auto-edit`
+
+### `[agent.retry]`
+
+- `max_retries` (default `3`)
+- `initial_backoff_ms` (default `1000`)
+- `max_backoff_ms` (default `30000`)
+
+### `[agent.routing]`
+
+- `enabled`
+- `low_keywords`
+- `high_keywords`
+
+See `docs/routing.md`.
+
+### `[agent.verify]`
+
+- `checks`: list of `{ kind, command }`
+
+### `[agent.agents]`
+
+- `max_threads` (default `4`)
+- `max_depth` (default `2`)
+- `roles`: map of role definitions
+
+Role definition keys (`AgentRoleToml`):
+
+- `description`
+- `config_file`
+- `system_prompt`
+- `model`
+- `max_steps`
+- `read_only`
+- `allowed_tools`
+- `disallowed_tools`
+
+### `[agent.sharing]`
+
+- `enabled`
+- `pages_project`
+- `domain`
+- `redact_patterns`
+
+### `[agent.voice]`
+
+- `enabled`
+- `api_key_env`
+- `model`
+
+## Hooks
+
+Each `[[agent.hooks]]` item (`HookConfig`) supports:
+
+- `event`
+- `command`
+- `hook_type`: `command|prompt|agent`
+- `prompt`
+- `instructions`
+- `tools`
+- `model`
+- `pattern`
+- `tool_name`
+- `block`
+- `timeout` (default `30`)
+
+Supported hook events:
 
 - `session_start`
 - `user_prompt_submit`
@@ -191,117 +246,89 @@ checks = [{ kind = "test", command = "cargo test -q" }]
 - `teammate_idle`
 - `task_completed`
 
-See [hooks.md](hooks.md) for event payload behavior.
+See `docs/hooks.md` for runtime behavior and block/feedback semantics.
 
-## Index config
+## MCP
 
-```toml
-[index]
-enabled = true
-embedding = "auto"            # auto | voyage | openai | perplexity | tfidf
-embedding_model = ""          # override model id, e.g. "voyage-code-3"
-auto_context = true
-auto_context_chunks = 5
-exclude = ["vendor/", "generated/"]
-```
+### `[mcp.servers.<name>]`
 
-- `enabled`: enables/disables codebase indexing startup in TUI.
-- `embedding`: selects the embedding provider.
-  - `auto`: picks the best available provider. Priority: Voyage AI > OpenAI > Perplexity > TF-IDF.
-  - `voyage`: use Voyage AI (default model: `voyage-code-3`, 1024d). Set `VOYAGE_API_KEY`.
-  - `openai`: use OpenAI (default model: `text-embedding-3-small`, 1536d). Set `OPENAI_API_KEY`.
-  - `perplexity`: use Perplexity (default model: `pplx-embed-v1-0.6b`, 1024d). Set `PERPLEXITY_API_KEY`.
-  - `tfidf`: local TF-IDF hash embedder, no API key needed.
-- `embedding_model`: override the default model for the selected provider (e.g. `"text-embedding-3-large"`). Leave empty to use the provider default.
-- `auto_context`: whether indexed context is prepended to agent turns.
-- `auto_context_chunks`: number of semantic chunks injected for auto-context.
-- `exclude`: additional glob-like path excludes passed to index walk.
+Two forms are supported:
 
-Switching embedding providers or models automatically triggers a full re-index (old vectors with different dimensions are incompatible).
+- stdio:
+  - `command`
+  - `args`
+  - `env`
+- http:
+  - `url`
+  - `headers`
 
-## MCP config
+Also see `.mcp.json` compatibility in `docs/mcp.md`.
 
-```toml
-[mcp.servers.filesystem]
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+## Shell and Browser
 
-[mcp.servers.remote]
-url = "https://mcp.example.com"
-headers = { Authorization = "Bearer ..." }
-```
+### `[shell]`
 
-`.mcp.json` is also loaded (Claude/Codex format). On name collisions, `.mcp.json` entries win at runtime because they are merged last.
+- `path`
+- `env` (map)
+- `startup_commands` (array)
+- `[shell.sandbox]`:
+  - `enabled`
+  - `allow_network`
+  - `allow_read`
+  - `allow_write`
+  - `block_dotfiles` (default `true`)
 
-## External notify
+### `[browser]`
 
-```toml
-[external_notify]
-webhook_url = "https://example.com/hook"
-telegram_bot_token = "..."
-telegram_chat_id = "..."
-discord_webhook_url = "..."
-slack_webhook_url = "..."
-```
+- `enabled`
+- `executable_path`
+- `headless` (default `true`)
 
-## Shell, browser, memory, update
+## Memory, Index, Update, Notifications
 
-```toml
-[shell]
-path = "/bin/zsh"
-startup_commands = ["echo ready"]
-env = { FOO = "bar" }
+### `[memory]`
 
-[shell.sandbox]
-enabled = false
-allow_network = []
-allow_read = []
-allow_write = []
-block_dotfiles = true
+- `auto_memory` (default `true`)
 
-[browser]
-enabled = false
-executable_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-headless = true
+### `[index]`
 
-[memory]
-auto_memory = false
+- `enabled` (default `true`)
+- `embedding` (`auto|voyage|openai|perplexity|tfidf`)
+- `embedding_model`
+- `auto_context` (default `true`)
+- `auto_context_chunks` (default `5`)
+- `exclude` (glob-like patterns)
 
-[update]
-enabled = true
-check_interval_hours = 4
-release_url = "https://get.nyzhi.com"
-```
+### `[update]`
 
-## Merge caveats
+- `enabled` (default `true`)
+- `check_interval_hours` (default `4`)
+- `release_url` (default `https://get.nyzhi.com`)
 
-Current merge behavior is field-specific, not a universal "project always overrides global" rule:
+### `[external_notify]`
 
-- Provider/model/mcp/agent/shell settings merge field-by-field.
-- `tui` currently comes from global config in merge logic.
-- `update.release_url` is global-only by design (project config cannot override it).
-- `browser.enabled` is merged with logical OR, while `browser.headless` is logical AND.
+- `webhook_url`
+- `telegram_bot_token`
+- `telegram_chat_id`
+- `discord_webhook_url`
+- `slack_webhook_url`
 
-## Environment variables
+## CLI Overrides That Affect Runtime Config
 
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `GEMINI_API_KEY`
-- `CURSOR_API_KEY`
-- `OPENROUTER_API_KEY`
-- `GROQ_API_KEY`
-- `TOGETHER_API_KEY`
-- `DEEPSEEK_API_KEY`
-- `OLLAMA_API_KEY`
-- `MOONSHOT_API_KEY`
-- `KIMI_CODING_API_KEY`
-- `MINIMAX_API_KEY`
-- `MINIMAX_CODING_API_KEY`
-- `ZHIPU_API_KEY`
-- `ZHIPU_CODING_API_KEY`
-- `CODEX_API_KEY`
+From `crates/cli/src/main.rs`:
 
-## Boundary notes
+- `--trust` mutates `config.agent.trust.mode` at runtime
+- `exec --full_auto` sets `trust.mode=full` and `sandbox_level=workspace-write`
+- `exec --sandbox` sets runtime `ToolContext.sandbox_level`
 
-- `target/`, `node_modules/`, and `.git/` are runtime/build VCS artifacts, not configuration authority.
-- Product behavior should be documented from maintained source (`crates/*`, `Cargo.toml`, `.raccoon.toml`, and docs), not generated outputs.
+## Paths and Directories
+
+- config dir: `~/.config/nyzhi/`
+- data dir: `~/.local/share/nyzhi/` (platform-dependent via `dirs::data_dir()`)
+- sessions: `<data_dir>/sessions/`
+
+See also:
+
+- `docs/memory.md`
+- `docs/sessions.md`
+- `docs/self-update.md`

@@ -1,87 +1,84 @@
-# Building from source
+# Building
+
+Source of truth:
+
+- `Cargo.toml`
+- `rust-toolchain.toml`
+- `rustfmt.toml`
+- `.github/workflows/ci.yml`
+- `CONTRIBUTING.md`
 
 ## Prerequisites
 
-- Rust `1.75`+ (`[workspace.package].rust-version`)
-- Standard system linker/toolchain for your platform
-- Optional for release-style cross builds: `cargo-zigbuild` + zig
+- Rust `stable` with:
+  - `rustfmt`
+  - `clippy`
+- workspace rust version: `1.75+`
 
-## Workspace layout
+Pinned by:
 
-```text
-Cargo.toml
-crates/
-  cli/      (package: nyzhi, binary: nyz)
-  core/     (nyzhi-core)
-  provider/ (nyzhi-provider)
-  auth/     (nyzhi-auth)
-  tui/      (nyzhi-tui)
-  config/   (nyzhi-config)
-```
+- `rust-toolchain.toml`
 
-## Build
+## Workspace Build
+
+From repository root:
 
 ```bash
-git clone https://github.com/nyzhi-com/code.git
-cd code
+cargo build
+cargo build --release
+```
+
+Build a specific binary crate:
+
+```bash
 cargo build --release -p nyzhi
 ```
 
-Binary:
-
-- `target/release/nyz`
-
-Debug build:
+## Quality Checks
 
 ```bash
-cargo build -p nyzhi
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 
-## Run locally
+Optional:
 
 ```bash
-./target/release/nyz
+cargo check --workspace
 ```
 
-or install from workspace path:
+## CI Reference
+
+CI currently runs:
+
+- format check
+- clippy check
+- workspace tests
+
+Branch trigger in workflow:
+
+- `master` for push events
+
+## Cross-compilation Notes
+
+Release workflow builds:
+
+- `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
+- `x86_64-apple-darwin`
+- `aarch64-apple-darwin`
+
+Linux ARM64 requires cross linker:
+
+- `gcc-aarch64-linux-gnu`
+- `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc`
+
+## Install from Source
 
 ```bash
-cargo install --path crates/cli
+git clone https://github.com/nyzhi-com/code
+cd code
+cargo build --release -p nyzhi
+./target/release/nyz --version
 ```
-
-## Verification commands
-
-These align with `.raccoon.toml` check pipeline:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all
-```
-
-Common focused runs:
-
-```bash
-cargo test -p nyzhi-core
-cargo test -p nyzhi-tui
-cargo test -p nyzhi-config
-```
-
-## Release-style cross builds
-
-Release pipeline uses:
-
-```bash
-cargo zigbuild --release --target x86_64-unknown-linux-gnu -p nyzhi
-cargo zigbuild --release --target aarch64-unknown-linux-gnu -p nyzhi
-cargo zigbuild --release --target x86_64-apple-darwin -p nyzhi
-cargo zigbuild --release --target aarch64-apple-darwin -p nyzhi
-```
-
-## Artifacts and boundaries
-
-- `target/` is generated build output.
-- Any `node_modules/` in the repo tree is dependency output for JS tooling, not product behavior definition.
-- `.git/` metadata drives VCS state, but not application runtime semantics.
-
-Use source files and config (`crates/*`, `Cargo.toml`, `.raccoon.toml`) as documentation authority.

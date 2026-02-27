@@ -1,71 +1,92 @@
 # Releasing
 
-Release automation is defined in `.raccoon.toml` (not GitHub Actions workflow files).
+Source of truth:
 
-## Pipeline source of truth
+- `.github/workflows/release.yml`
+- `Cargo.toml` (`workspace.package.version`)
+- `npm/*/package.json`
 
-Two pipelines are configured:
+## Trigger
 
-- `check` on `push:master` and `pull_request`
-- `release` on `tag:v*`
+Release workflow triggers on tag push:
 
-### Check pipeline
+```text
+v*
+```
 
-Runs:
-
-1. `cargo fmt --all -- --check`
-2. `cargo clippy --all-targets --all-features -- -D warnings`
-3. `cargo test --all`
-
-### Release pipeline
-
-`Build and publish release` step runs shell script that:
-
-1. derives `VERSION` from `RACCOON_REF`
-2. builds with `cargo zigbuild --release -p nyzhi` for:
-   - `x86_64-unknown-linux-gnu`
-   - `aarch64-unknown-linux-gnu`
-   - `x86_64-apple-darwin`
-   - `aarch64-apple-darwin`
-3. packages `nyz` binary into:
-   - `nyzhi-linux-x86_64.tar.gz`
-   - `nyzhi-linux-aarch64.tar.gz`
-   - `nyzhi-darwin-x86_64.tar.gz`
-   - `nyzhi-darwin-aarch64.tar.gz`
-4. writes `<name>.sha256` via `sha256sum`
-5. uploads artifacts by POSTing to:
-   - `$RACCOON_CALLBACK/api/jobs/$RACCOON_JOB_ID/artifact`
-   - with bearer `$RACCOON_TOKEN`
-
-## Tagging a release
+Example:
 
 ```bash
-git tag v1.1.3
-git push origin v1.1.3
+git tag v1.2.9
+git push origin v1.2.9
 ```
 
-`tag:v*` triggers the release pipeline.
+## Version Source
 
-## Version source
+Canonical version is in workspace manifest:
 
-Workspace version lives in `Cargo.toml`:
+- `Cargo.toml` -> `[workspace.package].version`
 
-```toml
-[workspace.package]
-version = "1.1.2"
-```
+Release job strips `v` prefix from tag to derive publish version.
 
-## Updater contract (consumer side)
+## Release Pipeline Stages
 
-`nyz update` expects release service endpoints:
+1. Build matrix binaries
+2. Package tarballs and SHA256 files
+3. Upload artifacts to CI release endpoint
+4. Create GitHub release
+5. Publish crates to crates.io in dependency order
+6. Publish npm platform packages + umbrella package
 
-- `GET <release_url>/version`
-- `GET <release_url>/download/<os>/<arch>?version=<semver>`
+## Build Targets
 
-Where `<os>/<arch>` maps to keys such as `darwin/aarch64`, `darwin/x86_64`, `linux/x86_64`, `linux/aarch64`, and checksum data returned by `/version`.
+- `linux-x86_64`
+- `linux-aarch64`
+- `darwin-x86_64`
+- `darwin-aarch64`
 
-## Operational notes
+## crates.io Publish Order
 
-- Ensure CI environment has `cargo-zigbuild` and zig toolchain availability.
-- Release artifacts are generated under `target/<triple>/release/` and local packaging outputs; these are build artifacts, not source-of-truth.
-- Docs about release infra should be updated from `.raccoon.toml` first when behavior changes.
+From workflow:
+
+1. `nyzhi-config`
+2. `nyzhi-auth`
+3. `nyzhi-index`
+4. `nyzhi-provider`
+5. `nyzhi-core`
+6. `nyzhi-tui`
+7. `nyzhi`
+
+## npm Publish Flow
+
+Published package set:
+
+- `nyz-darwin-arm64`
+- `nyz-darwin-x64`
+- `nyz-linux-x64`
+- `nyz-linux-arm64`
+- `nyzhi` umbrella package
+
+Workflow:
+
+- extract platform binary into each package
+- set package version to tag version
+- publish platform packages
+- update umbrella `optionalDependencies` to same version
+- publish umbrella package
+
+## Required Secrets
+
+- `RACCOON_UPLOAD_SECRET`
+- `CARGO_REGISTRY_TOKEN`
+- `NPM_TOKEN` (mapped to `NODE_AUTH_TOKEN`)
+
+## Pre-release Checklist
+
+- run local verification:
+  - `cargo fmt --all --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+- confirm workspace version bump
+- confirm npm package metadata matches target version
+- review release notes/changelog content

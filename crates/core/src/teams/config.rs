@@ -8,6 +8,12 @@ pub struct TeamConfig {
     pub name: String,
     pub members: Vec<TeamMemberConfig>,
     pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_steps: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +54,9 @@ impl TeamConfig {
             name: name.to_string(),
             members,
             created_at: chrono::Utc::now().to_rfc3339(),
+            default_model: None,
+            default_role: None,
+            max_steps: None,
         };
 
         let json = serde_json::to_string_pretty(&config)?;
@@ -102,11 +111,40 @@ impl TeamConfig {
             .unwrap_or_else(|| "team-lead".to_string())
     }
 
-    fn save(&self) -> Result<()> {
+    pub fn save(&self) -> Result<()> {
         let dir = team_dir(&self.name);
         let json = serde_json::to_string_pretty(self)?;
         std::fs::write(dir.join("config.json"), json)?;
         Ok(())
+    }
+
+    pub fn update_member(
+        &mut self,
+        name: &str,
+        f: impl FnOnce(&mut TeamMemberConfig),
+    ) -> Result<()> {
+        let member = self
+            .members
+            .iter_mut()
+            .find(|m| m.name == name)
+            .ok_or_else(|| anyhow::anyhow!("Member '{}' not found in team '{}'", name, self.name))?;
+        f(member);
+        self.save()
+    }
+
+    pub fn find_member(&self, name: &str) -> Option<&TeamMemberConfig> {
+        self.members.iter().find(|m| m.name == name)
+    }
+
+    pub fn reset_overrides(&mut self) -> Result<()> {
+        self.default_model = None;
+        self.default_role = None;
+        self.max_steps = None;
+        for member in &mut self.members {
+            member.model = None;
+            member.role = None;
+        }
+        self.save()
     }
 }
 

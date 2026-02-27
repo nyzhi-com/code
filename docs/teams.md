@@ -1,195 +1,180 @@
-# Team Orchestration
+# Teams and Subagents
 
-Nyzhi can spawn multiple coordinated agents that work together on complex tasks. Teams have a lead agent (the coordinator) and one or more member agents, each with their own conversation context, tools, and optionally isolated git worktrees.
+Source of truth:
 
----
+- `crates/core/src/agent_manager.rs`
+- `crates/core/src/tools/spawn_agent.rs`
+- `crates/core/src/tools/send_input.rs`
+- `crates/core/src/tools/wait_tool.rs`
+- `crates/core/src/tools/close_agent.rs`
+- `crates/core/src/tools/resume_agent.rs`
+- `crates/core/src/tools/team.rs`
+- `crates/core/src/teams/config.rs`
+- `crates/tui/src/input.rs`
 
-## Quick Start
+## Concepts
 
-```
-/team 3 Build a REST API with auth, database, and tests
-```
+- **subagent**: spawned worker managed by `AgentManager`
+- **team**: named collection of agents with config, inboxes, and taskboard
+- **team lead**: coordinator identity (usually `team-lead`)
+- **teammate**: spawned agent registered as a team member
 
-This spawns 3 sub-agents coordinated by the lead (your main agent). The lead breaks the task into sub-tasks, assigns them, and coordinates results.
+## AgentManager Lifecycle
 
----
+Manager APIs:
 
-## Architecture
+- `spawn_agent`
+- `send_input`
+- `get_status`
+- `subscribe_status`
+- `wait_any`
+- `shutdown_agent`
+- `resume_agent`
 
-### Lead Agent
+Statuses:
 
-The lead agent (your main TUI session) acts as the coordinator:
+- `pending_init`
+- `running`
+- `completed`
+- `errored`
+- `shutdown`
+- `not_found`
 
-- Breaks the high-level task into sub-tasks
-- Creates team members with specific roles
-- Assigns tasks via the task board
-- Monitors progress through the mailbox
-- Resolves conflicts and merges results
+Limits (from config):
 
-### Member Agents
+- `agent.agents.max_threads`
+- `agent.agents.max_depth`
 
-Each member runs its own agent loop with:
+On limit breach:
 
-- Its own conversation thread and context
-- Access to all tools (or a filtered subset based on role)
-- Its own worktree (in tmux mode) or shared project directory (in-process mode)
-- A mailbox for receiving instructions and sending status updates
+- spawn fails with explicit error
 
----
+## Subagent Tools
 
-## Modes
+Interactive runtime registers:
 
-### In-Process (default)
+- `spawn_agent`
+- `send_input`
+- `wait`
+- `close_agent`
+- `resume_agent`
+- `spawn_teammate`
 
-```bash
-nyz --teammate-mode in-process
-```
+`spawn_agent` features:
 
-All agents run as async tasks within the same process. They share the project directory and must coordinate file access through the mailbox.
+- role selection via `agent_type`
+- role-based tool filtering (`allowed_tools` / `disallowed_tools`)
+- optional runtime role->model override application
+- context briefing injection from shared parent state
+- optional notepad wisdom injection
 
-### Tmux
+## Role System
 
-```bash
-nyz --teammate-mode tmux
-```
+Roles come from three sources:
 
-Each agent gets its own tmux pane and git worktree. This provides true isolation -- agents can work on different branches simultaneously without conflicts. Requires `tmux` and `git` on PATH.
+1. built-in roles (`agent_roles.rs`)
+2. user-defined roles (`[agent.agents.roles]` in config)
+3. file-based roles (`.nyzhi/agents/*.md`, fallback `.claude/agents/*.md`)
 
----
+Built-in role ids include:
 
-## Team Configuration
+- `default`
+- `explorer`
+- `worker`
+- `reviewer`
+- `planner`
+- `architect`
+- `debugger`
+- `security-reviewer`
+- `quality-reviewer`
+- `test-engineer`
+- `build-fixer`
+- `deep-executor`
+- `document-specialist`
+- `code-simplifier`
 
-Teams are stored in `~/.nyzhi/teams/<team-name>/config.json`:
+## Team Config Schema
 
-```json
-{
-  "name": "api-build",
-  "members": [
-    {
-      "name": "auth-agent",
-      "agent_id": "uuid",
-      "agent_type": "worker",
-      "color": "#3B82F6",
-      "model": "claude-sonnet-4-20250514",
-      "role": "Authentication module"
-    }
-  ],
-  "created_at": "2025-01-15T10:00:00Z"
-}
-```
+`TeamConfig` fields:
 
-Each member is assigned a distinct color for visual identification in the TUI.
+- `name`
+- `members: Vec<TeamMemberConfig>`
+- `created_at`
+- `default_model` (optional)
+- `default_role` (optional)
+- `max_steps` (optional)
 
----
+`TeamMemberConfig` fields:
 
-## Mailbox System
+- `name`
+- `agentId` (optional)
+- `agentType`
+- `color`
+- `model` (optional)
+- `role` (optional)
+- `worktree_path` (optional)
 
-Agents communicate through a file-based mailbox system. Messages are JSON files stored in the team directory.
+## Team Storage
 
-### Message Types
+By default under `~/.nyzhi/`:
 
-| Type | Description |
-|------|-------------|
-| `Message` | General message between agents |
-| `Broadcast` | Message to all team members |
-| `DirectMessage` | Point-to-point message |
-| `Request` | Request with expected response |
-| `Response` | Response to a request |
-| `TaskAssignment` | New task assignment |
-| `TaskCompleted` | Task completion notification |
-| `IdleNotification` | Agent has no more work |
-| `ShutdownRequest` | Request to shut down |
-| `ShutdownResponse` | Acknowledgment of shutdown |
-| `ConflictDetected` | File conflict between agents |
-| `MergeRequest` | Request to merge changes |
-| `PlanApprovalRequest` | Plan needs lead approval |
-| `PlanApprovalResponse` | Lead's plan approval/rejection |
+- `teams/<team>/config.json`
+- `teams/<team>/inboxes/<member>.json`
+- `tasks/<team>/*.json`
+- `tasks/<team>/.highwatermark`
 
-### Message Injection
+## Team Tools
 
-At the start of each agent turn, unread messages are injected into the conversation context. This ensures agents stay aware of team activity without polling.
-
----
-
-## Task Board
-
-Teams have a shared task board for work coordination.
-
-### Task Structure
-
-```json
-{
-  "id": 1,
-  "subject": "Implement JWT auth middleware",
-  "description": "Create middleware that validates JWT tokens...",
-  "active_form": "detailed description with context",
-  "status": "in_progress",
-  "owner": "auth-agent",
-  "blocks": [],
-  "blocked_by": [],
-  "created_at": "2025-01-15T10:05:00Z",
-  "updated_at": "2025-01-15T10:30:00Z"
-}
-```
-
-### Task Statuses
-
-| Status | Description |
-|--------|-------------|
-| `Pending` | Created but not started |
-| `InProgress` | Actively being worked on |
-| `Completed` | Finished successfully |
-| `Blocked` | Waiting on another task |
-| `Deleted` | Removed |
-
-### Dependencies
-
-Tasks can declare dependencies via `blocks` and `blocked_by` fields. When a task completes, `unblock_dependents()` automatically moves dependent tasks from `Blocked` to `Pending`.
-
-### Concurrency
-
-Task files use `fs2` file locking to prevent race conditions when multiple agents update tasks simultaneously.
-
----
-
-## Tools
-
-The following tools are available for team operations:
-
-| Tool | Description |
-|------|-------------|
-| `team_create` | Create a new team with members |
-| `team_delete` | Delete a team |
-| `team_list` | List all teams |
-| `send_team_message` | Send a message to a teammate |
+| Tool | Purpose |
+| --- | --- |
+| `team_create` | Create team + inbox + taskboard files |
+| `team_delete` | Delete team artifacts |
+| `team_list` | List team names |
+| `send_team_message` | Message teammate or broadcast |
 | `read_inbox` | Read unread messages |
-| `task_create` | Create a task on the board |
-| `task_update` | Update task status, owner, etc. |
-| `task_list` | List tasks with optional filter |
+| `task_create` | Create team task |
+| `task_update` | Update status/owner |
+| `task_list` | List tasks |
+| `spawn_teammate` | Spawn agent and register in team |
 
----
-
-## CLI Management
+## CLI Team Commands
 
 ```bash
-nyz teams list              # list all teams
-nyz teams show <name>       # show team details and status
-nyz teams delete <name>     # delete a team and its data
+nyz teams list
+nyz teams show <name>
+nyz teams delete <name>
 ```
 
----
+Global CLI team context:
 
-## Conflict Detection
+- `--team-name` sets team metadata in run/exec tool context
 
-When agents modify the same file, the mailbox system can detect and report conflicts via `ConflictDetected` messages. The lead agent is responsible for resolving conflicts, typically by reviewing changes and choosing which to keep.
+## TUI Team Commands
 
----
+Slash commands:
 
-## Hooks
+- `/team <N> <task>`
+- `/teams-config`
+- `/teams-config show <team>`
+- `/teams-config set <team> model|role|max-steps <value>`
+- `/teams-config member <team> <member> model|role <value>`
+- `/teams-config reset <team>`
+- `/subagent-config set <role> <model>`
+- `/subagent-config reset [role]`
 
-Two hook events are specific to teams:
+## Teammate Mode Flag
 
-- **`teammate_idle`** -- fires when a teammate reports it has no more work. The hook can return feedback (exit code 2) to assign new work.
-- **`task_completed`** -- fires when a task is marked complete. The hook can reject the completion (exit code 2) with feedback.
+CLI parses `--teammate-mode` (`in-process`, `tmux`), but current runtime behavior is effectively in-process from the perspective of tool execution flow.
 
-See [hooks.md](hooks.md) for configuration.
+## Hook Integration
+
+Team-specific hook events:
+
+- `teammate_idle`
+- `task_completed`
+
+`hooks.rs` supports feedback semantics:
+
+- hook exit code `2` can signal rejection/continue behavior in teammate/task flows
+
+See `docs/hooks.md`.

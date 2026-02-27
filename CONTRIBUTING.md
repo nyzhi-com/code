@@ -10,7 +10,7 @@ git clone https://github.com/nyzhi-com/code && cd code
 cargo build          # debug build
 cargo test           # run tests
 cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt --all -- --check
+cargo fmt --all --check
 ```
 
 Requires **Rust 1.75+**. The repo includes a `rust-toolchain.toml` that pins to
@@ -20,16 +20,16 @@ Need troubleshooting help before contributing? See [SUPPORT.md](SUPPORT.md).
 
 ## Development Workflow
 
-1. Fork the repository and create a branch from `main`.
+1. Fork the repository and create a branch from `master`.
 2. Make your changes in small, focused commits.
 3. Add or update tests for any changed behavior.
 4. Ensure all checks pass locally:
    ```bash
-   cargo fmt --all -- --check
+   cargo fmt --all --check
    cargo clippy --workspace --all-targets -- -D warnings
    cargo test --workspace
    ```
-5. Open a pull request against `main`.
+5. Open a pull request against `master`.
 
 ## Project Layout
 
@@ -41,7 +41,14 @@ crates/
   tui/       Terminal UI (ratatui)
   auth/      OAuth2 PKCE, API keys, token store
   config/    Configuration loading and merging
+  index/     Codebase indexing and semantic search
 ```
+
+## Documentation
+
+- Local docs live in `docs/` with index at `docs/README.md`.
+- If behavior, setup, interfaces, or commands change, update the relevant docs in the same PR.
+- Keep command examples runnable and consistent with current CLI behavior.
 
 ## What to Contribute
 

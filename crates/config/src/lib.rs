@@ -66,10 +66,16 @@ pub struct BrowserConfig {
     pub headless: bool,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub auto_memory: bool,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self { auto_memory: true }
+    }
 }
 
 fn default_embedding_mode() -> String {

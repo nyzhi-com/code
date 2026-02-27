@@ -223,6 +223,21 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
+        name: "/memory",
+        description: "view auto-memory index and status",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/memory toggle",
+        description: "toggle auto-memory on/off",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/memory clear",
+        description: "clear all project memory",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
         name: "/model",
         description: "choose what model to use",
         kind: CommandKind::Instant,
@@ -338,9 +353,49 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
+        name: "/subagent-config",
+        description: "show/set model overrides per agent role",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/subagent-config set",
+        description: "set model for a role: /subagent-config set <role> <model>",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/subagent-config reset",
+        description: "clear model overrides (all or one role)",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
         name: "/team",
         description: "spawn coordinated sub-agents",
         kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
+        name: "/teams-config",
+        description: "list all teams and their config",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/teams-config show",
+        description: "detailed view of a team: /teams-config show <team>",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/teams-config set",
+        description: "set team default: /teams-config set <team> model|max-steps <val>",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/teams-config member",
+        description: "set member override: /teams-config member <team> <name> model|role <val>",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/teams-config reset",
+        description: "clear all overrides for a team",
+        kind: CommandKind::Instant,
     },
     SlashCommandDef {
         name: "/theme",

@@ -1,131 +1,65 @@
-# Model Routing
+# Routing
 
-Model routing automatically selects the right model tier for each prompt based on task complexity. Simple tasks go to cheaper, faster models; complex tasks go to more capable ones.
+Source of truth:
 
----
+- `crates/core/src/routing.rs`
+- `crates/config/src/lib.rs` (`RoutingConfig`)
 
-## Overview
+## Purpose
 
-When routing is enabled, each prompt is classified into one of three tiers:
+Routing selects a model tier based on prompt complexity when routing is enabled.
 
-| Tier | Description | Example Tasks |
-|------|-------------|---------------|
-| **Low** | Simple, mechanical changes | Fix a typo, rename a variable, format code |
-| **Medium** | Standard development tasks | Add a function, write a test, explain code |
-| **High** | Complex, multi-step work | Architect a system, security audit, large refactor |
-
-The provider then selects the appropriate model for the tier.
-
----
-
-## Configuration
-
-```toml
-[agent.routing]
-enabled = false                # disabled by default
-low_keywords = []              # additional keywords for low tier
-high_keywords = []             # additional keywords for high tier
-```
-
----
-
-## Classification Algorithm
-
-Prompts are classified using keyword analysis and length heuristics:
-
-### Built-In Keywords
-
-**Low-tier keywords**: typo, rename, format, lint, fix indent, fix spacing, fix whitespace, simple, trivial, minor, small, quick, one-line, single, update comment, add comment, remove comment
-
-**High-tier keywords**: architect, design, refactor, security, audit, migrate, complex, comprehensive, overhaul, rewrite, optimize performance, full review, system design, multi-step, parallel, large-scale
-
-### Custom Keywords
-
-Add project-specific keywords:
+## Config
 
 ```toml
 [agent.routing]
 enabled = true
-low_keywords = ["bump version", "update dep"]
-high_keywords = ["database migration", "api redesign"]
+low_keywords = ["typo", "docs"]
+high_keywords = ["security", "refactor", "performance"]
 ```
 
-### Length Heuristics
+Fields:
 
-Prompt length contributes to the classification:
+- `enabled`
+- `low_keywords`
+- `high_keywords`
 
-- **> 200 words**: +2 high score (longer prompts tend to describe complex tasks)
-- **> 80 words**: +1 high score
+## Classification Logic
 
-### Scoring
+`classify_prompt(prompt, config)` computes:
 
-The classifier counts keyword matches for low and high categories:
+- low score from built-in low keywords + configured low keywords
+- high score from built-in high keywords + configured high keywords
+- length boost:
+  - `> 200` words: high +2
+  - `> 80` words: high +1
 
-- If high > low → **High** tier
-- If low > high → **Low** tier
-- Otherwise → **Medium** tier
+Result:
 
----
+- high score > low score -> `ModelTier::High`
+- low score > high score -> `ModelTier::Low`
+- tie -> `ModelTier::Medium`
 
-## Per-Provider Model Selection
+## Model Selection
 
-Each provider maps tiers to specific models via `model_for_tier()`:
+`select_model_for_prompt(prompt, provider, config)`:
 
-### OpenAI
+1. classify prompt to tier
+2. request provider model for that tier (`model_for_tier`)
+3. fallback to provider first supported model
 
-| Tier | Model |
-|------|-------|
-| Low | o4-mini |
-| Medium | GPT-5.2 |
-| High | GPT-5.3 Codex |
+## Built-in Keyword Baselines
 
-### Anthropic
+Low-signal defaults include terms such as:
 
-| Tier | Model |
-|------|-------|
-| Low | Claude Haiku 4.5 |
-| Medium | Claude Sonnet 4.6 |
-| High | Claude Opus 4.6 |
+- typo, rename, format, lint, simple, quick, docs
 
-### Gemini
+High-signal defaults include terms such as:
 
-| Tier | Model |
-|------|-------|
-| Low | Gemini 3 Flash |
-| Medium | Gemini 2.5 Flash |
-| High | Gemini 3.1 Pro |
+- architect, design, refactor, security, optimize, performance, debug, analyze
 
----
+## Guidance
 
-## Events
-
-When routing selects a model, a `RoutedModel` event is emitted:
-
-```
-RoutedModel { model_name: "claude-haiku-4-5-20250301", tier: Low }
-```
-
-This is displayed in the TUI so you can see which model was selected and why.
-
----
-
-## Cost Implications
-
-Routing can significantly reduce costs by using cheaper models for simple tasks. For example:
-
-- A typo fix routes to Haiku (~$0.001) instead of Opus (~$0.05)
-- A complex refactor still gets the full power of Opus
-
-Track actual costs with `nyz cost daily` to see the impact.
-
----
-
-## When to Enable
-
-Routing works best when your workflow mixes simple and complex tasks. If you primarily do complex work, the overhead of classification isn't worth it -- just set a high-tier default model.
-
-Enable routing if:
-
-- You frequently make small fixes alongside large features
-- You want to minimize API costs without manually switching models
-- You use a provider with clear tier differentiation (Anthropic is ideal)
+- enable routing when you use providers with clear low/medium/high model cost tiers
+- add custom keywords aligned to your workload language
+- keep keyword lists short and specific to avoid accidental misclassification

@@ -325,6 +325,39 @@ Everything is activated. You are operating at peak capacity.
 - Finishing implementation without running tests/lint/build."#
 }
 
+pub fn auto_memory_instructions() -> &'static str {
+    r#"
+
+# Auto-Memory (ACTIVE)
+
+You have persistent memory that survives across sessions. Use it.
+
+## Tools
+- `memory_read` -- read the MEMORY.md index (no args) or a specific topic file (topic arg)
+- `memory_write` -- write to a topic file (topic + content, optional mode: append/replace)
+
+## When to Save (proactive -- don't wait to be asked)
+- **Project patterns**: build commands, test conventions, directory structure, key entry points
+- **Debugging insights**: root causes you discovered, tricky error resolutions, workarounds
+- **Architecture notes**: module relationships, data flow, important abstractions
+- **User preferences**: communication style, workflow habits, tool choices, coding conventions
+- **Decisions**: architectural choices made and their rationale
+
+## How to Organize
+- MEMORY.md is the **index only** -- keep it under 50 lines. It auto-updates when you write topics.
+- Put detail in **topic files**: `debugging`, `api-conventions`, `project-structure`, `preferences`, etc.
+- Use `append` mode (default) to add to existing topics. Use `replace` only when rewriting.
+
+## When the User Says "Remember X"
+Write immediately to an appropriate topic. Confirm what you saved.
+
+## Rules
+- NEVER save secrets, API keys, tokens, passwords, or credentials.
+- NEVER save file contents verbatim -- summarize patterns and insights.
+- Keep entries concise: bullet points, not paragraphs.
+- Read relevant topic files at the start of complex tasks to recall prior context."#
+}
+
 fn build_full_system_prompt(
     workspace: Option<&WorkspaceContext>,
     custom_instructions: Option<&str>,

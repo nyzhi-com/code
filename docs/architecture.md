@@ -1,98 +1,191 @@
 # Architecture
 
-Nyzhi is a Rust workspace with six crates and a single CLI binary (`nyz`).
+Source of truth:
 
-## Crate graph
+- `crates/cli/src/main.rs`
+- `crates/core/src/agent/mod.rs`
+- `crates/core/src/tools/mod.rs`
+- `crates/core/src/agent_manager.rs`
+- `crates/core/src/context_briefing.rs`
+- `crates/core/src/workspace/mod.rs`
+- `crates/tui/src/app.rs`
 
-```text
-                      nyzhi (crates/cli)
-                     /        |        \
-             nyzhi-tui   nyzhi-core   nyzhi-provider
-                   |         /   \            |
-                nyzhi-auth          nyzhi-config
+## Workspace Layout
+
+| Crate | Responsibility |
+| --- | --- |
+| `crates/cli` | CLI entrypoint, command dispatch, runtime wiring |
+| `crates/core` | agent runtime, tools, sessions, MCP, teams, hooks, memory |
+| `crates/provider` | provider abstraction, model registry, streaming adapters |
+| `crates/auth` | API key/OAuth/token resolution and rotation |
+| `crates/config` | config schema/defaults/merge rules |
+| `crates/tui` | terminal UI, slash commands, event loop, selectors |
+| `crates/index` | semantic index, embeddings, auto-context retrieval |
+
+## High-level Runtime Graph
+
+```mermaid
+flowchart LR
+  cliEntry["cli::main"] --> workspaceDetect["workspace::detect_workspace"]
+  cliEntry --> configLoad["Config::load + Config::merge"]
+  cliEntry --> providerInit["create_provider_async"]
+  cliEntry --> registryInit["tools::default_registry"]
+  cliEntry --> mcpInit["McpManager::start_all"]
+  cliEntry --> modeDispatch["Run Exec Or TUI"]
+
+  modeDispatch --> runOnce["run_once"]
+  modeDispatch --> tuiRun["tui::App::run"]
+
+  runOnce --> agentTurn["agent::run_turn"]
+  tuiRun --> agentTurn
+  agentTurn --> toolExec["ToolRegistry::execute"]
+  agentTurn --> streamEvents["AgentEvent stream"]
+  toolExec --> sessionPersist["session::save_session"]
 ```
 
-## Crate responsibilities
+## Startup Sequence
 
-- `crates/cli` (`nyzhi`): clap parsing, command routing, provider/mcp bootstrap, non-interactive runs.
-- `crates/core` (`nyzhi-core`): agent loop, tools, sessions, workspace detection, teams, hooks, MCP manager, updater, verification, routing, planning.
-- `crates/provider` (`nyzhi-provider`): provider trait + concrete provider implementations + model registry.
-- `crates/tui` (`nyzhi-tui`): event loop, rendering, selectors, completion, key handling, slash command UX.
-- `crates/auth` (`nyzhi-auth`): API key + OAuth resolution, token store, refresh/rotation.
-- `crates/config` (`nyzhi-config`): config schema/defaults/merge + built-in provider metadata.
+1. Parse CLI arguments.
+2. Load global config.
+3. Detect workspace root and rules source.
+4. If project config exists, merge with global config.
+5. Create provider (or defer when credentials unavailable).
+6. Build tool registry (`default_registry`), then register MCP tools.
+7. Dispatch to:
+   - `run`/`exec` (`run_once`)
+   - TUI app (`App::run`)
 
-## Workspace and project detection
+## Turn Execution Flow
 
-`workspace::detect_workspace()`:
+Core turn execution is driven by `agent::run_turn` / `run_turn_with_content`.
 
-- walks upward until `.nyzhi/`, `.claude/`, or `.git` is found
-- infers project type (`rust`, `node`, `python`, `go`, unknown)
-- loads project rules from:
-  - `AGENTS.md`
-  - `.nyzhi/rules.md`
-  - `.nyzhi/instructions.md`
-  - `CLAUDE.md`
-  - `.cursorrules`
+Per turn:
 
-## Runtime flow (interactive)
+1. Prepare system prompt from workspace rules + custom instructions + MCP summaries.
+2. Inject memory (`memory::load_memory_for_prompt`) when enabled.
+3. Add optional auto-context from semantic index when enabled.
+4. Stream model response.
+5. Execute tool calls with permission checks.
+6. Emit `AgentEvent` updates for UI/CLI.
+7. Persist session unless ephemeral.
 
-1. Parse CLI and load config.
-2. Detect workspace root/rules.
-3. Build tool registry (`default_registry`).
-4. Create provider from selected provider id + auth resolution.
-5. Merge MCP server config and connect available servers.
-6. Enter TUI loop:
-   - collect input / slash commands
-   - dispatch `agent::run_turn(...)`
-   - stream model events
-   - execute tool calls
-   - save session / update UI / notifications
+## Tool Execution Boundaries
 
-## Agent turn loop essentials
+Tool execution gates:
 
-`agent::run_turn_with_content(...)` does:
+- role filtering (`allowed_tool_names`)
+- trust policy
+- sandbox level
+- explicit approval workflow for `NeedsApproval` tools
 
-1. append user message to thread
-2. build visible tool definitions (all, read-only for plan mode, or role-filtered)
-3. iterate up to `max_steps`
-4. call provider streaming API
-5. parse text/thinking/tool events
-6. execute tools with trust and approval checks
-7. retry transient provider failures using retry settings
-8. track usage/cost and emit events
-9. finalize when model stops issuing tool calls
+Concurrency:
 
-## Tool system
+- read-only tool calls may execute in parallel
+- mutating calls execute sequentially
 
-- `ToolRegistry` holds all tools.
-- tools default to `ReadOnly` permission unless overridden to `NeedsApproval`.
-- supports deferred tool expansion:
-  - deferred tools omitted from initial tool schema payload
-  - discoverable via `tool_search`
-  - marked expanded after first use
+## Subagent Architecture
 
-## MCP integration
+Subagents are managed by `AgentManager` (interactive runtime).
 
-- MCP servers connect via stdio or streamable HTTP (`rmcp`).
-- discovered tools are wrapped and registered under `mcp__<server>__<tool>`.
-- if many MCP tools are present, they can be deferred and indexed to `.nyzhi/context/tools/mcp-index.md`.
+Lifecycle tools:
 
-## Update architecture
+- `spawn_agent`
+- `send_input`
+- `wait`
+- `close_agent`
+- `resume_agent`
 
-`core::updater` performs:
+Statuses (`AgentStatus`):
 
-1. version check against release endpoint
-2. checksum-gated download
-3. backup + atomic self-replace
-4. post-flight binary check (`--version`)
-5. rollback on failure
-6. integrity checks for user data paths/token presence
+- `pending_init`
+- `running`
+- `completed`
+- `errored`
+- `shutdown`
+- `not_found`
 
-## Boundary notes
+Manager limits:
 
-For docs and behavior verification:
+- `max_threads`
+- `max_depth`
 
-- authoritative: maintained source code and config (`crates/*`, `Cargo.toml`, `.raccoon.toml`, docs)
-- non-authoritative artifacts: `target/`, `node_modules/`, `.git/` internals
+## Subagent Context Briefing
 
-Generated outputs are important operationally (build products, dependency trees, git metadata) but are not the product-spec source.
+Before spawn, parent context can inject a briefing from `SharedContext`:
+
+- recent file changes
+- active todos
+- conversation summary
+- project memory excerpt
+
+Caps:
+
+- `MAX_BRIEFING_LINES = 60`
+- `MAX_CHANGE_ENTRIES = 20`
+- `MAX_MESSAGE_PREVIEW = 5`
+
+## Team Collaboration Model
+
+Team artifacts are backed by filesystem state:
+
+- team config JSON
+- per-member inbox files
+- shared taskboard files
+
+Team-aware fields in `ToolContext`:
+
+- `team_name`
+- `agent_name`
+- `is_team_lead`
+
+This drives tools such as `send_team_message`, `read_inbox`, and `spawn_teammate`.
+
+## Workspace and Rule Resolution
+
+Workspace detection prioritizes:
+
+1. `.nyzhi/`
+2. `.claude/`
+3. `.cursorrules`
+4. `.git`
+
+Primary rule file priority:
+
+1. `AGENTS.md`
+2. `.nyzhi/rules.md`
+3. `.nyzhi/instructions.md`
+4. `CLAUDE.md`
+5. `.cursorrules`
+
+Additional local preferences:
+
+- `NYZHI.local.md`
+- `.nyzhi/local.md`
+
+Modular rules under `.nyzhi/rules/*.md` can be unconditional or path-conditional (`paths:` frontmatter).
+
+## Persistence Overview
+
+| Domain | Location |
+| --- | --- |
+| Sessions | `<data_dir>/sessions/*.json` |
+| Memory | `<data_dir>/projects/<hash>/memory/` and `~/.nyzhi/MEMORY.md` |
+| Team configs | `~/.nyzhi/teams/<team>/config.json` |
+| Team inboxes | `~/.nyzhi/teams/<team>/inboxes/*.json` |
+| Team tasks | `~/.nyzhi/tasks/<team>/` |
+| Autopilot state | `<project>/.nyzhi/state/autopilot.json` |
+| Tool context offloads | `<project>/.nyzhi/context/` |
+
+## Design Principles
+
+- terminal-first UX with non-interactive parity
+- strict safety boundaries (trust + sandbox + approvals)
+- provider-agnostic runtime with explicit metadata
+- transparent state via files and replayable sessions
+- composable agent model (main agent, subagents, teammate mesh)
+
+Related internals:
+
+- `docs/internals/subagent-lifecycle.md`
+- `docs/internals/workspace-rules.md`
+- `docs/internals/roles-and-briefing.md`

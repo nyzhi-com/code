@@ -55,7 +55,6 @@ fn scan_agents_dir(dir: &Path) -> HashMap<String, AgentRoleConfig> {
                 description,
                 system_prompt_override: system_prompt,
                 model_override,
-                model_tier: crate::agent_roles::SubagentTier::Standard,
                 max_steps_override,
                 read_only,
                 allowed_tools,

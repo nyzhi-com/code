@@ -1,138 +1,114 @@
 # Providers
 
-`nyzhi-provider` exposes a common `Provider` trait and routes concrete providers by `api_style`.
+Source of truth:
 
-## Provider interface
+- `crates/config/src/lib.rs` (`BUILT_IN_PROVIDERS`)
+- `crates/provider/src/lib.rs`
+- provider implementations under `crates/provider/src/*`
 
-```rust
-#[async_trait]
-pub trait Provider: Send + Sync {
-    fn name(&self) -> &str;
-    fn supported_models(&self) -> &[ModelInfo];
-    fn model_for_tier(&self, tier: ModelTier) -> Option<&ModelInfo>;
-    async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse>;
-    async fn chat_stream(
-        &self,
-        request: &ChatRequest,
-    ) -> Result<BoxStream<'static, Result<StreamEvent>>>;
-}
-```
+## Provider Model
 
-## API style mapping
+The runtime uses a provider abstraction:
 
-Provider selection is resolved from config in this order:
+- trait: `Provider`
+- creation: `create_provider` / `create_provider_async`
+- capability metadata: `ModelInfo`, `ModelTier`, `ThinkingSupport`
 
-1. `[provider.<id>].api_style` override
-2. Built-in provider definition
-3. Fallback to `openai`
+Each provider has:
 
-Supported styles:
+- provider id
+- auth path (API key, OAuth, local token)
+- API style (`openai`, `anthropic`, `gemini`, `cursor`, `copilot`, `claude-sdk`, `codex`)
+- model inventory (hardcoded + optional remote refresh)
 
-- `openai` -> `OpenAIProvider`
-- `anthropic` -> `AnthropicProvider`
-- `gemini` -> `GeminiProvider`
-- `cursor` -> `CursorProvider`
-- `claude-sdk` -> `ClaudeSDKProvider` (feature-gated stub)
-- `codex` -> `CodexProvider` (stub; not fully integrated)
+## Built-in Providers
 
-## OpenAI provider
+| Provider id | Name | API style | Env var | OAuth support | Default base URL |
+| --- | --- | --- | --- | --- | --- |
+| `openai` | OpenAI | `openai` | `OPENAI_API_KEY` | yes | `https://api.openai.com/v1` |
+| `anthropic` | Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | yes | `https://api.anthropic.com/v1` |
+| `gemini` | Google Gemini | `gemini` | `GEMINI_API_KEY` | yes | `https://generativelanguage.googleapis.com/v1beta` |
+| `cursor` | Cursor | `cursor` | `CURSOR_API_KEY` | yes | `https://api2.cursor.sh` |
+| `github-copilot` | GitHub Copilot | `copilot` | `GITHUB_COPILOT_TOKEN` | yes | `https://api.githubcopilot.com` |
+| `openrouter` | OpenRouter | `openai` | `OPENROUTER_API_KEY` | no | `https://openrouter.ai/api/v1` |
+| `claude-sdk` | Claude Agent SDK | `claude-sdk` | `ANTHROPIC_API_KEY` | no | empty (resolved at runtime) |
+| `codex` | OpenAI Codex CLI | `codex` | `CODEX_API_KEY` | yes | empty (resolved at runtime) |
+| `groq` | Groq | `openai` | `GROQ_API_KEY` | no | `https://api.groq.com/openai/v1` |
+| `together` | Together AI | `openai` | `TOGETHER_API_KEY` | no | `https://api.together.xyz/v1` |
+| `deepseek` | DeepSeek | `openai` | `DEEPSEEK_API_KEY` | no | `https://api.deepseek.com/v1` |
+| `ollama` | Ollama (local) | `openai` | `OLLAMA_API_KEY` | no | `http://localhost:11434/v1` |
+| `kimi` | Kimi (Moonshot) | `openai` | `MOONSHOT_API_KEY` | no | `https://api.moonshot.ai/v1` |
+| `kimi-coding` | Kimi Coding Plan | `anthropic` | `KIMI_CODING_API_KEY` | no | `https://api.kimi.com/coding` |
+| `minimax` | MiniMax | `openai` | `MINIMAX_API_KEY` | no | `https://api.minimax.io/v1` |
+| `minimax-coding` | MiniMax Coding Plan | `anthropic` | `MINIMAX_CODING_API_KEY` | no | `https://api.minimax.io/anthropic` |
+| `glm` | GLM (Z.ai) | `openai` | `ZHIPU_API_KEY` | no | `https://api.z.ai/api/paas/v4` |
+| `glm-coding` | GLM Coding Plan | `openai` | `ZHIPU_CODING_API_KEY` | no | `https://api.z.ai/api/coding/paas/v4` |
 
-Default model: `gpt-5.3-codex`
+## Runtime Provider Resolution
 
-| id | name | context | max output | tier | thinking |
-|---|---|---:|---:|---|---|
-| `gpt-5.3-codex` | GPT-5.3 Codex | 400,000 | 128,000 | high | reasoning effort |
-| `gpt-5.2-codex` | GPT-5.2 Codex | 272,000 | 100,000 | high | reasoning effort |
-| `gpt-5.2` | GPT-5.2 | 272,000 | 100,000 | high | reasoning effort |
+Provider selection path:
 
-Notes:
+1. CLI `--provider` if set
+2. `config.provider.default` otherwise
 
-- Uses OpenAI Chat Completions API by default.
-- If the credential looks like a JWT (`starts_with("ey")`) and base URL is default, provider switches to Codex subscription endpoint (`https://chatgpt.com/backend-api/codex`) and uses the Responses API.
-- When base URL contains `openrouter.ai`, it adds `HTTP-Referer` and `X-Title` headers.
-- Kimi models sent through the OpenAI-compatible path get special `thinking` payload behavior.
+Model selection path:
 
-## Anthropic provider
+1. CLI `--model` if set
+2. provider entry `model` if set
+3. provider first supported model fallback
 
-Default model: `claude-sonnet-4-6-20260217`
+## Special Cases
 
-| id | name | context | max output | tier | thinking |
-|---|---|---:|---:|---|---|
-| `claude-opus-4-6-20260205` | Claude Opus 4.6 | 1,000,000 | 128,000 | high | adaptive effort |
-| `claude-sonnet-4-6-20260217` | Claude Sonnet 4.6 | 1,000,000 | 16,384 | medium | adaptive effort |
-| `claude-haiku-4-5-20251022` | Claude Haiku 4.5 | 200,000 | 8,192 | low | none |
+### `claude-sdk`
 
-Notes:
+- resolves credential for `claude-sdk`
+- if unavailable, falls back to `anthropic` credential
+- may use anthropic base URL fallback
 
-- Sends `x-api-key` and `anthropic-version: 2023-06-01`.
-- System prompt is emitted via Anthropic `system` field with ephemeral cache control.
-- Stream parser supports text deltas, thinking deltas, tool call start/delta, and usage events.
+### `codex`
 
-## Gemini provider
+- resolves credential for `codex`
+- if unavailable, falls back to `openai` credential
+- may use openai base URL fallback
 
-Default model: `gemini-3-flash`
+### `cursor`
 
-| id | name | context | max output | tier | thinking |
-|---|---|---:|---:|---|---|
-| `gemini-3.1-pro-preview` | Gemini 3.1 Pro | 1,048,576 | 65,536 | high | thinking levels |
-| `gemini-3-flash` | Gemini 3 Flash | 1,048,576 | 65,536 | low | thinking levels |
-| `gemini-3-pro-preview` | Gemini 3 Pro | 1,048,576 | 65,536 | high | thinking levels |
-| `gemini-2.5-flash` | Gemini 2.5 Flash | 1,048,576 | 65,536 | low | budget tokens |
+- credential is parsed into token and machine id via cursor OAuth token parser
 
-Notes:
+### `github-copilot`
 
-- Supports API key mode (`?key=` URL parameter) and bearer mode (`Authorization` header).
-- Uses `generateContent` / `streamGenerateContent` with `alt=sse`.
-- Thinking in streaming mode is sent through `generationConfig.thinkingConfig.thinkingBudget`.
+- loads stored token from auth store under `github-copilot`
+- requires refresh token path for runtime provider instantiation
 
-## Cursor provider
+## Model Registry and Tiering
 
-Uses Cursor credentials (`access_token` + `machine_id`) and calls `https://api2.cursor.sh/v1/chat/completions`.
+`ModelRegistry` tracks hardcoded model lists by provider and supports:
 
-Bundled models include Claude, GPT, and Gemini aliases plus `auto`.
+- `models_for(provider)`
+- `find(provider, model_id)`
+- `find_any("provider/model")` or bare model id
+- list providers and all models
 
-| id | context | max output | tier |
-|---|---:|---:|---|
-| `claude-4-sonnet` | 200,000 | 64,000 | high |
-| `claude-4.5-sonnet-thinking` | 200,000 | 64,000 | high |
-| `claude-4.5-opus-high` | 200,000 | 64,000 | high |
-| `claude-4.5-opus-high-thinking` | 200,000 | 64,000 | high |
-| `gpt-5.3-codex` | 400,000 | 128,000 | high |
-| `gpt-5.2` | 272,000 | 100,000 | medium |
-| `gpt-4o` | 128,000 | 16,384 | medium |
-| `gemini-3-pro` | 1,048,576 | 65,536 | high |
-| `gemini-3-flash` | 1,048,576 | 65,536 | low |
-| `auto` | 200,000 | 64,000 | medium |
+Remote model refresh flow:
 
-## ModelRegistry defaults
+- `refresh_provider_models(provider_id, cache)`
+- attempts provider model listing API
+- merges fetched models with hardcoded models
+- falls back to hardcoded list if fetch fails
 
-`ModelRegistry::new()` includes models for:
+## Routing Integration
 
-- `openai`
-- `anthropic`
-- `gemini`
-- `deepseek`
-- `groq`
-- `kimi` and `kimi-coding`
-- `minimax` and `minimax-coding`
-- `glm` and `glm-coding`
-- `cursor`
-- `together`
-- `ollama`
-- `openrouter` (empty list by default)
+When routing is enabled (`agent.routing.enabled=true`):
 
-## Thinking support types
+- prompt is classified into tier (`low|medium|high`)
+- provider `model_for_tier` selects best matching model
+- fallback is provider first model
 
-`ModelInfo.thinking` may contain:
+See `docs/routing.md`.
 
-- `ReasoningEffort` (OpenAI-style effort levels)
-- `AdaptiveEffort` (Anthropic adaptive thinking)
-- `BudgetTokens` (token-budget style)
-- `ThinkingLevel` (named levels such as minimal/low/medium/high)
+## Practical Recommendations
 
-The UI converts provider-specific knobs into a unified `/thinking` experience.
-
-## Stubs / partial integrations
-
-- `claude-sdk`: requires `claude-sdk` feature and external CLI; returns informative error when unavailable.
-- `codex`: verifies `codex` binary exists, but runtime MCP integration is not complete; recommends OpenAI provider with Codex models.
+- Use explicit `provider/model` notation in high-control workflows.
+- Pin `model` under `[provider.<id>]` for reproducibility.
+- Keep API keys out of repository files; prefer env vars or OAuth.
+- For local/offline style workflows, configure `ollama` with local runtime.

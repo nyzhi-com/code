@@ -4,7 +4,9 @@ Use this guide for help, questions, and troubleshooting.
 
 ## Before Opening an Issue
 
-- Read the docs: https://code.nyzhi.com/docs
+- Read the docs:
+  - local docs in this repo: `docs/README.md`
+  - hosted docs: https://code.nyzhi.com/docs
 - Check existing issues: https://github.com/nyzhi-com/code/issues
 - Ensure you are on the latest release: `nyz --version`
 

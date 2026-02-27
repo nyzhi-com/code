@@ -42,6 +42,11 @@ The following are in scope:
 - Token storage and credential handling
 - The self-update mechanism and binary verification
 
+Implementation references:
+
+- `docs/self-update.md`
+- `docs/authentication.md`
+
 The following are **out of scope**:
 
 - Third-party LLM provider APIs

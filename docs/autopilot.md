@@ -1,125 +1,86 @@
 # Autopilot
 
-Autopilot is Nyzhi's fully autonomous execution mode. Give it an idea, and it runs through five phases -- expansion, planning, execution, QA, and validation -- without requiring manual intervention between phases.
+Source of truth:
 
----
+- `crates/core/src/autopilot.rs`
+- `crates/tui/src/input.rs` (`/autopilot` command handling)
 
-## Quick Start
+## What Autopilot Is
 
-```
-/autopilot Add rate limiting to the API with per-user quotas and a Redis backend
-```
+Autopilot is a multi-phase execution state machine for long-running implementation workflows.
 
-The agent takes over and works through all five phases, persisting state between each phase so progress is never lost.
+State is persisted per project and can be resumed or inspected.
 
----
+## Phases
 
-## The Five Phases
+`AutopilotPhase`:
 
-### 1. Expansion
+- `expansion`
+- `planning`
+- `execution`
+- `qa`
+- `validation`
+- `complete`
+- `cancelled`
 
-The agent takes your initial idea and expands it into a full specification:
+Transition order:
 
-- Clarifies requirements and constraints
-- Identifies edge cases and dependencies
-- Produces a structured requirements document
+`expansion -> planning -> execution -> qa -> validation -> complete`
 
-The output is stored as `requirements` in the autopilot state.
+## State Model
 
-### 2. Planning
+`AutopilotState` fields:
 
-Using the expanded requirements, the agent creates a detailed execution plan:
+- `idea`
+- `phase`
+- `requirements`
+- `plan`
+- `execution_log`
+- `qa_results`
+- `validation_report`
 
-- Breaks the work into discrete, ordered steps
-- Identifies files to create or modify
-- Notes testing strategy and verification criteria
+## Persistence Path
 
-The plan is stored and can be reviewed later via `/plan`.
+Stored at:
 
-### 3. Execution
+- `<project>/.nyzhi/state/autopilot.json`
 
-The agent executes the plan step by step:
+APIs:
 
-- Creates and modifies files
-- Runs commands
-- Uses all available tools
-- Logs each action in the execution log
+- `save_state`
+- `load_state`
+- `clear_state`
 
-This is the longest phase. The agent works through the plan items sequentially, adapting if it encounters issues.
+## TUI Command Usage
 
-### 4. QA
-
-After execution, the agent reviews its own work:
-
-- Runs verification checks (build, test, lint)
-- Reviews code for correctness and quality
-- Identifies remaining issues
-- May make additional fixes
-
-QA results are stored for the validation phase.
-
-### 5. Validation
-
-The final phase verifies everything is complete:
-
-- Confirms all requirements are met
-- Ensures tests pass
-- Produces a validation report
-- Marks the autopilot as `Complete`
-
----
-
-## State Persistence
-
-Autopilot state is saved to `.nyzhi/state/autopilot.json` in the project directory. This means:
-
-- If the process is interrupted, you can resume from the last completed phase.
-- State includes: the original idea, current phase, requirements, plan, execution log, QA results, and validation report.
-
-```json
-{
-  "idea": "Add rate limiting...",
-  "phase": "Execution",
-  "requirements": "...",
-  "plan": "...",
-  "execution_log": ["..."],
-  "qa_results": null,
-  "validation_report": null
-}
+```text
+/autopilot <idea>
+/autopilot
+/autopilot cancel
+/autopilot clear
 ```
 
----
+Behavior:
 
-## Phase Transitions
+- `/autopilot <idea>` initializes state and dispatches expansion prompt
+- `/autopilot` prints current state summary
+- `cancel` marks phase as `cancelled`
+- `clear` removes persisted state file
 
-```
-Expansion → Planning → Execution → QA → Validation → Complete
-                                                         │
-                                          (or)  → Cancelled
-```
+## Prompt Builders
 
-Autopilot advances one phase at a time. Each phase must complete before the next begins. You can cancel at any time, which sets the phase to `Cancelled`.
+Autopilot module provides dedicated builders:
 
----
+- `build_expansion_prompt`
+- `build_planning_prompt`
+- `build_execution_prompt`
+- `build_qa_prompt`
+- `build_validation_prompt`
 
-## Cancellation
+These templates define expected output structure for each phase.
 
-To cancel an in-progress autopilot:
+## Operational Notes
 
-- Press Ctrl+C during execution
-- The state is saved with phase `Cancelled`
-
-To clear saved state and start fresh:
-
-```
-/clear
-/autopilot <new idea>
-```
-
----
-
-## Related Features
-
-- **`/persist`** -- A lighter-weight autonomous mode that runs verify/fix loops until all checks pass.
-- **`/qa`** -- Activates autonomous QA cycling without the full 5-phase pipeline.
-- **`/plan`** -- View plans generated during the planning phase (or from manual `plan:` prefix prompts).
+- autopilot uses standard agent/tool runtime under the hood
+- it is not a separate execution engine; it is orchestrated through prompts + persisted phase state
+- run verification and review outputs before finalizing production changes

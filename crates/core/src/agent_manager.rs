@@ -320,11 +320,11 @@ impl AgentManager {
             team_name: agent_config.team_name.clone(),
             agent_name: agent_config.agent_name.clone(),
             is_team_lead: false,
-            todo_store: None,
-            index: None,
-            sandbox_level: nyzhi_config::SandboxLevel::default(),
-            model_registry: None,
-            current_model: None,
+            todo_store: parent_ctx.todo_store.clone(),
+            index: parent_ctx.index.clone(),
+            sandbox_level: parent_ctx.sandbox_level,
+            subagent_model_overrides: parent_ctx.subagent_model_overrides.clone(),
+            shared_context: parent_ctx.shared_context.clone(),
         };
 
         let join_handle = tokio::spawn(async move {
