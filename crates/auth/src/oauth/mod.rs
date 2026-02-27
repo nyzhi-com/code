@@ -1,5 +1,6 @@
 pub mod anthropic;
 pub mod chatgpt;
+pub mod copilot;
 pub mod cursor;
 pub mod google;
 pub mod openai;
@@ -17,6 +18,7 @@ pub async fn login(provider: &str) -> Result<StoredToken> {
         "anthropic" => anthropic::login().await,
         "chatgpt" => chatgpt::login().await,
         "cursor" => cursor::login().await,
+        "github-copilot" => copilot::login().await,
         other => {
             if let Some(def) = nyzhi_config::find_provider_def(other) {
                 if !def.supports_oauth {
@@ -49,6 +51,7 @@ pub async fn login_interactive(
         ("gemini", "gemini-cli") | ("gemini", "oauth") => google::login_interactive(msg_tx).await,
         ("anthropic", _) => anthropic::login_interactive(msg_tx).await,
         ("cursor", _) => cursor::login_interactive(msg_tx).await,
+        ("github-copilot", _) => copilot::login_interactive(msg_tx).await,
         _ => {
             anyhow::bail!("No interactive login for {provider}/{method}")
         }

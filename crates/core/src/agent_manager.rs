@@ -322,6 +322,9 @@ impl AgentManager {
             is_team_lead: false,
             todo_store: None,
             index: None,
+            sandbox_level: nyzhi_config::SandboxLevel::default(),
+            model_registry: None,
+            current_model: None,
         };
 
         let join_handle = tokio::spawn(async move {

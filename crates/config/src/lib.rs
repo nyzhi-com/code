@@ -215,6 +215,37 @@ pub struct AgentSettings {
     pub auto_commit: bool,
     #[serde(default)]
     pub model_profile: Option<String>,
+    /// Model to use for subagent/exploration tasks (cost optimization).
+    #[serde(default)]
+    pub subagent_model: Option<String>,
+    /// Sharing settings for /share command.
+    #[serde(default)]
+    pub sharing: SharingConfig,
+    /// Voice input settings.
+    #[serde(default)]
+    pub voice: VoiceConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SharingConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub pages_project: Option<String>,
+    #[serde(default)]
+    pub domain: Option<String>,
+    #[serde(default)]
+    pub redact_patterns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VoiceConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 fn default_max_agents() -> usize {
@@ -441,6 +472,39 @@ pub enum TrustMode {
     Full,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SandboxLevel {
+    ReadOnly,
+    #[default]
+    WorkspaceWrite,
+    FullAccess,
+}
+
+impl std::fmt::Display for SandboxLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SandboxLevel::ReadOnly => write!(f, "read-only"),
+            SandboxLevel::WorkspaceWrite => write!(f, "workspace-write"),
+            SandboxLevel::FullAccess => write!(f, "full-access"),
+        }
+    }
+}
+
+impl std::str::FromStr for SandboxLevel {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "read-only" | "readonly" => Ok(SandboxLevel::ReadOnly),
+            "workspace-write" | "workspace" => Ok(SandboxLevel::WorkspaceWrite),
+            "full-access" | "full" | "danger-full-access" => Ok(SandboxLevel::FullAccess),
+            other => Err(format!(
+                "unknown sandbox level: {other} (use read-only, workspace-write, full-access)"
+            )),
+        }
+    }
+}
+
 impl std::fmt::Display for TrustMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -512,6 +576,15 @@ pub const BUILT_IN_PROVIDERS: &[ProviderDef] = &[
         env_var: "CURSOR_API_KEY",
         default_base_url: "https://api2.cursor.sh",
         api_style: "cursor",
+        category: "popular",
+        supports_oauth: true,
+    },
+    ProviderDef {
+        id: "github-copilot",
+        name: "GitHub Copilot",
+        env_var: "GITHUB_COPILOT_TOKEN",
+        default_base_url: "https://api.githubcopilot.com",
+        api_style: "copilot",
         category: "popular",
         supports_oauth: true,
     },
@@ -1015,6 +1088,21 @@ impl Config {
                     .model_profile
                     .clone()
                     .or(global.agent.model_profile.clone()),
+                subagent_model: project
+                    .agent
+                    .subagent_model
+                    .clone()
+                    .or(global.agent.subagent_model.clone()),
+                sharing: if project.agent.sharing.enabled {
+                    project.agent.sharing.clone()
+                } else {
+                    global.agent.sharing.clone()
+                },
+                voice: if project.agent.voice.enabled {
+                    project.agent.voice.clone()
+                } else {
+                    global.agent.voice.clone()
+                },
             },
             mcp: McpConfig {
                 servers: mcp_servers,

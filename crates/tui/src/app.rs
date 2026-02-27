@@ -194,6 +194,7 @@ pub struct App {
     pub pending_provider_reload: Option<String>,
     pub pending_user_question:
         Option<std::sync::Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<String>>>>>,
+    pub ephemeral: bool,
     pub plan_mode: bool,
     pub last_plan_name: Option<String>,
     pub show_plan_panel: bool,
@@ -209,6 +210,8 @@ pub struct App {
     pub message_queue: VecDeque<TurnRequest>,
     pub model_cache: nyzhi_provider::ModelCacheHandle,
     pub codebase_index: Option<nyzhi_core::tools::IndexHandle>,
+    pub checkpoint_manager: Option<nyzhi_core::checkpoint::CheckpointManager>,
+    pub librarian: nyzhi_core::librarian::Librarian,
     pub index_progress: Option<(usize, usize, bool)>,
     pub index_error: Option<String>,
     pub session_title: String,
@@ -287,6 +290,7 @@ impl App {
             oauth_msg_rx: None,
             pending_provider_reload: None,
             pending_user_question: None,
+            ephemeral: false,
             plan_mode: false,
             last_plan_name: None,
             show_plan_panel: false,
@@ -302,6 +306,10 @@ impl App {
             message_queue: VecDeque::new(),
             model_cache: nyzhi_provider::ModelCache::handle(),
             codebase_index: None,
+            checkpoint_manager: None,
+            librarian: nyzhi_core::librarian::Librarian::new(
+                &nyzhi_config::Config::data_dir(),
+            ),
             index_progress: None,
             index_error: None,
             session_title: String::from("nyzhi code"),
@@ -363,6 +371,9 @@ impl App {
     }
 
     fn try_save_session(&self, thread: Option<&nyzhi_core::conversation::Thread>) {
+        if self.ephemeral {
+            return;
+        }
         if let Some(t) = thread {
             if t.message_count() > 0 {
                 let _ = nyzhi_core::session::save_session(
@@ -387,6 +398,15 @@ impl App {
                 role: "system".to_string(),
                 content: format!("Post-update warning: {w}"),
             });
+        }
+
+        if self.checkpoint_manager.is_none()
+            && nyzhi_core::git_undo::is_git_repo(&self.workspace.project_root)
+        {
+            self.checkpoint_manager = Some(nyzhi_core::checkpoint::CheckpointManager::new(
+                &self.workspace.project_root,
+                "default",
+            ));
         }
 
         let nyzhi_dir = self.workspace.project_root.join(".nyzhi");
@@ -592,6 +612,9 @@ impl App {
                     .unwrap_or_else(|| nyzhi_core::tools::todo::shared_store()),
             ),
             index: self.codebase_index.clone(),
+            sandbox_level: nyzhi_config::SandboxLevel::default(),
+            model_registry: Some(std::sync::Arc::new(nyzhi_provider::ModelRegistry::new())),
+            current_model: Some(self.model_name.clone()),
         };
 
         let agent_manager = if let Some(ref p) = provider {
@@ -1143,6 +1166,19 @@ impl App {
                         content: format!("Background task #{id} started: {}", req.label),
                     });
                 } else {
+                    let is_deep = nyzhi_core::deep_mode::is_deep_prefix(&req.input);
+                    let mut req = req;
+                    if is_deep {
+                        req.input = nyzhi_core::deep_mode::strip_deep_prefix(&req.input).to_string();
+                    }
+
+                    if is_deep {
+                        if let Some(ref mut mgr) = self.checkpoint_manager {
+                            let mc = thread.as_ref().map(|t| t.messages().len()).unwrap_or(0);
+                            mgr.auto_save(mc);
+                        }
+                    }
+
                     let fg_thread = thread.take().unwrap();
                     let snapshot = fg_thread.clone();
                     let fg_usage = self.session_usage.clone();
@@ -1151,6 +1187,11 @@ impl App {
                     let mut config_c = agent_config.clone();
                     config_c.plan_mode = self.plan_mode || config_c.plan_mode;
                     config_c.act_after_plan = req.label == "execute plan";
+                    if is_deep {
+                        config_c.system_prompt.push_str("\n\n");
+                        config_c.system_prompt.push_str(nyzhi_core::deep_mode::deep_mode_system_suffix());
+                        config_c.max_steps = config_c.max_steps.max(200);
+                    }
                     let event_tx_c = event_tx.clone();
                     let tool_ctx_c = tool_ctx.clone();
                     let join_handle = tokio::spawn(async move {

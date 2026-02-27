@@ -80,6 +80,12 @@ pub struct ToolContext {
     pub todo_store: Option<TodoStoreHandle>,
     /// Codebase index for semantic search and auto-context.
     pub index: Option<IndexHandle>,
+    /// Sandbox enforcement level for tool execution.
+    pub sandbox_level: nyzhi_config::SandboxLevel,
+    /// Model registry for subagent model tiering.
+    pub model_registry: Option<std::sync::Arc<nyzhi_provider::ModelRegistry>>,
+    /// Current model ID (parent agent).
+    pub current_model: Option<String>,
 }
 
 pub struct ToolResult {

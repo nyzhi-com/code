@@ -55,6 +55,7 @@ pub async fn refresh_if_needed(provider: &str) -> Result<Option<StoredToken>> {
         "gemini" | "google" => refresh_google(&refresh_token).await?,
         "openai" | "chatgpt" => refresh_openai(&refresh_token).await?,
         "anthropic" => refresh_anthropic(&refresh_token).await?,
+        "github-copilot" => refresh_copilot(&refresh_token).await?,
         _ => return Ok(None),
     };
 
@@ -130,4 +131,15 @@ async fn refresh_anthropic(refresh_token: &str) -> Result<RefreshResponse> {
     }
 
     Ok(resp.json().await?)
+}
+
+async fn refresh_copilot(github_token: &str) -> Result<RefreshResponse> {
+    let copilot = super::copilot::exchange_copilot_token(github_token).await?;
+    let now = chrono::Utc::now().timestamp();
+    let expires_in = (copilot.expires_at - now).max(0) as u64;
+    Ok(RefreshResponse {
+        access_token: copilot.token,
+        expires_in: Some(expires_in),
+        refresh_token: Some(github_token.to_string()),
+    })
 }

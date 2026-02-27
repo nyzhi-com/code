@@ -3,6 +3,33 @@ use std::collections::HashMap;
 
 use crate::agent::AgentConfig;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubagentTier {
+    /// Fast/cheap model for read-only exploration and simple tasks.
+    Fast,
+    /// Balanced model for implementation and debugging.
+    Standard,
+    /// Most capable model for architecture, complex planning, security review.
+    Premium,
+}
+
+impl SubagentTier {
+    pub fn label(&self) -> &'static str {
+        match self {
+            SubagentTier::Fast => "fast",
+            SubagentTier::Standard => "standard",
+            SubagentTier::Premium => "premium",
+        }
+    }
+}
+
+impl Default for SubagentTier {
+    fn default() -> Self {
+        SubagentTier::Standard
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRoleConfig {
     pub name: String,
@@ -12,6 +39,8 @@ pub struct AgentRoleConfig {
     pub system_prompt_override: Option<String>,
     #[serde(default)]
     pub model_override: Option<String>,
+    #[serde(default)]
+    pub model_tier: SubagentTier,
     #[serde(default)]
     pub max_steps_override: Option<u32>,
     #[serde(default)]
@@ -34,6 +63,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             description: Some("Default agent. Inherits parent configuration.".to_string()),
             system_prompt_override: None,
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: None,
             read_only: false,
             allowed_tools: None,
@@ -55,6 +85,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(EXPLORER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Fast,
             max_steps_override: Some(30),
             read_only: true,
             allowed_tools: Some(vec![
@@ -89,6 +120,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(WORKER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: Some(50),
             read_only: false,
             allowed_tools: None,
@@ -110,6 +142,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(REVIEWER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,  // reviews need quality, not speed
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
@@ -145,6 +178,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(PLANNER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
@@ -181,6 +215,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(ARCHITECT_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Premium,
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
@@ -216,6 +251,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(DEBUGGER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: Some(60),
             read_only: false,
             allowed_tools: None,
@@ -236,6 +272,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(SECURITY_REVIEWER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Premium,
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
@@ -272,6 +309,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(QUALITY_REVIEWER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: Some(40),
             read_only: true,
             allowed_tools: Some(vec![
@@ -306,6 +344,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(TEST_ENGINEER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: Some(50),
             read_only: false,
             allowed_tools: None,
@@ -326,6 +365,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(BUILD_FIXER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: Some(40),
             read_only: false,
             allowed_tools: None,
@@ -346,6 +386,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(DEEP_EXECUTOR_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: Some(80),
             read_only: false,
             allowed_tools: None,
@@ -366,6 +407,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(DOCUMENT_SPECIALIST_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: Some(40),
             read_only: false,
             allowed_tools: None,
@@ -386,6 +428,7 @@ pub fn built_in_roles() -> HashMap<String, AgentRoleConfig> {
             ),
             system_prompt_override: Some(CODE_SIMPLIFIER_PROMPT.to_string()),
             model_override: None,
+            model_tier: SubagentTier::Standard,
             max_steps_override: Some(40),
             read_only: false,
             allowed_tools: None,
@@ -409,6 +452,7 @@ pub fn convert_user_roles(
                 description: toml.description.clone(),
                 system_prompt_override: toml.system_prompt.clone(),
                 model_override: toml.model.clone(),
+                model_tier: SubagentTier::Standard,
                 max_steps_override: toml.max_steps,
                 read_only: toml.read_only.unwrap_or(false),
                 allowed_tools: toml.allowed_tools.clone(),
@@ -437,11 +481,53 @@ pub fn resolve_role(
         description: None,
         system_prompt_override: None,
         model_override: None,
+        model_tier: SubagentTier::Standard,
         max_steps_override: None,
         read_only: false,
         allowed_tools: None,
         disallowed_tools: None,
         config_file: None,
+    }
+}
+
+/// Resolve the best model ID for a tier given the available models in the registry.
+/// Falls back to the parent model if no tier-appropriate model is found.
+pub fn resolve_model_for_tier(
+    tier: SubagentTier,
+    registry: &nyzhi_provider::ModelRegistry,
+    parent_model: &str,
+) -> String {
+    if let Some(model_override) = tier_to_preferred_model(tier) {
+        if registry.find_any(model_override).is_some() {
+            return model_override.to_string();
+        }
+    }
+
+    let target_tier = match tier {
+        SubagentTier::Fast => nyzhi_provider::ModelTier::Low,
+        SubagentTier::Standard => nyzhi_provider::ModelTier::Medium,
+        SubagentTier::Premium => nyzhi_provider::ModelTier::High,
+    };
+
+    let all_models = registry.all_models();
+    let mut candidates: Vec<_> = all_models
+        .iter()
+        .filter(|m| m.tier == target_tier)
+        .collect();
+    candidates.sort_by(|a, b| b.context_window.cmp(&a.context_window));
+
+    if let Some(best) = candidates.first() {
+        return best.id.clone();
+    }
+
+    parent_model.to_string()
+}
+
+fn tier_to_preferred_model(tier: SubagentTier) -> Option<&'static str> {
+    match tier {
+        SubagentTier::Fast => Some("claude-haiku-4-5-20251022"),
+        SubagentTier::Standard => None,
+        SubagentTier::Premium => Some("claude-opus-4-6-20260205"),
     }
 }
 

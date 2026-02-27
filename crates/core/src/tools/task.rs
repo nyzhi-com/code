@@ -105,6 +105,7 @@ impl Tool for TaskTool {
             act_after_plan: false,
             auto_context: false,
             auto_context_chunks: 0,
+            subagent_model: None,
         };
 
         let mut child_thread = Thread::new();
@@ -160,6 +161,9 @@ impl Tool for TaskTool {
             is_team_lead: ctx.is_team_lead,
             todo_store: ctx.todo_store.clone(),
             index: ctx.index.clone(),
+            sandbox_level: ctx.sandbox_level,
+            model_registry: ctx.model_registry.clone(),
+            current_model: ctx.current_model.clone(),
         };
 
         let mut session_usage = SessionUsage::default();

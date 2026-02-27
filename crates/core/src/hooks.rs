@@ -158,31 +158,79 @@ async fn run_hook(
             result
         }
         HookType::Prompt => {
-            if !fallback_cmd.is_empty() {
+            let prompt_text = hook
+                .prompt
+                .as_deref()
+                .or(hook.instructions.as_deref())
+                .unwrap_or("");
+
+            if prompt_text.is_empty() && !fallback_cmd.is_empty() {
                 let mut result = run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
                 result.hook_type = HookType::Prompt;
                 return result;
             }
+
+            let mut output = prompt_text.to_string();
+            if !fallback_cmd.is_empty() {
+                let cmd_result = run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
+                if !cmd_result.stdout.is_empty() {
+                    output.push_str("\n\n");
+                    output.push_str(&cmd_result.stdout);
+                }
+            }
+
             HookResult {
-                command: "prompt".to_string(),
-                stdout: String::new(),
-                stderr: "hook_type=prompt is not implemented yet; use hook_type=command or set a command fallback".to_string(),
-                exit_code: Some(1),
+                command: "prompt-inject".to_string(),
+                stdout: output,
+                stderr: String::new(),
+                exit_code: Some(0),
                 timed_out: false,
                 hook_type: HookType::Prompt,
             }
         }
         HookType::Agent => {
-            if !fallback_cmd.is_empty() {
+            let instructions = hook
+                .instructions
+                .as_deref()
+                .or(hook.prompt.as_deref())
+                .unwrap_or("");
+
+            if instructions.is_empty() && !fallback_cmd.is_empty() {
                 let mut result = run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
                 result.hook_type = HookType::Agent;
                 return result;
             }
+
+            if instructions.is_empty() {
+                return HookResult {
+                    command: "agent".to_string(),
+                    stdout: String::new(),
+                    stderr: "hook_type=agent requires 'instructions' or 'prompt' field".to_string(),
+                    exit_code: Some(1),
+                    timed_out: false,
+                    hook_type: HookType::Agent,
+                };
+            }
+
+            let mut cmd_context = String::new();
+            if !fallback_cmd.is_empty() {
+                let cmd_result = run_hook_command(fallback_cmd, hook.timeout, cwd, stdin_data).await;
+                if !cmd_result.stdout.is_empty() {
+                    cmd_context = cmd_result.stdout;
+                }
+            }
+
+            let full_instructions = if cmd_context.is_empty() {
+                instructions.to_string()
+            } else {
+                format!("{instructions}\n\nContext:\n{cmd_context}")
+            };
+
             HookResult {
-                command: "agent".to_string(),
-                stdout: String::new(),
-                stderr: "hook_type=agent is not implemented yet; use hook_type=command or set a command fallback".to_string(),
-                exit_code: Some(1),
+                command: "agent-task".to_string(),
+                stdout: full_instructions,
+                stderr: String::new(),
+                exit_code: Some(0),
                 timed_out: false,
                 hook_type: HookType::Agent,
             }
@@ -398,25 +446,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prompt_hook_without_command_fails_closed() {
+    async fn prompt_hook_without_command_returns_empty() {
         let hooks = vec![make_hook(HookEvent::AfterTurn, HookType::Prompt, "")];
         let results = run_after_turn_hooks(&hooks, Path::new(".")).await;
         assert_eq!(results.len(), 1);
         let r = &results[0];
         assert_eq!(r.hook_type, HookType::Prompt);
-        assert_eq!(r.exit_code, Some(1));
-        assert!(r.stderr.contains("not implemented"));
+        assert_eq!(r.exit_code, Some(0));
     }
 
     #[tokio::test]
-    async fn agent_hook_without_command_fails_closed() {
+    async fn agent_hook_without_instructions_errors() {
         let hooks = vec![make_hook(HookEvent::AfterTurn, HookType::Agent, "")];
         let results = run_after_turn_hooks(&hooks, Path::new(".")).await;
         assert_eq!(results.len(), 1);
         let r = &results[0];
         assert_eq!(r.hook_type, HookType::Agent);
         assert_eq!(r.exit_code, Some(1));
-        assert!(r.stderr.contains("not implemented"));
+        assert!(r.stderr.contains("requires"));
     }
 
     #[tokio::test]

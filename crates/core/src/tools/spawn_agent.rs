@@ -115,9 +115,22 @@ impl Tool for SpawnAgentTool {
             act_after_plan: false,
             auto_context: false,
             auto_context_chunks: 0,
+            subagent_model: None,
         };
 
         apply_role(&mut agent_config, &role);
+
+        if role.model_override.is_none() {
+            if let Some(registry) = &ctx.model_registry {
+                let parent_model = ctx.current_model.as_deref().unwrap_or("");
+                let tiered_model = crate::agent_roles::resolve_model_for_tier(
+                    role.model_tier,
+                    registry,
+                    parent_model,
+                );
+                agent_config.subagent_model = Some(tiered_model);
+            }
+        }
 
         if let Ok(notepads) = crate::notepad::list_notepads(&ctx.project_root) {
             if let Some(plan_name) = notepads.last() {

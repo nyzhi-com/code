@@ -1,6 +1,7 @@
 use anyhow::Result;
 use base64::Engine;
 use clap::{Parser, Subcommand};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -50,6 +51,35 @@ enum Commands {
         /// Output format: text (default) or json (JSONL events)
         #[arg(long, default_value = "text")]
         format: String,
+        /// Write final response to a file
+        #[arg(short = 'o', long = "output")]
+        output_file: Option<String>,
+    },
+    /// Execute a single-shot prompt (CI/CD and scripting friendly)
+    ///
+    /// Progress streams to stderr, final result to stdout.
+    /// Reads from stdin if no prompt is given: cat file.log | nyz exec "explain"
+    Exec {
+        /// The prompt to send (reads stdin if omitted or if stdin is piped)
+        prompt: Option<String>,
+        /// Attach image file(s) to the prompt
+        #[arg(short = 'i', long = "image")]
+        images: Vec<String>,
+        /// Output JSONL event stream to stdout
+        #[arg(long)]
+        json: bool,
+        /// Suppress progress output, only print final result
+        #[arg(short, long)]
+        quiet: bool,
+        /// Don't persist session files
+        #[arg(long)]
+        ephemeral: bool,
+        /// Auto-approve all tool calls with workspace-write sandbox
+        #[arg(long)]
+        full_auto: bool,
+        /// Sandbox level: read-only, workspace-write, full-access
+        #[arg(long, default_value = "workspace-write")]
+        sandbox: String,
         /// Write final response to a file
         #[arg(short = 'o', long = "output")]
         output_file: Option<String>,
@@ -982,8 +1012,86 @@ async fn main() -> Result<()> {
                 &config,
                 &mcp_summaries,
                 cli.team_name.as_deref(),
-                &format,
-                output_file.as_deref(),
+                &ExecOptions {
+                    json: format == "json",
+                    quiet: false,
+                    ephemeral: false,
+                    sandbox_level: SandboxLevel::FullAccess,
+                    output_file: output_file,
+                },
+            )
+            .await?;
+        }
+        Some(Commands::Exec {
+            prompt,
+            images,
+            json,
+            quiet,
+            ephemeral,
+            full_auto,
+            sandbox,
+            output_file,
+        }) => {
+            let Some(ref provider) = provider else {
+                eprintln!("No credentials configured. Set an API key or run `nyz login`.");
+                std::process::exit(1);
+            };
+
+            let sandbox_level = match sandbox.as_str() {
+                "read-only" | "readonly" => SandboxLevel::ReadOnly,
+                "workspace-write" | "workspace" => SandboxLevel::WorkspaceWrite,
+                "full-access" | "full" | "danger-full-access" => SandboxLevel::FullAccess,
+                other => {
+                    eprintln!("Unknown sandbox level: {other} (use read-only, workspace-write, full-access)");
+                    std::process::exit(1);
+                }
+            };
+
+            let sandbox_level = if full_auto {
+                config.agent.trust.mode = nyzhi_config::TrustMode::Full;
+                SandboxLevel::WorkspaceWrite
+            } else {
+                sandbox_level
+            };
+
+            let mut final_prompt = String::new();
+
+            let has_stdin = !std::io::stdin().is_terminal();
+            if has_stdin {
+                use std::io::Read;
+                let mut stdin_buf = String::new();
+                std::io::stdin().read_to_string(&mut stdin_buf)?;
+                if !stdin_buf.is_empty() {
+                    final_prompt.push_str(&stdin_buf);
+                    final_prompt.push_str("\n\n");
+                }
+            }
+
+            if let Some(p) = &prompt {
+                final_prompt.push_str(p);
+            }
+
+            if final_prompt.trim().is_empty() {
+                eprintln!("No prompt provided. Usage: nyz exec \"prompt\" or pipe stdin.");
+                std::process::exit(1);
+            }
+
+            run_once(
+                &**provider,
+                &final_prompt,
+                &images,
+                &registry,
+                &workspace,
+                &config,
+                &mcp_summaries,
+                cli.team_name.as_deref(),
+                &ExecOptions {
+                    json,
+                    quiet,
+                    ephemeral,
+                    sandbox_level,
+                    output_file,
+                },
             )
             .await?;
         }
@@ -1079,8 +1187,13 @@ async fn main() -> Result<()> {
                 &config,
                 &mcp_summaries,
                 None,
-                "text",
-                None,
+                &ExecOptions {
+                    json: false,
+                    quiet: false,
+                    ephemeral: false,
+                    sandbox_level: SandboxLevel::WorkspaceWrite,
+                    output_file: None,
+                },
             )
             .await?;
 
@@ -1109,6 +1222,16 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+use nyzhi_config::SandboxLevel;
+
+struct ExecOptions {
+    json: bool,
+    quiet: bool,
+    ephemeral: bool,
+    sandbox_level: SandboxLevel,
+    output_file: Option<String>,
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_once(
     provider: &dyn nyzhi_provider::Provider,
@@ -1119,15 +1242,15 @@ async fn run_once(
     config: &nyzhi_config::Config,
     mcp_tools: &[nyzhi_core::prompt::McpToolSummary],
     team_name: Option<&str>,
-    format: &str,
-    output_file: Option<&str>,
+    opts: &ExecOptions,
 ) -> Result<()> {
     use nyzhi_core::agent::{AgentConfig, AgentEvent};
     use nyzhi_core::conversation::Thread;
     use nyzhi_core::tools::ToolContext;
     use nyzhi_provider::{ContentPart, MessageContent};
 
-    let json_mode = format == "json";
+    let json_mode = opts.json;
+    let quiet = opts.quiet;
     let mut thread = Thread::new();
     let agent_config = AgentConfig {
         system_prompt: nyzhi_core::prompt::build_system_prompt_with_mcp(
@@ -1166,6 +1289,9 @@ async fn run_once(
         is_team_lead: team_name.is_some(),
         todo_store: None,
         index: None,
+        sandbox_level: opts.sandbox_level,
+        model_registry: None,
+        current_model: None,
     };
 
     let tx = event_tx.clone();
@@ -1178,8 +1304,8 @@ async fn run_once(
                     if json_mode {
                         let obj = serde_json::json!({"type": "text_delta", "text": text});
                         println!("{}", obj);
-                    } else {
-                        print!("{text}");
+                    } else if !quiet {
+                        eprint!("{text}");
                     }
                     response_capture.lock().unwrap().push_str(text);
                 }
@@ -1187,7 +1313,7 @@ async fn run_once(
                     if json_mode {
                         let obj = serde_json::json!({"type": "tool_start", "name": name});
                         println!("{}", obj);
-                    } else {
+                    } else if !quiet {
                         eprint!("\n[tool: {name}] ");
                     }
                 }
@@ -1195,7 +1321,7 @@ async fn run_once(
                     if json_mode {
                         let obj = serde_json::json!({"type": "tool_done", "name": name, "output": output});
                         println!("{}", obj);
-                    } else {
+                    } else if !quiet {
                         let preview = if output.len() > 200 {
                             format!("{}...", &output[..197])
                         } else {
@@ -1212,7 +1338,7 @@ async fn run_once(
                         if json_mode {
                             let obj = serde_json::json!({"type": "auto_approved", "tool": tool_name});
                             println!("{}", obj);
-                        } else {
+                        } else if !quiet {
                             eprintln!("[auto-approved: {tool_name}]");
                         }
                         let _ = sender.send(true);
@@ -1227,7 +1353,7 @@ async fn run_once(
                     if json_mode {
                         let obj = serde_json::json!({"type": "retry", "attempt": attempt, "max": max_retries, "wait_ms": wait_ms, "reason": reason});
                         println!("{}", obj);
-                    } else {
+                    } else if !quiet {
                         eprintln!("\n[retry {attempt}/{max_retries}] waiting {wait_ms}ms: {reason}");
                     }
                 }
@@ -1310,17 +1436,19 @@ async fn run_once(
     let _ = handle.await;
 
     let turn_elapsed = turn_start.elapsed();
-    let notify = &config.tui.notify;
-    if turn_elapsed.as_millis() as u64 >= notify.min_duration_ms {
-        if notify.bell {
-            let _ = crossterm::execute!(std::io::stdout(), crossterm::style::Print("\x07"));
-        }
-        if notify.desktop {
-            let elapsed_str = format!("{:.1}s", turn_elapsed.as_secs_f64());
-            let _ = notify_rust::Notification::new()
-                .summary("nyzhi code")
-                .body(&format!("Turn complete ({elapsed_str})"))
-                .show();
+    if !opts.quiet {
+        let notify = &config.tui.notify;
+        if turn_elapsed.as_millis() as u64 >= notify.min_duration_ms {
+            if notify.bell {
+                let _ = crossterm::execute!(std::io::stderr(), crossterm::style::Print("\x07"));
+            }
+            if notify.desktop {
+                let elapsed_str = format!("{:.1}s", turn_elapsed.as_secs_f64());
+                let _ = notify_rust::Notification::new()
+                    .summary("nyzhi code")
+                    .body(&format!("Turn complete ({elapsed_str})"))
+                    .show();
+            }
         }
     }
 
@@ -1332,13 +1460,29 @@ async fn run_once(
         }
     }
 
-    if let Some(path) = output_file {
-        let text = response_text.lock().unwrap().clone();
-        std::fs::write(path, &text)?;
+    if !opts.ephemeral && thread.messages().len() > 1 {
+        let provider_name = provider.name();
+        let model = provider
+            .supported_models()
+            .first()
+            .map(|m| m.id.clone())
+            .unwrap_or_else(|| "unknown".to_string());
+        let _ = nyzhi_core::session::save_session(&thread, provider_name, &model);
+    }
+
+    let final_text = response_text.lock().unwrap().clone();
+
+    if let Some(path) = &opts.output_file {
+        std::fs::write(path, &final_text)?;
         eprintln!("Response written to {path}");
     }
 
-    println!();
+    if opts.quiet && !opts.json {
+        println!("{}", final_text.trim());
+    } else if !opts.json {
+        eprintln!();
+    }
+
     Ok(())
 }
 

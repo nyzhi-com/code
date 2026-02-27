@@ -3,6 +3,7 @@ pub mod types;
 pub mod anthropic;
 pub mod claude_sdk;
 pub mod codex;
+pub mod copilot;
 pub mod cursor;
 pub mod gemini;
 pub mod list_models;
@@ -154,6 +155,25 @@ pub fn create_provider(name: &str, config: &nyzhi_config::Config) -> Result<Box<
                 entry.and_then(|e| e.model.clone()),
             )))
         }
+        "copilot" => {
+            let stored = nyzhi_auth::token_store::load_token("github-copilot")?
+                .ok_or_else(|| anyhow::anyhow!(
+                    "No GitHub Copilot credentials found. Run `/connect` and select GitHub Copilot to authenticate."
+                ))?;
+            let github_token = stored.refresh_token.clone().unwrap_or_default();
+            if github_token.is_empty() {
+                anyhow::bail!(
+                    "GitHub Copilot refresh token missing. Run `/connect` and re-authenticate with GitHub Copilot."
+                );
+            }
+            Ok(Box::new(copilot::CopilotProvider::new(
+                github_token,
+                stored.access_token,
+                stored.expires_at.unwrap_or(0),
+                None,
+                entry.and_then(|e| e.model.clone()),
+            )))
+        }
         other => anyhow::bail!("Unsupported api_style '{other}' for provider '{name}'"),
     }
 }
@@ -230,6 +250,25 @@ pub async fn create_provider_async(
                 entry.and_then(|e| e.model.clone()),
             )));
         }
+        "copilot" => {
+            let stored = nyzhi_auth::token_store::load_token("github-copilot")?
+                .ok_or_else(|| anyhow::anyhow!(
+                    "No GitHub Copilot credentials found. Run `/connect` and select GitHub Copilot to authenticate."
+                ))?;
+            let github_token = stored.refresh_token.clone().unwrap_or_default();
+            if github_token.is_empty() {
+                anyhow::bail!(
+                    "GitHub Copilot refresh token missing. Run `/connect` and re-authenticate with GitHub Copilot."
+                );
+            }
+            return Ok(Box::new(copilot::CopilotProvider::new(
+                github_token,
+                stored.access_token,
+                stored.expires_at.unwrap_or(0),
+                None,
+                entry.and_then(|e| e.model.clone()),
+            )));
+        }
         _ => {}
     }
 
@@ -283,6 +322,7 @@ impl ModelRegistry {
         models.insert("glm".into(), glm.clone());
         models.insert("glm-coding".into(), glm);
         models.insert("cursor".into(), cursor::cursor_models());
+        models.insert("github-copilot".into(), copilot::copilot_models());
         models.insert("openrouter".into(), vec![]);
         models.insert("together".into(), together_models());
         models.insert("ollama".into(), ollama_models());

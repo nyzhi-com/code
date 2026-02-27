@@ -21,6 +21,7 @@ pub async fn fetch_models(
         "deepseek" => fetch_openai_compat("deepseek", base_url, api_key, deepseek_filter).await,
         "groq" => fetch_openai_compat("groq", base_url, api_key, groq_filter).await,
         "cursor" => fetch_cursor(api_key).await,
+        "github-copilot" => fetch_copilot(api_key).await,
         _ => Ok(vec![]),
     }
 }
@@ -508,6 +509,86 @@ async fn fetch_cursor(api_key: Option<&str>) -> Result<Vec<ModelInfo>> {
     }
 
     Ok(models)
+}
+
+/// GET /models (GitHub Copilot -- OpenAI-compatible, requires Copilot-specific headers)
+async fn fetch_copilot(api_key: Option<&str>) -> Result<Vec<ModelInfo>> {
+    let key = api_key.unwrap_or_default();
+    if key.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let (token, endpoint) = resolve_copilot_token(key).await;
+    if token.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let url = format!("{}/models", endpoint.trim_end_matches('/'));
+
+    let resp = client()
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("User-Agent", "GitHubCopilotChat/0.26.7")
+        .header("Editor-Version", "vscode/1.99.3")
+        .header("Editor-Plugin-Version", "copilot-chat/0.26.7")
+        .header("Copilot-Integration-Id", "vscode-chat")
+        .header("Accept", "application/json")
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        return Ok(vec![]);
+    }
+
+    let data: Value = resp.json().await?;
+    let models = data["data"].as_array().cloned().unwrap_or_default();
+
+    Ok(models
+        .iter()
+        .filter_map(|m| {
+            let id = m["id"].as_str()?;
+            Some(ModelInfo {
+                id: id.to_string(),
+                name: humanize_model_id(id),
+                provider: "github-copilot".to_string(),
+                context_window: 200_000,
+                max_output_tokens: 64_000,
+                supports_tools: true,
+                supports_streaming: true,
+                supports_vision: true,
+                input_price_per_m: 0.0,
+                output_price_per_m: 0.0,
+                cache_read_price_per_m: 0.0,
+                cache_write_price_per_m: 0.0,
+                tier: ModelTier::Medium,
+                thinking: None,
+            })
+        })
+        .collect())
+}
+
+async fn resolve_copilot_token(stored_access_token: &str) -> (String, String) {
+    let default_endpoint = "https://api.githubcopilot.com".to_string();
+
+    if let Ok(Some(stored)) = nyzhi_auth::token_store::load_token("github-copilot") {
+        let now = chrono::Utc::now().timestamp();
+        if stored.expires_at.map_or(false, |exp| now < exp - 60) {
+            return (stored.access_token, default_endpoint);
+        }
+        if let Some(ref refresh) = stored.refresh_token {
+            if let Ok(copilot) = nyzhi_auth::oauth::copilot::exchange_copilot_token(refresh).await
+            {
+                let endpoint = if copilot.endpoints.api.is_empty() {
+                    default_endpoint
+                } else {
+                    copilot.endpoints.api
+                };
+                return (copilot.token, endpoint);
+            }
+        }
+    }
+
+    (stored_access_token.to_string(), default_endpoint)
 }
 
 fn humanize_model_id(id: &str) -> String {

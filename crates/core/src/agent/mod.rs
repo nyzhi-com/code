@@ -240,6 +240,8 @@ pub struct AgentConfig {
     pub act_after_plan: bool,
     pub auto_context: bool,
     pub auto_context_chunks: usize,
+    /// Model ID override for subagent tasks (cheaper model for exploration).
+    pub subagent_model: Option<String>,
 }
 
 impl Default for AgentConfig {
@@ -264,6 +266,7 @@ impl Default for AgentConfig {
             act_after_plan: false,
             auto_context: true,
             auto_context_chunks: 5,
+            subagent_model: None,
         }
     }
 }
@@ -872,6 +875,15 @@ async fn execute_with_permission(
         });
     }
 
+    if let Some(reason) = sandbox_blocks_tool(ctx.sandbox_level, tool_name, &args, &ctx.project_root) {
+        return Ok(crate::tools::ToolResult {
+            output: format!("Tool `{tool_name}` blocked by sandbox ({ctx_level}): {reason}",
+                ctx_level = ctx.sandbox_level),
+            title: format!("{tool_name} (sandbox)"),
+            metadata: serde_json::json!({ "denied": true, "reason": "sandbox" }),
+        });
+    }
+
     let target_path = extract_target_path(tool_name, &args);
     if crate::tools::permission::check_deny(tool_name, target_path.as_deref(), trust) {
         return Ok(crate::tools::ToolResult {
@@ -950,6 +962,66 @@ fn should_auto_approve(trust: &TrustConfig, tool_name: &str, args: &serde_json::
             }
         }
         TrustMode::Off => false,
+    }
+}
+
+const WRITE_TOOLS: &[&str] = &[
+    "write", "edit", "multi_edit", "apply_patch", "batch_apply",
+    "delete_file", "move_file", "copy_file", "create_dir",
+    "bash", "git_commit", "git_checkout",
+    "web_fetch", "web_search", "browser_open", "browser_screenshot", "browser_evaluate",
+    "create_pr", "instrument", "remove_instrumentation",
+];
+
+fn sandbox_blocks_tool(
+    level: nyzhi_config::SandboxLevel,
+    tool_name: &str,
+    args: &serde_json::Value,
+    project_root: &std::path::Path,
+) -> Option<String> {
+    use nyzhi_config::SandboxLevel;
+
+    match level {
+        SandboxLevel::FullAccess => None,
+        SandboxLevel::ReadOnly => {
+            if WRITE_TOOLS.contains(&tool_name) {
+                Some("write operations are blocked in read-only sandbox".into())
+            } else {
+                None
+            }
+        }
+        SandboxLevel::WorkspaceWrite => {
+            if tool_name == "bash" {
+                return None; // bash is gated by approval; the OS-level sandbox handles path restriction
+            }
+            let write_tools_needing_path = [
+                "write", "edit", "multi_edit", "apply_patch", "batch_apply",
+                "delete_file", "move_file", "copy_file", "create_dir",
+            ];
+            if write_tools_needing_path.contains(&tool_name) {
+                if let Some(path_str) = args
+                    .get("file_path")
+                    .or_else(|| args.get("path"))
+                    .or_else(|| args.get("destination"))
+                    .and_then(|v| v.as_str())
+                {
+                    let target = std::path::Path::new(path_str);
+                    let abs_target = if target.is_absolute() {
+                        target.to_path_buf()
+                    } else {
+                        project_root.join(target)
+                    };
+                    if !abs_target.starts_with(project_root) {
+                        return Some(format!(
+                            "path {} is outside workspace {}",
+                            abs_target.display(),
+                            project_root.display()
+                        ));
+                    }
+                }
+            }
+            None
+        }
     }
 }
 

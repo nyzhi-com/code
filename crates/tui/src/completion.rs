@@ -28,6 +28,11 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
+        name: "/analytics",
+        description: "session analytics and friction detection",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
         name: "/autopilot",
         description: "autonomous multi-step execution",
         kind: CommandKind::Prompt,
@@ -45,6 +50,26 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
     SlashCommandDef {
         name: "/bug",
         description: "generate a bug report",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/checkpoint",
+        description: "save/list/restore session checkpoints",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/checkpoint save",
+        description: "save a named checkpoint",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/checkpoint list",
+        description: "list all checkpoints",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/checkpoint restore",
+        description: "restore a checkpoint by id or name",
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
@@ -83,8 +108,33 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
+        name: "/deep",
+        description: "deep mode: autonomous research then implement",
+        kind: CommandKind::Prompt,
+    },
+    SlashCommandDef {
         name: "/diff",
         description: "show all file changes this session as diffs",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/docs",
+        description: "view/manage cached documentation (librarian)",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/docs add",
+        description: "cache docs: /docs add <key> <url-or-text>",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/docs get",
+        description: "retrieve cached docs by key",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/docs clear",
+        description: "clear all cached docs",
         kind: CommandKind::Instant,
     },
     SlashCommandDef {
@@ -231,6 +281,21 @@ pub const SLASH_COMMANDS: &[SlashCommandDef] = &[
         name: "/search",
         description: "search session messages",
         kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/share",
+        description: "share session to share.nyzhi.com",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/voice",
+        description: "toggle voice input (Whisper)",
+        kind: CommandKind::Instant,
+    },
+    SlashCommandDef {
+        name: "/walkthrough",
+        description: "generate codebase walkthrough diagram",
+        kind: CommandKind::Prompt,
     },
     SlashCommandDef {
         name: "/session delete",

@@ -2240,6 +2240,353 @@ pub async fn handle_key(
                 return;
             }
 
+            if input == "/checkpoint" || input == "/checkpoint list" {
+                let msg = if let Some(ref mgr) = app.checkpoint_manager {
+                    mgr.format_list()
+                } else {
+                    "Checkpoint system not available (not a git repo).".to_string()
+                };
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: msg,
+                });
+                return;
+            }
+
+            if input.starts_with("/checkpoint save") {
+                let name = input
+                    .strip_prefix("/checkpoint save")
+                    .unwrap_or("")
+                    .trim();
+                let name = if name.is_empty() {
+                    format!("manual-{}", chrono::Utc::now().timestamp())
+                } else {
+                    name.to_string()
+                };
+                let msg_count = thread
+                    .as_ref()
+                    .map(|t| t.messages().len())
+                    .unwrap_or(0);
+                let msg = if let Some(ref mut mgr) = app.checkpoint_manager {
+                    match mgr.save(&name, msg_count) {
+                        Ok(Some(cp)) => format!("Checkpoint saved: {} ({})", cp.name, cp.id),
+                        Ok(None) => "No changes to checkpoint.".to_string(),
+                        Err(e) => format!("Checkpoint failed: {e}"),
+                    }
+                } else {
+                    "Checkpoint system not available (not a git repo).".to_string()
+                };
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: msg,
+                });
+                return;
+            }
+
+            if input.starts_with("/checkpoint restore") {
+                let id = input
+                    .strip_prefix("/checkpoint restore")
+                    .unwrap_or("")
+                    .trim();
+                if id.is_empty() {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Usage: /checkpoint restore <id or name>".to_string(),
+                    });
+                    return;
+                }
+                let msg = if let Some(ref mgr) = app.checkpoint_manager {
+                    match mgr.restore(id) {
+                        Ok(m) => m,
+                        Err(e) => format!("Restore failed: {e}"),
+                    }
+                } else {
+                    "Checkpoint system not available (not a git repo).".to_string()
+                };
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: msg,
+                });
+                return;
+            }
+
+            if input == "/analytics" {
+                let msg = if let Some(ref t) = thread {
+                    let a = nyzhi_core::signals::analyze_session(t);
+                    nyzhi_core::signals::format_analytics(&a)
+                } else {
+                    "No session data to analyze.".to_string()
+                };
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: msg,
+                });
+                return;
+            }
+
+            if input == "/docs" || input.starts_with("/docs ") {
+                let arg = input.strip_prefix("/docs").unwrap_or("").trim();
+                if arg.is_empty() || arg == "list" {
+                    let entries = app.librarian.list_keys();
+                    if entries.is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Docs cache is empty.\n\
+                                Usage:\n  /docs add <key> <content>  -- cache documentation\n  \
+                                /docs get <key>             -- retrieve cached docs\n  \
+                                /docs clear                 -- clear cache"
+                                .to_string(),
+                        });
+                    } else {
+                        let mut lines = vec!["Cached documentation:".to_string()];
+                        for (key, expired) in &entries {
+                            let status = if *expired { " (expired)" } else { "" };
+                            lines.push(format!("  - {key}{status}"));
+                        }
+                        let (total, expired) = app.librarian.stats();
+                        lines.push(format!("\n{total} entries, {expired} expired"));
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: lines.join("\n"),
+                        });
+                    }
+                } else if let Some(key) = arg.strip_prefix("get ") {
+                    let key = key.trim();
+                    match app.librarian.get_content(key) {
+                        Some(content) => {
+                            let display = if content.len() > 2000 {
+                                format!("{}...\n\n(truncated, {} bytes total)", &content[..2000], content.len())
+                            } else {
+                                content
+                            };
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("## {key}\n\n{display}"),
+                            });
+                        }
+                        None => {
+                            app.items.push(DisplayItem::Message {
+                                role: "system".to_string(),
+                                content: format!("No cached docs for '{key}' (or expired)."),
+                            });
+                        }
+                    }
+                } else if let Some(rest) = arg.strip_prefix("add ") {
+                    let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+                    if parts.len() < 2 {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Usage: /docs add <key> <content or URL>".to_string(),
+                        });
+                    } else {
+                        let key = parts[0].trim();
+                        let content = parts[1].trim();
+                        app.librarian.put(key, "user", content, None);
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Cached docs for '{key}' ({} bytes, 7d TTL).", content.len()),
+                        });
+                    }
+                } else if arg == "clear" {
+                    app.librarian.clear();
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Docs cache cleared.".to_string(),
+                    });
+                } else if arg == "gc" {
+                    let evicted = app.librarian.evict_expired();
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: format!("Evicted {evicted} expired entries."),
+                    });
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "Unknown /docs subcommand. Use: list, add, get, clear, gc.".to_string(),
+                    });
+                }
+                return;
+            }
+
+            if input == "/share" || input.starts_with("/share ") {
+                let arg = input.strip_prefix("/share").unwrap_or("").trim();
+                let title = if arg.is_empty() {
+                    "nyzhi session".to_string()
+                } else {
+                    arg.to_string()
+                };
+
+                if let Some(ref t) = thread {
+                    if t.messages().is_empty() {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Nothing to share -- session is empty.".to_string(),
+                        });
+                        return;
+                    }
+
+                    if let Some(cf_config) = nyzhi_core::sharing::ShareConfig::from_env() {
+                        let html = nyzhi_core::sharing::render_thread_html(t, &title, true);
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let share_id = format!("{:x}", ts);
+                        match nyzhi_core::sharing::upload_to_cf_pages(&cf_config, &html, &share_id).await {
+                            Ok(url) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Shared! {url}"),
+                                });
+                            }
+                            Err(e) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Cloud upload failed: {e}\nFalling back to local export..."),
+                                });
+                                match nyzhi_core::sharing::export_share_local(t, &app.workspace.project_root, &title) {
+                                    Ok(path) => {
+                                        app.items.push(DisplayItem::Message {
+                                            role: "system".to_string(),
+                                            content: format!("Saved locally: {}", path.display()),
+                                        });
+                                    }
+                                    Err(e2) => {
+                                        app.items.push(DisplayItem::Message {
+                                            role: "system".to_string(),
+                                            content: format!("Local export also failed: {e2}"),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        match nyzhi_core::sharing::export_share_local(t, &app.workspace.project_root, &title) {
+                            Ok(path) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!(
+                                        "No CF_ACCOUNT_ID / CF_API_TOKEN set for cloud sharing.\n\
+                                         Saved locally: {}\n\n\
+                                         To enable share.nyzhi.com, set CF_ACCOUNT_ID and CF_API_TOKEN.",
+                                        path.display()
+                                    ),
+                                });
+                            }
+                            Err(e) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Export failed: {e}"),
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    app.items.push(DisplayItem::Message {
+                        role: "system".to_string(),
+                        content: "No active thread to share.".to_string(),
+                    });
+                }
+                return;
+            }
+
+            if input == "/walkthrough" || input.starts_with("/walkthrough ") {
+                let root = &app.workspace.project_root;
+                let (mermaid, html) = nyzhi_core::walkthrough::generate_walkthrough(root);
+
+                let html_path = root.join(".nyzhi").join("walkthrough.html");
+                let _ = std::fs::create_dir_all(root.join(".nyzhi"));
+                match std::fs::write(&html_path, &html) {
+                    Ok(_) => {
+                        let preview = if mermaid.lines().count() > 30 {
+                            mermaid.lines().take(30).collect::<Vec<_>>().join("\n")
+                                + "\n... (truncated)"
+                        } else {
+                            mermaid.clone()
+                        };
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!(
+                                "Walkthrough diagram generated.\n\n\
+                                 Saved to: {}\n\n\
+                                 Open in browser to view the interactive Mermaid diagram.\n\n\
+                                 ```mermaid\n{preview}\n```",
+                                html_path.display()
+                            ),
+                        });
+                    }
+                    Err(e) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Failed to write walkthrough: {e}"),
+                        });
+                    }
+                }
+                return;
+            }
+
+            if input == "/voice" || input.starts_with("/voice ") {
+                let arg = input.strip_prefix("/voice").unwrap_or("").trim();
+                let duration: u32 = arg.parse().unwrap_or(5);
+
+                let config = match nyzhi_core::voice::VoiceConfig::from_env() {
+                    Some(c) => c,
+                    None => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: nyzhi_core::voice::status_message(),
+                        });
+                        return;
+                    }
+                };
+
+                app.items.push(DisplayItem::Message {
+                    role: "system".to_string(),
+                    content: format!("Recording {duration}s of audio..."),
+                });
+
+                let tmp_dir = std::env::temp_dir().join("nyzhi");
+                match nyzhi_core::voice::record_audio(&tmp_dir, duration).await {
+                    Ok(audio_path) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: "Transcribing...".to_string(),
+                        });
+                        match nyzhi_core::voice::transcribe(&config, &audio_path).await {
+                            Ok(text) => {
+                                if text.is_empty() {
+                                    app.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: "No speech detected.".to_string(),
+                                    });
+                                } else {
+                                    app.input = text;
+                                    app.cursor_pos = app.input.len();
+                                    app.items.push(DisplayItem::Message {
+                                        role: "system".to_string(),
+                                        content: "Transcription inserted into input. Press Enter to send.".to_string(),
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                app.items.push(DisplayItem::Message {
+                                    role: "system".to_string(),
+                                    content: format!("Transcription failed: {e}"),
+                                });
+                            }
+                        }
+                        let _ = std::fs::remove_file(&audio_path);
+                    }
+                    Err(e) => {
+                        app.items.push(DisplayItem::Message {
+                            role: "system".to_string(),
+                            content: format!("Recording failed: {e}"),
+                        });
+                    }
+                }
+                return;
+            }
+
             if input == "/changes" {
                 let tracker = tool_ctx.change_tracker.lock().await;
                 if tracker.is_empty() {
