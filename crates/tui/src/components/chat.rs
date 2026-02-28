@@ -366,7 +366,7 @@ fn render_message<'a>(
             let (team, member, body) = is_team_content(content).unwrap();
             render_team_message(lines, team, member, body, theme, width);
         }
-        "system" => render_system_message(lines, content, theme),
+        "system" => render_system_message(lines, content, theme, width),
         _ => render_assistant_message(lines, content, theme, highlighter, dark, width),
     }
 }
@@ -403,33 +403,46 @@ fn render_assistant_message<'a>(
     prepend_bar_vec(lines, bar_start, theme.accent, width);
 }
 
-fn render_system_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
+fn render_system_message<'a>(
+    lines: &mut Vec<Line<'a>>,
+    content: &str,
+    theme: &Theme,
+    width: u16,
+) {
     lines.push(Line::from(""));
     let all_lines: Vec<&str> = content.lines().collect();
     let first = all_lines.first().copied().unwrap_or(content);
     let rest_count = all_lines.len().saturating_sub(1);
+    let usable_w = (width as usize).saturating_sub(INDENT_3 + ACCENT_GUTTER as usize);
 
     lines.push(Line::from(vec![
         Span::styled(format!("{}\u{2500} ", pad2()), ty::disabled(theme)),
         Span::styled(first.to_string(), ty::muted(theme)),
     ]));
 
-    if rest_count > 0 && rest_count <= 30 {
-        for line in all_lines.iter().skip(1) {
+    let limit = if rest_count > 50 { 40 } else { rest_count };
+    for line in all_lines.iter().skip(1).take(limit) {
+        if usable_w > 0 && line.len() > usable_w {
+            let mut remaining = *line;
+            while !remaining.is_empty() {
+                let take = remaining.len().min(usable_w);
+                let chunk = &remaining[..take];
+                lines.push(Line::from(Span::styled(
+                    format!("{}{chunk}", pad3()),
+                    ty::muted(theme),
+                )));
+                remaining = &remaining[take..];
+            }
+        } else {
             lines.push(Line::from(Span::styled(
                 format!("{}{line}", pad3()),
                 ty::muted(theme),
             )));
         }
-    } else if rest_count > 30 {
-        for line in all_lines.iter().skip(1).take(20) {
-            lines.push(Line::from(Span::styled(
-                format!("{}{line}", pad3()),
-                ty::muted(theme),
-            )));
-        }
+    }
+    if rest_count > limit {
         lines.push(Line::from(Span::styled(
-            format!("{}... +{} more lines", pad3(), rest_count - 20),
+            format!("{}... +{} more lines", pad3(), rest_count - limit),
             ty::disabled(theme),
         )));
     }

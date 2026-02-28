@@ -433,7 +433,7 @@ async fn fetch_cursor(api_key: Option<&str>) -> Result<Vec<ModelInfo>> {
         .header("accept", "application/json")
         .header("connect-protocol-version", "1")
         .header("x-cursor-checksum", &checksum)
-        .header("x-cursor-client-version", "cli-2025.11.25-d5b3271")
+        .header("x-cursor-client-version", crate::cursor::detect_cursor_client_version())
         .header("x-cursor-client-type", "cli")
         .body("{}")
         .send()

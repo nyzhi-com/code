@@ -10,11 +10,37 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::types::*;
-use crate::{Provider, ProviderError};
+use crate::Provider;
 
 const BASE_URL: &str = "https://api2.cursor.sh";
-const CLIENT_VERSION: &str = "cli-2025.11.25-d5b3271";
+const FALLBACK_CLIENT_VERSION: &str = "cli-2025.11.25-d5b3271";
 const DEFAULT_MODEL: &str = "claude-4.6-sonnet";
+
+pub fn detect_cursor_client_version() -> String {
+    if let Ok(v) = std::env::var("CURSOR_CLIENT_VERSION") {
+        if !v.is_empty() {
+            return v;
+        }
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        let versions_dir = std::path::PathBuf::from(&home)
+            .join(".local/share/cursor-agent/versions");
+        if let Ok(entries) = std::fs::read_dir(&versions_dir) {
+            let mut versions: Vec<String> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect();
+            versions.sort();
+            if let Some(latest) = versions.last() {
+                return format!("cli-{latest}");
+            }
+        }
+    }
+
+    FALLBACK_CLIENT_VERSION.to_string()
+}
 
 const AGENT_RUN_SSE: &str = "/agent.v1.AgentService/RunSSE";
 const BIDI_APPEND: &str = "/aiserver.v1.BidiService/BidiAppend";
@@ -589,24 +615,150 @@ fn extract_assistant_content(blob_data: &[u8]) -> Option<String> {
 
 // ── gRPC trailer parsing ─────────────────────────────────────────────
 
-fn parse_grpc_status(trailer: &str) -> Option<u32> {
+fn parse_trailer_metadata(trailer: &str) -> std::collections::HashMap<String, String> {
+    let mut meta = std::collections::HashMap::new();
     for line in trailer.split('\n') {
         let line = line.trim();
-        if let Some(val) = line.strip_prefix("grpc-status:") {
-            return val.trim().parse().ok();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(idx) = line.find(':') {
+            let key = line[..idx].trim().to_lowercase();
+            let value = line[idx + 1..].trim().to_string();
+            if !key.is_empty() {
+                meta.insert(key, value);
+            }
         }
     }
-    None
+    meta
 }
 
-fn parse_grpc_message(trailer: &str) -> Option<String> {
-    for line in trailer.split('\n') {
-        let line = line.trim();
-        if let Some(val) = line.strip_prefix("grpc-message:") {
-            return Some(val.trim().to_string());
+fn percent_decode(input: &str) -> String {
+    let mut result = Vec::new();
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(
+                &input[i + 1..i + 3],
+                16,
+            ) {
+                result.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        result.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(result).unwrap_or_else(|_| input.to_string())
+}
+
+fn decode_grpc_status_details_bin(details_b64: &str) -> Option<String> {
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(details_b64.trim())
+        .ok()?;
+    let fields = parse_proto_fields(&decoded);
+
+    let mut status_message = None;
+    let mut extracted = Vec::new();
+
+    for field in &fields {
+        if field.field_number == 2 && field.wire_type == 2 {
+            if let Some(bytes) = &field.bytes_value {
+                if let Ok(text) = String::from_utf8(bytes.clone()) {
+                    let text = text.trim().to_string();
+                    if !text.is_empty() {
+                        status_message = Some(text);
+                    }
+                }
+            }
+        }
+        if field.field_number == 3 && field.wire_type == 2 {
+            if let Some(bytes) = &field.bytes_value {
+                collect_grpc_detail_strings(bytes, 0, &mut extracted);
+            }
         }
     }
-    None
+
+    let unique: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        extracted.into_iter().filter(|s| seen.insert(s.clone())).collect()
+    };
+
+    let details = if unique.is_empty() { None } else { Some(unique.join(" | ")) };
+
+    match (status_message, details) {
+        (Some(msg), Some(det)) => Some(format!("{msg} | {det}")),
+        (Some(msg), None) => Some(msg),
+        (None, Some(det)) => Some(det),
+        (None, None) => None,
+    }
+}
+
+fn collect_grpc_detail_strings(bytes: &[u8], depth: usize, out: &mut Vec<String>) {
+    if depth > 5 || bytes.is_empty() || bytes.len() > 20000 {
+        return;
+    }
+    for pf in parse_proto_fields(bytes) {
+        if pf.wire_type == 2 {
+            if let Some(inner) = &pf.bytes_value {
+                if let Ok(text) = String::from_utf8(inner.clone()) {
+                    let text = text.trim().to_string();
+                    if text.len() >= 6 && text.chars().any(|c| c.is_alphabetic()) && !text.contains('\0') {
+                        out.push(text.clone());
+                    }
+                }
+                collect_grpc_detail_strings(inner, depth + 1, out);
+            }
+        }
+    }
+}
+
+fn parse_grpc_status(trailer: &str) -> Option<u32> {
+    let meta = parse_trailer_metadata(trailer);
+    meta.get("grpc-status")?.trim().parse().ok()
+}
+
+fn build_grpc_error_message(trailer: &str) -> String {
+    let meta = parse_trailer_metadata(trailer);
+    let status = meta
+        .get("grpc-status")
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+
+    let grpc_msg = meta
+        .get("grpc-message")
+        .map(|m| percent_decode(m.trim()));
+
+    let details_msg = meta
+        .get("grpc-status-details-bin")
+        .and_then(|d| decode_grpc_status_details_bin(d));
+
+    let status_name = match status {
+        1 => "CANCELLED",
+        2 => "UNKNOWN",
+        3 => "INVALID_ARGUMENT",
+        4 => "DEADLINE_EXCEEDED",
+        5 => "NOT_FOUND",
+        6 => "ALREADY_EXISTS",
+        7 => "PERMISSION_DENIED",
+        8 => "RESOURCE_EXHAUSTED",
+        9 => "FAILED_PRECONDITION",
+        13 => "INTERNAL",
+        14 => "UNAVAILABLE",
+        16 => "UNAUTHENTICATED",
+        _ => "UNKNOWN",
+    };
+
+    let base = match (&details_msg, &grpc_msg) {
+        (Some(det), _) => det.clone(),
+        (None, Some(msg)) if msg != "Error" && !msg.is_empty() => msg.clone(),
+        _ => format!("gRPC {status_name} (status {status})"),
+    };
+
+    base
 }
 
 // ── Static model definitions ─────────────────────────────────────────
@@ -737,10 +889,16 @@ pub struct CursorProvider {
     machine_id: String,
     default_model: String,
     models: Vec<ModelInfo>,
+    client_version: String,
 }
 
 impl CursorProvider {
     pub fn new(access_token: String, machine_id: String, model: Option<String>) -> Self {
+        if access_token.is_empty() {
+            tracing::warn!("Cursor access token is empty — requests will fail");
+        }
+        let client_version = detect_cursor_client_version();
+        tracing::debug!(client_version = %client_version, "Cursor provider initialized");
         Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(120))
@@ -750,6 +908,7 @@ impl CursorProvider {
             machine_id,
             default_model: model.unwrap_or_else(|| DEFAULT_MODEL.to_string()),
             models: cursor_models(),
+            client_version,
         }
     }
 
@@ -767,7 +926,7 @@ impl CursorProvider {
         h.insert("x-cursor-checksum", checksum.parse().unwrap());
         h.insert(
             "x-cursor-client-version",
-            CLIENT_VERSION.parse().unwrap(),
+            self.client_version.parse().unwrap(),
         );
         h.insert("x-cursor-client-type", "cli".parse().unwrap());
         h.insert("x-cursor-timezone", tz.parse().unwrap());
@@ -796,11 +955,14 @@ impl CursorProvider {
             .headers(headers.clone())
             .body(envelope)
             .send()
-            .await?;
+            .await
+            .map_err(|e| anyhow::anyhow!("BidiAppend request failed: {e}"))?;
 
         if !resp.status().is_success() {
+            let status = resp.status().as_u16();
             let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("BidiAppend failed: {text}");
+            let detail = if text.is_empty() { format!("HTTP {status}") } else { format!("HTTP {status}: {text}") };
+            anyhow::bail!("BidiAppend failed: {detail}");
         }
         Ok(())
     }
@@ -855,10 +1017,13 @@ impl Provider for CursorProvider {
 
         let sse_url = format!("{BASE_URL}{AGENT_RUN_SSE}");
 
+        if self.access_token.is_empty() {
+            anyhow::bail!("Cursor access token is empty. Re-login via /connect -> Cursor.");
+        }
+
         let client = self.client.clone();
         let headers_clone = headers.clone();
 
-        // Start SSE connection and send initial message concurrently
         let sse_future = client
             .post(&sse_url)
             .headers(headers.clone())
@@ -867,14 +1032,29 @@ impl Provider for CursorProvider {
 
         let append_future = Self::bidi_append_raw(&client, &headers_clone, &request_id, 0, &message_body);
 
+        tracing::debug!(model = %model, request_id = %request_id, "Cursor: starting SSE + BidiAppend");
+
         let (sse_result, append_result) = tokio::join!(sse_future, append_future);
-        append_result?;
-        let sse_resp = sse_result?;
+
+        if let Err(e) = &append_result {
+            tracing::debug!(error = %e, "Cursor BidiAppend failed");
+        }
+        append_result.map_err(|e| anyhow::anyhow!("Cursor BidiAppend: {e}"))?;
+
+        let sse_resp = sse_result.map_err(|e| anyhow::anyhow!("Cursor SSE connection failed: {e}"))?;
+        let status_code = sse_resp.status().as_u16();
+        tracing::debug!(status = status_code, "Cursor SSE response status");
 
         if !sse_resp.status().is_success() {
-            let status = sse_resp.status().as_u16();
             let text = sse_resp.text().await.unwrap_or_default();
-            return Err(ProviderError::from_http(status, text, None).into());
+            let detail = if text.is_empty() {
+                format!("HTTP {status_code}")
+            } else if text.len() > 300 {
+                format!("HTTP {status_code}: {}...", &text[..300])
+            } else {
+                format!("HTTP {status_code}: {text}")
+            };
+            anyhow::bail!("Cursor API error: {detail}");
         }
 
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<StreamEvent>>();
@@ -891,7 +1071,7 @@ impl Provider for CursorProvider {
                 let chunk = match chunk_result {
                     Ok(c) => c,
                     Err(e) => {
-                        let _ = tx.send(Err(e.into()));
+                        let _ = tx.send(Err(anyhow::anyhow!("Cursor stream read: {e}")));
                         return;
                     }
                 };
@@ -906,9 +1086,10 @@ impl Provider for CursorProvider {
                         let trailer = String::from_utf8_lossy(&frame.data);
                         if let Some(status) = parse_grpc_status(&trailer) {
                             if status != 0 {
-                                let msg = parse_grpc_message(&trailer)
-                                    .unwrap_or_else(|| format!("gRPC error (status {status})"));
-                                let _ = tx.send(Err(anyhow::anyhow!(msg)));
+                                let msg = build_grpc_error_message(&trailer);
+                                tracing::debug!(grpc_status = status, error = %msg, "Cursor gRPC error trailer");
+                                let _ = tx.send(Err(anyhow::anyhow!("Cursor: {msg}")));
+                                return;
                             }
                         }
                         continue;
