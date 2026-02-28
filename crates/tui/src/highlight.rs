@@ -248,8 +248,27 @@ fn strip_numbered_list(line: &str) -> Option<(&str, &str)> {
 }
 
 /// Format a single prose line with full markdown support.
-pub fn format_prose_line<'a>(raw: &str, base_fg: Color, accent: Color, code_bg: Color) -> Line<'a> {
+pub fn format_prose_line<'a>(
+    raw: &str,
+    base_fg: Color,
+    accent: Color,
+    code_bg: Color,
+) -> Line<'a> {
+    format_prose_line_themed(raw, base_fg, accent, code_bg, None, None)
+}
+
+/// Theme-aware prose line formatter with optional structural-element colors.
+pub fn format_prose_line_themed<'a>(
+    raw: &str,
+    base_fg: Color,
+    accent: Color,
+    code_bg: Color,
+    rule_color: Option<Color>,
+    quote_bar_color: Option<Color>,
+) -> Line<'a> {
     let trimmed = raw.trim_end();
+    let rule_fg = rule_color.unwrap_or(Color::DarkGray);
+    let quote_fg = quote_bar_color.unwrap_or(Color::DarkGray);
 
     if trimmed.starts_with("###") {
         let heading = trimmed.trim_start_matches('#').trim();
@@ -274,10 +293,11 @@ pub fn format_prose_line<'a>(raw: &str, base_fg: Color, accent: Color, code_bg: 
     }
 
     if is_horizontal_rule(trimmed) {
-        let rule = crate::aesthetic::borders::THIN_H.repeat(60);
+        let rule_w = crate::aesthetic::tokens::NARROW_THRESHOLD as usize;
+        let rule = crate::aesthetic::borders::THIN_H.repeat(rule_w);
         return Line::from(Span::styled(
             format!("  {rule}"),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(rule_fg),
         ));
     }
 
@@ -289,8 +309,7 @@ pub fn format_prose_line<'a>(raw: &str, base_fg: Color, accent: Color, code_bg: 
             rest = if rest.len() > 2 { &rest[2..] } else { "" };
         }
         let bar = "  ┃ ".repeat(depth as usize);
-        let dim = Color::DarkGray;
-        let mut spans = vec![Span::styled(bar, Style::default().fg(dim))];
+        let mut spans = vec![Span::styled(bar, Style::default().fg(quote_fg))];
         spans.extend(parse_inline_markdown(rest, base_fg, accent, code_bg));
         return Line::from(spans);
     }

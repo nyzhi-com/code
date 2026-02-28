@@ -56,9 +56,10 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
     let area = frame.area();
     let (done, _active, total) = state.progress();
 
-    let popup_w = 70u16.min(area.width.saturating_sub(4));
+    let popup_w = (POPUP_MAX_W_PCT as u32 * area.width as u32 / 100) as u16;
+    let popup_w = popup_w.min(area.width.saturating_sub(POPUP_MARGIN));
     let content_rows = total as u16 + SP_4;
-    let popup_h = (content_rows + SP_4 + 4)
+    let popup_h = (content_rows + SP_4 + SP_4)
         .min(area.height.saturating_sub(POPUP_MARGIN))
         .max(10);
     let popup_area = primitives::centered_popup(area, popup_w, popup_h);
@@ -111,7 +112,7 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
     }
 
     let inner_w = inner.width as usize;
-    let bar_width = inner_w.saturating_sub(PAD_H as usize * 2 + 8);
+    let bar_width = inner_w.saturating_sub(PAD_H as usize * 2 + SP_8 as usize);
     let filled = if total > 0 {
         (done * bar_width) / total
     } else {
@@ -207,7 +208,7 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
             _ => Style::default().fg(primary_fg).bg(row_bg),
         };
 
-        let max_content = inner_w.saturating_sub(8);
+        let max_content = inner_w.saturating_sub(SP_8 as usize);
         let truncated: String = if item.content.len() > max_content {
             format!("{}\u{2026}", &item.content[..max_content.saturating_sub(1)])
         } else {

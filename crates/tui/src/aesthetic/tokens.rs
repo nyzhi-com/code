@@ -27,3 +27,11 @@ pub const POPUP_MARGIN: u16 = 4;
 pub const SIDE_PANEL_PCT: u16 = 35;
 pub const SIDE_PANEL_MIN_W: u16 = 30;
 pub const NARROW_THRESHOLD: u16 = 60;
+
+/// Chat indent levels (in chars).
+pub const INDENT_1: usize = 2;
+pub const INDENT_2: usize = 4;
+pub const INDENT_3: usize = 6;
+
+/// Max line width before truncation in chat content.
+pub const MAX_LINE_W: usize = 120;

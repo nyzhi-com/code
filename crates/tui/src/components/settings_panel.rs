@@ -141,8 +141,8 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
 
     let area = frame.area();
     let row_count = panel.rows.len() as u16;
-    let popup_h = (row_count + 6).min(area.height.saturating_sub(POPUP_MARGIN));
-    let popup_w = 48u16;
+    let popup_h = (row_count + SP_4 + SP_2).min(area.height.saturating_sub(POPUP_MARGIN));
+    let popup_w = POPUP_MIN_W + SP_8 + SP_8;
     let popup_area = primitives::centered_popup(area, popup_w, popup_h);
 
     let desc = panel
@@ -182,7 +182,7 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
     };
 
     let inner_w = list_area.width as usize;
-    let label_col = 16usize.min(inner_w / 2);
+    let label_col = (SP_8 as usize * 2).min(inner_w / 2);
 
     let mut lines: Vec<Line> = Vec::new();
     for (i, row) in panel.rows.iter().enumerate().skip(scroll).take(content_h) {

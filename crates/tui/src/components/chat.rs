@@ -8,6 +8,16 @@ use crate::app::{App, DiffLineKind, DisplayItem, ToolStatus};
 use crate::highlight::{self, SyntaxHighlighter};
 use crate::theme::{Theme, ThemeMode};
 
+fn pad1() -> String {
+    " ".repeat(INDENT_1)
+}
+fn pad2() -> String {
+    " ".repeat(INDENT_2)
+}
+fn pad3() -> String {
+    " ".repeat(INDENT_3)
+}
+
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let inner = area;
     let w = inner.width;
@@ -40,10 +50,13 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                         let mode_color = if app.plan_mode { theme.warning } else { theme.accent };
                         let mut indicator = vec![
                             Span::styled(
-                                format!("  {} ", "\u{25A0}"),
-                                Style::default().fg(mode_color),
+                                format!("{}\u{25A0} ", pad1()),
+                                ty::accent(mode_color),
                             ),
-                            Span::styled(mode_label, Style::default().fg(mode_color).bold()),
+                            Span::styled(
+                                mode_label,
+                                Style::default().fg(mode_color).bold(),
+                            ),
                             Span::styled(
                                 format!(" \u{00B7} {}", app.model_name),
                                 ty::disabled(theme),
@@ -73,7 +86,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                     render_thinking(&mut lines, content, theme, w);
                 } else {
                     lines.push(Line::from(Span::styled(
-                        "  ... thinking (hidden)",
+                        format!("{}... thinking (hidden)", pad1()),
                         ty::muted(theme),
                     )));
                 }
@@ -116,9 +129,9 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         if is_match {
             if let Some(q) = search_q {
                 let hl_style = if is_current {
-                    Style::default().bg(Color::Yellow).fg(Color::Black)
+                    Style::default().bg(theme.warning).fg(theme.bg_page)
                 } else {
-                    Style::default().bg(Color::DarkGray).fg(Color::White)
+                    Style::default().bg(theme.bg_elevated).fg(theme.text_primary)
                 };
                 for line in &mut lines[line_start..] {
                     *line = highlight_search_in_line(line.clone(), q, hl_style);
@@ -127,20 +140,18 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         }
     }
 
-    // Thinking stream (live)
     if !app.thinking_stream.is_empty() && app.current_stream.is_empty() {
         if app.show_thinking {
             lines.push(Line::from(""));
             render_thinking_stream(&mut lines, &app.thinking_stream, theme, w);
         } else {
             lines.push(Line::from(Span::styled(
-                "  ... thinking (hidden)",
+                format!("{}... thinking (hidden)", pad1()),
                 ty::muted(theme),
             )));
         }
     }
 
-    // Assistant stream (live)
     if !app.current_stream.is_empty() {
         lines.push(Line::from(""));
         let stream_start = lines.len();
@@ -152,8 +163,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             dark,
         );
         lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("\u{2588}", Style::default().fg(theme.accent)),
+            Span::raw(pad1()),
+            Span::styled("\u{2588}", ty::accent(theme.accent)),
         ]));
         prepend_bar_vec(&mut lines, stream_start, theme.accent, w);
     }
@@ -221,7 +232,7 @@ fn highlight_search_in_line<'a>(line: Line<'a>, query: &str, hl_style: Style) ->
 fn prepend_bar_vec(lines: &mut Vec<Line<'_>>, start: usize, color: Color, max_width: u16) {
     let bar_span = Span::styled(
         format!(" {} ", borders::BAR_CHAR),
-        Style::default().fg(color),
+        ty::accent(color),
     );
     let content_width = (max_width as usize).saturating_sub(ACCENT_GUTTER as usize + 1);
 
@@ -293,6 +304,48 @@ fn is_error_content(content: &str) -> bool {
         || content.starts_with("Failed")
 }
 
+fn is_subagent_content(content: &str) -> Option<(&str, &str, &str)> {
+    if content.starts_with("[subagent:") {
+        if let Some(end) = content.find("] ") {
+            let meta = &content[10..end];
+            let body = &content[end + 2..];
+            let parts: Vec<&str> = meta.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                return Some((parts[0], parts[1], body));
+            }
+        }
+    }
+    None
+}
+
+fn is_team_content(content: &str) -> Option<(&str, &str, &str)> {
+    if content.starts_with("[team:") {
+        if let Some(end) = content.find("] ") {
+            let meta = &content[6..end];
+            let body = &content[end + 2..];
+            let parts: Vec<&str> = meta.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                return Some((parts[0], parts[1], body));
+            }
+        }
+    }
+    None
+}
+
+const AGENT_COLORS: &[fn(&Theme) -> Color] = &[
+    |t| t.info,
+    |t| t.warning,
+    |t| t.success,
+    |t| t.accent,
+    |t| t.danger,
+];
+
+fn agent_color(name: &str, theme: &Theme) -> Color {
+    let hash: usize = name.bytes().map(|b| b as usize).sum();
+    let idx = hash % AGENT_COLORS.len();
+    AGENT_COLORS[idx](theme)
+}
+
 fn render_message<'a>(
     lines: &mut Vec<Line<'a>>,
     role: &str,
@@ -305,6 +358,14 @@ fn render_message<'a>(
     match role {
         "user" => render_user_message(lines, content, theme),
         "system" if is_error_content(content) => render_error_message(lines, content, theme, width),
+        "system" if is_subagent_content(content).is_some() => {
+            let (nick, status, body) = is_subagent_content(content).unwrap();
+            render_subagent_message(lines, nick, status, body, theme, width);
+        }
+        "system" if is_team_content(content).is_some() => {
+            let (team, member, body) = is_team_content(content).unwrap();
+            render_team_message(lines, team, member, body, theme, width);
+        }
         "system" => render_system_message(lines, content, theme),
         _ => render_assistant_message(lines, content, theme, highlighter, dark, width),
     }
@@ -313,12 +374,12 @@ fn render_message<'a>(
 fn render_user_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "  You",
+        format!("{}You", pad1()),
         Style::default().fg(theme.info).bold(),
     )));
     for line in content.lines() {
         lines.push(Line::from(Span::styled(
-            format!("  {line}"),
+            format!("{}{line}", pad1()),
             ty::body_bold(theme),
         )));
     }
@@ -334,7 +395,10 @@ fn render_assistant_message<'a>(
 ) {
     lines.push(Line::from(""));
     let bar_start = lines.len();
-    lines.push(Line::from(Span::styled("  Nizzy", ty::subheading(theme))));
+    lines.push(Line::from(Span::styled(
+        format!("{}Nizzy", pad1()),
+        ty::subheading(theme),
+    )));
     render_highlighted_content(lines, content, theme, highlighter, dark);
     prepend_bar_vec(lines, bar_start, theme.accent, width);
 }
@@ -346,42 +410,118 @@ fn render_system_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &T
     let rest_count = all_lines.len().saturating_sub(1);
 
     lines.push(Line::from(vec![
-        Span::styled("    \u{2500} ", ty::disabled(theme)),
+        Span::styled(format!("{}\u{2500} ", pad2()), ty::disabled(theme)),
         Span::styled(first.to_string(), ty::muted(theme)),
     ]));
 
     if rest_count > 0 && rest_count <= 30 {
         for line in all_lines.iter().skip(1) {
             lines.push(Line::from(Span::styled(
-                format!("      {line}"),
+                format!("{}{line}", pad3()),
                 ty::muted(theme),
             )));
         }
     } else if rest_count > 30 {
         for line in all_lines.iter().skip(1).take(20) {
             lines.push(Line::from(Span::styled(
-                format!("      {line}"),
+                format!("{}{line}", pad3()),
                 ty::muted(theme),
             )));
         }
         lines.push(Line::from(Span::styled(
-            format!("      ... +{} more lines", rest_count - 20),
+            format!("{}... +{} more lines", pad3(), rest_count - 20),
             ty::disabled(theme),
         )));
     }
+}
+
+fn render_subagent_message<'a>(
+    lines: &mut Vec<Line<'a>>,
+    nickname: &str,
+    status: &str,
+    body: &str,
+    theme: &Theme,
+    width: u16,
+) {
+    lines.push(Line::from(""));
+    let bar_start = lines.len();
+    let color = agent_color(nickname, theme);
+
+    let (status_icon, status_color) = match status {
+        "completed" => ("\u{25CF}", theme.success),
+        "spawned" => ("\u{25CB}", theme.text_disabled),
+        "in_progress" | "running" => ("\u{25B8}", theme.warning),
+        "error" | "failed" => ("\u{2717}", theme.danger),
+        _ => ("\u{25CB}", theme.text_secondary),
+    };
+
+    lines.push(Line::from(vec![
+        Span::styled(format!("{}{status_icon} ", pad1()), Style::default().fg(status_color)),
+        Span::styled(
+            format!(" {nickname} "),
+            Style::default().fg(theme.bg_page).bg(color).bold(),
+        ),
+        Span::styled(format!(" {status}"), ty::caption(theme)),
+    ]));
+
+    if !body.is_empty() {
+        for line in body.lines() {
+            let truncated = truncate_line(line, MAX_LINE_W);
+            lines.push(Line::from(Span::styled(
+                format!("{}{truncated}", pad2()),
+                ty::muted(theme),
+            )));
+        }
+    }
+
+    prepend_bar_vec(lines, bar_start, color, width);
+}
+
+fn render_team_message<'a>(
+    lines: &mut Vec<Line<'a>>,
+    team: &str,
+    member: &str,
+    body: &str,
+    theme: &Theme,
+    width: u16,
+) {
+    lines.push(Line::from(""));
+    let bar_start = lines.len();
+    let color = agent_color(member, theme);
+
+    lines.push(Line::from(vec![
+        Span::styled(format!("{}\u{25B8} ", pad1()), ty::accent(color)),
+        Span::styled(
+            format!(" {member} "),
+            Style::default().fg(theme.bg_page).bg(color).bold(),
+        ),
+        Span::styled(format!(" [{team}]"), ty::caption(theme)),
+    ]));
+
+    if !body.is_empty() {
+        for line in body.lines() {
+            let truncated = truncate_line(line, MAX_LINE_W);
+            lines.push(Line::from(Span::styled(
+                format!("{}{truncated}", pad2()),
+                ty::secondary(theme),
+            )));
+        }
+    }
+
+    prepend_bar_vec(lines, bar_start, color, width);
 }
 
 fn render_error_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, width: u16) {
     lines.push(Line::from(""));
     let bar_start = lines.len();
     lines.push(Line::from(Span::styled(
-        "  \u{2717} error",
+        format!("{}\u{2717} error", pad1()),
         ty::danger(theme),
     )));
     for line in content.lines() {
         lines.push(Line::from(Span::styled(
-            format!("  {line}"),
-            Style::default().fg(theme.danger),
+            format!("{}{line}", pad1()),
+            ty::danger(theme),
         )));
     }
     prepend_bar_vec(lines, bar_start, theme.danger, width);
@@ -396,7 +536,7 @@ fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, 
     let think_start = lines.len();
 
     lines.push(Line::from(vec![
-        Span::styled("  thinking ", ty::muted(theme)),
+        Span::styled(format!("{}thinking ", pad1()), ty::muted(theme)),
         Span::styled(
             format!("({} lines)", content.lines().count()),
             ty::disabled(theme),
@@ -404,19 +544,15 @@ fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, 
     ]));
 
     for line_text in content.lines().take(8) {
-        let trimmed = if line_text.len() > 120 {
-            format!("{}...", &line_text[..117])
-        } else {
-            line_text.to_string()
-        };
+        let trimmed = truncate_line(line_text, MAX_LINE_W);
         lines.push(Line::from(Span::styled(
-            format!("  {trimmed}"),
+            format!("{}{trimmed}", pad1()),
             ty::muted(theme),
         )));
     }
     if content.lines().count() > 8 {
         lines.push(Line::from(Span::styled(
-            format!("  ... +{} more", content.lines().count() - 8),
+            format!("{}... +{} more", pad1(), content.lines().count() - 8),
             ty::disabled(theme),
         )));
     }
@@ -426,7 +562,10 @@ fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, 
 fn render_thinking_stream<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, width: u16) {
     let think_start = lines.len();
 
-    lines.push(Line::from(Span::styled("  thinking...", ty::muted(theme))));
+    lines.push(Line::from(Span::styled(
+        format!("{}thinking...", pad1()),
+        ty::muted(theme),
+    )));
     let tlines: Vec<&str> = content.lines().collect();
     let show = tlines.len().min(6);
     let start = if show < tlines.len() {
@@ -435,13 +574,9 @@ fn render_thinking_stream<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &
         0
     };
     for line_text in &tlines[start..] {
-        let trimmed = if line_text.len() > 120 {
-            format!("{}...", &line_text[..117])
-        } else {
-            (*line_text).to_string()
-        };
+        let trimmed = truncate_line(line_text, MAX_LINE_W);
         lines.push(Line::from(Span::styled(
-            format!("  {trimmed}"),
+            format!("{}{trimmed}", pad1()),
             ty::muted(theme),
         )));
     }
@@ -466,11 +601,13 @@ fn render_highlighted_content<'a>(
         match segment {
             highlight::Segment::Prose(text) => {
                 for line in text.lines() {
-                    lines.push(highlight::format_prose_line(
+                    lines.push(highlight::format_prose_line_themed(
                         line,
                         theme.text_primary,
                         theme.accent,
                         code_bg,
+                        Some(theme.border_default),
+                        Some(theme.text_disabled),
                     ));
                 }
             }
@@ -488,20 +625,17 @@ fn render_highlighted_content<'a>(
             highlight::Segment::CodeBlock { lang, code } => {
                 let lang_label = lang.unwrap_or("text");
                 lines.push(Line::from(vec![
-                    Span::raw("  "),
+                    Span::raw(pad1()),
                     Span::styled(
                         format!(" {lang_label} "),
-                        Style::default()
-                            .fg(theme.text_secondary)
-                            .bg(theme.bg_elevated)
-                            .bold(),
+                        ty::caption(theme).bg(theme.bg_elevated).bold(),
                     ),
                 ]));
 
                 let highlighted =
                     highlighter.highlight_code(code, lang, dark, theme.text_disabled, code_bg);
                 for hl_line in highlighted {
-                    let mut padded = vec![Span::raw("  ")];
+                    let mut padded = vec![Span::raw(pad1())];
                     padded.extend(hl_line.spans);
                     lines.push(Line::from(padded));
                 }
@@ -546,7 +680,7 @@ fn render_tool_minimal<'a>(
     let (icon, color_fn) = tool_icon(status);
     let color = color_fn(theme);
     lines.push(Line::from(vec![
-        Span::styled(format!("    {icon} "), Style::default().fg(color)),
+        Span::styled(format!("{}{icon} ", pad2()), ty::accent(color)),
         Span::styled(name.to_string(), ty::disabled(theme)),
     ]));
 }
@@ -573,7 +707,7 @@ fn render_tool_call<'a>(
     };
 
     let mut spans = vec![
-        Span::styled(format!("    {icon} "), Style::default().fg(icon_color)),
+        Span::styled(format!("{}{icon} ", pad2()), ty::accent(icon_color)),
         Span::styled(name.to_string(), ty::subheading(theme)),
     ];
 
@@ -611,19 +745,15 @@ fn render_tool_call<'a>(
             &all_lines[..all_lines.len().min(max_lines)]
         };
         for line in display_lines {
-            let truncated = if line.len() > 120 {
-                format!("{}...", &line[..117])
-            } else {
-                (*line).to_string()
-            };
+            let truncated = truncate_line(line, MAX_LINE_W);
             lines.push(Line::from(Span::styled(
-                format!("      {truncated}"),
+                format!("{}{truncated}", pad3()),
                 ty::disabled(theme),
             )));
         }
         if all_lines.len() > max_lines {
             lines.push(Line::from(Span::styled(
-                format!("      ... +{} lines", all_lines.len() - max_lines),
+                format!("{}... +{} lines", pad3(), all_lines.len() - max_lines),
                 ty::disabled(theme),
             )));
         }
@@ -645,46 +775,45 @@ fn render_diff<'a>(
     lines.push(Line::from(""));
     let diff_start = lines.len();
 
-    let header_label = if is_new_file {
-        format!("  + {file}")
+    let (file_icon, header_color) = if is_new_file {
+        ("+", theme.success)
     } else {
-        format!("  ~ {file}")
+        ("~", theme.accent)
     };
-    let header_color = if is_new_file {
-        theme.success
-    } else {
-        theme.accent
-    };
-    lines.push(Line::from(Span::styled(
-        header_label,
-        Style::default().fg(header_color).bold(),
-    )));
+
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("{}{file_icon} ", pad1()),
+            Style::default().fg(header_color).bold(),
+        ),
+        Span::styled(
+            file.to_string(),
+            Style::default().fg(header_color).bold(),
+        ),
+    ]));
 
     for hunk in hunks {
         lines.push(Line::from(Span::styled(
-            format!("  {}", hunk.header),
-            Style::default().fg(theme.info),
+            format!("{}{}", pad1(), hunk.header),
+            ty::caption(theme),
         )));
+
         for dl in &hunk.lines {
             let (prefix, color) = match dl.kind {
                 DiffLineKind::Added => ("+", theme.success),
                 DiffLineKind::Removed => ("-", theme.danger),
                 DiffLineKind::Context => (" ", theme.text_disabled),
             };
-            let line_text = if dl.content.len() > 120 {
-                format!("  {prefix}{}", &dl.content[..117])
-            } else {
-                format!("  {prefix}{}", dl.content)
-            };
+            let content = truncate_line(&dl.content, MAX_LINE_W);
             lines.push(Line::from(Span::styled(
-                line_text,
+                format!("{}{prefix}{content}", pad1()),
                 Style::default().fg(color),
             )));
         }
     }
     if hunks.is_empty() && !is_new_file {
         lines.push(Line::from(Span::styled(
-            "  (no changes)",
+            format!("{}(no changes)", pad1()),
             ty::disabled(theme),
         )));
     }
@@ -703,12 +832,24 @@ fn render_diff_line<'a>(line: &str, theme: &Theme) -> Line<'a> {
     } else if line.starts_with('-') {
         theme.danger
     } else if line.starts_with("@@") {
-        theme.info
+        theme.text_tertiary
     } else {
         theme.text_tertiary
     };
     Line::from(Span::styled(
-        format!("      {line}"),
+        format!("{}{line}", pad3()),
         Style::default().fg(color),
     ))
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn truncate_line(line: &str, max: usize) -> String {
+    if line.len() > max {
+        format!("{}...", &line[..max.saturating_sub(3)])
+    } else {
+        line.to_string()
+    }
 }

@@ -77,7 +77,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &PlanPanelState, theme: &Theme
     }
 
     if total > 0 {
-        let bar_width = inner_w.saturating_sub(PAD_H as usize * 2 + 12);
+        let bar_width = inner_w.saturating_sub(PAD_H as usize * 2 + SP_8 as usize + SP_4 as usize);
         let filled = (done * bar_width) / total.max(1);
         let empty_bar = bar_width.saturating_sub(filled);
         let pct = (done * 100) / total.max(1);
@@ -136,7 +136,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &PlanPanelState, theme: &Theme
                 TodoStatus::Pending => Style::default().fg(primary_fg).bg(row_bg),
             };
 
-            let max_w = inner_w.saturating_sub(8);
+            let max_w = inner_w.saturating_sub(SP_8 as usize);
             let display: String = if todo.content.len() > max_w {
                 format!("{}\u{2026}", &todo.content[..max_w.saturating_sub(1)])
             } else {

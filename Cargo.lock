@@ -1570,7 +1570,7 @@ dependencies = [
 
 [[package]]
 name = "nyzhi"
-version = "1.2.13"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1594,7 +1594,7 @@ dependencies = [
 
 [[package]]
 name = "nyzhi-auth"
-version = "1.2.13"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1618,7 +1618,7 @@ dependencies = [
 
 [[package]]
 name = "nyzhi-config"
-version = "1.2.13"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1631,7 +1631,7 @@ dependencies = [
 
 [[package]]
 name = "nyzhi-core"
-version = "1.2.13"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1669,7 +1669,7 @@ dependencies = [
 
 [[package]]
 name = "nyzhi-index"
-version = "1.2.13"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1687,7 +1687,7 @@ dependencies = [
 
 [[package]]
 name = "nyzhi-provider"
-version = "1.2.13"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1710,7 +1710,7 @@ dependencies = [
 
 [[package]]
 name = "nyzhi-tui"
-version = "1.2.13"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "base64",

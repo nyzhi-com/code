@@ -1,6 +1,7 @@
 use ratatui::prelude::*;
 
 use crate::aesthetic::layout as aes_layout;
+use crate::aesthetic::typography as ty;
 use crate::app::App;
 use crate::components::{
     chat, footer, header, input_box, plan_banner, plan_panel, selector, settings_panel,
@@ -11,7 +12,7 @@ use crate::theme::Theme;
 
 pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState) {
     frame.render_widget(
-        ratatui::widgets::Block::default().style(Style::default().bg(theme.bg_page)),
+        ratatui::widgets::Block::default().style(ty::on_page(theme)),
         frame.area(),
     );
 

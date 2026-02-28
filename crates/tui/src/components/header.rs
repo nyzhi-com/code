@@ -53,7 +53,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         if !right_spans.is_empty() {
             right_spans.push(Span::raw("  "));
         }
-        right_spans.push(Span::styled(format!("{pct}%"), Style::default().fg(pct_color)));
+        right_spans.push(Span::styled(format!("{pct}%"), ty::accent(pct_color)));
     }
 
     let cost = format_cost(usage.total_cost_usd);
@@ -69,7 +69,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     // -- left side: accent bar + title
     let title = &app.session_title;
-    let title_max = w.saturating_sub(right_len + PAD_H as usize + ACCENT_GUTTER as usize + 2);
+    let title_max = w.saturating_sub(right_len + PAD_H as usize + ACCENT_GUTTER as usize + SP_2 as usize);
     let title_display: String = if title.len() > title_max {
         format!("{}...", &title[..title_max.saturating_sub(3)])
     } else {
@@ -81,7 +81,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut spans: Vec<Span> = vec![
         Span::styled(
             format!(" {} ", borders::BAR_CHAR),
-            Style::default().fg(theme.accent),
+            ty::accent(theme.accent),
         ),
         Span::styled(title_display, ty::heading(theme)),
         Span::raw(" ".repeat(gap.max(1))),
