@@ -278,52 +278,73 @@ fn render_streaming(
 }
 
 fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let buttons: [(&str, usize); 3] = [(" Allow ", 0), (" Deny ", 1), (" Always ", 2)];
-    let btn_total_width: usize = buttons.iter().map(|(l, _)| l.len() + 2).sum::<usize>() + 2;
+    let buttons: [(&str, usize); 3] = [("Allow", 0), ("Deny", 1), ("Always", 2)];
+    let w = area.width as usize;
 
-    let mut spans: Vec<Span> = Vec::new();
+    let mut lines: Vec<Line> = Vec::new();
 
+    // Row 1: tool name + truncated args context
     if let Some((ref tool, ref args)) = app.pending_approval_context {
-        spans.push(Span::styled("? ", ty::warning_style(theme)));
-        spans.push(Span::styled(tool.clone(), ty::subheading(theme)));
-
+        let mut row1 = vec![
+            Span::styled("? ", Style::default().fg(theme.warning).bold()),
+            Span::styled(
+                tool.clone(),
+                Style::default().fg(theme.text_primary).bold(),
+            ),
+        ];
         let first_line = args.lines().next().unwrap_or("");
-        let max_args = (area.width as usize).saturating_sub(tool.len() + btn_total_width + 6);
+        let used_so_far: usize = row1.iter().map(|s| s.width()).sum();
+        let max_args = w.saturating_sub(used_so_far + 2);
         if !first_line.is_empty() && max_args > 4 {
             let truncated = if first_line.len() > max_args {
                 format!(" {}...", &first_line[..max_args.saturating_sub(3)])
             } else {
                 format!(" {first_line}")
             };
-            spans.push(Span::styled(truncated, ty::caption(theme)));
+            row1.push(Span::styled(truncated, ty::caption(theme)));
+        }
+        lines.push(Line::from(row1));
+
+        // Row 2: additional context lines (if area tall enough and args multi-line)
+        if area.height >= 3 {
+            let arg_lines: Vec<&str> = args.lines().skip(1).take(1).collect();
+            for arg_line in arg_lines {
+                let max_ctx = w.saturating_sub(4);
+                let display = if arg_line.len() > max_ctx {
+                    format!("  {}...", &arg_line[..max_ctx.saturating_sub(3)])
+                } else {
+                    format!("  {arg_line}")
+                };
+                lines.push(Line::from(Span::styled(display, ty::caption(theme))));
+            }
         }
     } else {
-        spans.push(Span::styled("? ", ty::warning_style(theme)));
-        spans.push(Span::styled("approve? ", ty::body(theme)));
+        lines.push(Line::from(vec![
+            Span::styled("? ", Style::default().fg(theme.warning).bold()),
+            Span::styled("approve action?", ty::body(theme)),
+        ]));
     }
 
-    let used: usize = spans.iter().map(|s| s.width()).sum();
-    let gap = (area.width as usize).saturating_sub(used + btn_total_width);
-    if gap > 0 {
-        spans.push(Span::raw(" ".repeat(gap)));
-    }
-
-    for (label, idx) in &buttons {
-        if *idx == app.approval_cursor {
-            spans.push(primitives::pill(
-                label.trim(),
-                theme.bg_page,
-                theme.accent,
-            ));
-        } else {
-            spans.push(primitives::pill_outline(label.trim(), theme.text_secondary));
+    // Button row: centered [Allow] [Deny] [Always]
+    let mut btn_spans: Vec<Span> = Vec::new();
+    for (i, (label, idx)) in buttons.iter().enumerate() {
+        if i > 0 {
+            btn_spans.push(Span::raw("  "));
         }
-        spans.push(Span::raw(" "));
+        if *idx == app.approval_cursor {
+            btn_spans.push(primitives::pill(label, theme.bg_page, theme.accent));
+        } else {
+            btn_spans.push(primitives::pill_outline(label, theme.warning));
+        }
     }
+    let btn_width: usize = btn_spans.iter().map(|s| s.width()).sum();
+    let btn_pad = w.saturating_sub(btn_width) / 2;
+    let mut centered_btns = vec![Span::raw(" ".repeat(btn_pad))];
+    centered_btns.extend(btn_spans);
+    lines.push(Line::from(centered_btns));
 
     frame.render_widget(
-        Paragraph::new(Line::from(spans))
-            .style(Style::default().bg(theme.bg_surface)),
+        Paragraph::new(lines).style(Style::default().bg(theme.bg_surface)),
         area,
     );
 }

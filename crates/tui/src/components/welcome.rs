@@ -5,7 +5,6 @@ use crate::aesthetic::primitives;
 use crate::aesthetic::tokens::*;
 use crate::aesthetic::typography as ty;
 use crate::app::App;
-use crate::logo::LOGO_SPLASH;
 use crate::theme::Theme;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
@@ -14,8 +13,10 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         area,
     );
 
-    let logo_lines: Vec<&str> = LOGO_SPLASH.lines().filter(|l| !l.is_empty()).collect();
-    let logo_width = logo_lines.iter().map(|l| l.len()).max().unwrap_or(0) as u16;
+    let logo_rows = app.logo_anim.rows() as u16;
+    let logo_cols = app.logo_anim.cols() as u16;
+    let logo_color = app.logo_anim.breathing_color(theme.accent);
+    let logo_frame = app.logo_anim.current_frame();
 
     let subtitle = format!("code  v{}", env!("CARGO_PKG_VERSION"));
 
@@ -30,7 +31,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         ("/", "commands"),
         ("S-Tab", "plan"),
         ("Tab", "thinking"),
-        ("Ctrl+J", "newline"),
+        ("S-Enter", "newline"),
     ];
 
     let hint_width: u16 = shortcuts
@@ -38,8 +39,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         .map(|(k, d)| k.len() + 1 + d.len() + SP_4 as usize)
         .sum::<usize>() as u16;
 
-    let content_lines = logo_lines.len() as u16 + 7;
-    let card_inner_w = logo_width
+    let content_lines = logo_rows + 7;
+    let card_inner_w = logo_cols
         .max(hint_width)
         .max(subtitle.len() as u16)
         .max(status_text.len() as u16)
@@ -63,7 +64,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let inner_w = padded.width as usize;
 
-    let content_h = logo_lines.len() as u16 + 7;
+    let content_h = logo_rows + 7;
     let vert_pad = padded.height.saturating_sub(content_h) / 2;
 
     let mut lines: Vec<Line> = Vec::new();
@@ -72,11 +73,12 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         lines.push(Line::from(""));
     }
 
-    for logo_line in &logo_lines {
-        let pad = inner_w.saturating_sub(logo_line.len()) / 2;
+    for logo_line in &logo_frame {
+        let display_w = logo_line.chars().count();
+        let pad = inner_w.saturating_sub(display_w) / 2;
         lines.push(Line::from(Span::styled(
             format!("{:>pad$}{logo_line}", ""),
-            ty::subheading(theme),
+            Style::default().fg(logo_color),
         )));
     }
 

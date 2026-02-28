@@ -186,6 +186,11 @@ impl<'a> Panel<'a> {
         self
     }
 
+    pub fn border_color(mut self, c: Color) -> Self {
+        self.border_color = c;
+        self
+    }
+
     pub fn render_frame(&self, frame: &mut ratatui::Frame, area: Rect) -> Rect {
         let mut block = Block::bordered()
             .border_type(BorderType::Rounded)

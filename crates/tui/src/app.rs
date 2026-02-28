@@ -219,6 +219,7 @@ pub struct App {
     pub subagent_model_overrides: nyzhi_core::agent_roles::SubagentModelOverrides,
     pub shared_context: std::sync::Arc<tokio::sync::Mutex<nyzhi_core::context_briefing::SharedContext>>,
     pub config: nyzhi_config::Config,
+    pub logo_anim: crate::logo_anim::LogoAnimation,
 }
 
 impl App {
@@ -320,6 +321,7 @@ impl App {
             subagent_model_overrides: nyzhi_core::agent_roles::SubagentModelOverrides::new(),
             shared_context: std::sync::Arc::new(tokio::sync::Mutex::new(nyzhi_core::context_briefing::SharedContext::default())),
             config: nyzhi_config::Config::default(),
+            logo_anim: crate::logo_anim::LogoAnimation::new(),
         }
     }
 
@@ -698,6 +700,7 @@ impl App {
 
         loop {
             self.spinner.tick();
+            self.logo_anim.tick();
 
             if let Ok(info) = update_rx.try_recv() {
                 self.update_status = UpdateStatus::Available {

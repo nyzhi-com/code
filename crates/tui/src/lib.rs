@@ -7,6 +7,7 @@ pub mod highlight;
 pub mod history;
 mod input;
 mod logo;
+mod logo_anim;
 mod spinner;
 pub mod theme;
 mod ui;
