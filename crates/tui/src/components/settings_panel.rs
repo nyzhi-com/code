@@ -2,6 +2,9 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+use crate::aesthetic::primitives;
+use crate::aesthetic::tokens::*;
+use crate::aesthetic::typography as ty;
 use crate::theme::Theme;
 
 #[derive(Debug, Clone)]
@@ -134,25 +137,13 @@ impl SettingsPanel {
 }
 
 pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
+    primitives::blur_overlay(frame, theme);
+
     let area = frame.area();
-
     let row_count = panel.rows.len() as u16;
-    let popup_h = (row_count + 6).min(area.height.saturating_sub(4));
-    let popup_w = 48u16.min(area.width.saturating_sub(6));
-
-    let x = area.x + (area.width.saturating_sub(popup_w)) / 2;
-    let y = area.y + (area.height.saturating_sub(popup_h)) / 2;
-    let popup_area = Rect::new(x, y, popup_w, popup_h);
-
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.border_strong))
-        .title(Line::from(Span::styled(
-            " Settings ",
-            Style::default().fg(theme.accent).bold(),
-        )))
-        .title_alignment(Alignment::Center)
-        .style(Style::default().bg(theme.bg_elevated));
+    let popup_h = (row_count + 6).min(area.height.saturating_sub(POPUP_MARGIN));
+    let popup_w = 48u16;
+    let popup_area = primitives::centered_popup(area, popup_w, popup_h);
 
     let desc = panel
         .focused_item()
@@ -161,25 +152,35 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
 
     let hint = match panel.focused_item().map(|i| &i.kind) {
         Some(SettingKind::Toggle) => "enter/space: toggle",
-        Some(SettingKind::Cycle { .. }) => "◂ ▸ cycle  enter: next",
+        Some(SettingKind::Cycle { .. }) => "\u{25C2} \u{25B8} cycle  enter: next",
         Some(SettingKind::SubMenu) => "enter: open",
         None => "",
     };
 
-    let footer_line = Line::from(vec![
-        Span::styled(" esc ", Style::default().fg(theme.text_disabled)),
-        Span::styled(hint, Style::default().fg(theme.text_disabled)),
+    let footer_spans = vec![
+        Span::styled(" esc ", ty::disabled(theme)),
+        Span::styled(hint, ty::disabled(theme)),
         Span::raw(" "),
-    ]);
-    let block = block.title_bottom(footer_line.alignment(Alignment::Right));
+    ];
 
-    let inner = block.inner(popup_area);
-    frame.render_widget(Clear, popup_area);
-    frame.render_widget(block, popup_area);
+    let card = primitives::Card::new(theme)
+        .title("Settings")
+        .title_bottom_spans(footer_spans);
+    let inner = card.render_frame(frame, popup_area);
 
-    let content_h = inner.height.saturating_sub(2) as usize;
-    let desc_area = Rect::new(inner.x, inner.y + inner.height.saturating_sub(2), inner.width, 1);
-    let list_area = Rect::new(inner.x, inner.y, inner.width, inner.height.saturating_sub(2));
+    let content_h = inner.height.saturating_sub(SP_2) as usize;
+    let desc_area = Rect::new(
+        inner.x,
+        inner.y + inner.height.saturating_sub(SP_2),
+        inner.width,
+        1,
+    );
+    let list_area = Rect::new(
+        inner.x,
+        inner.y,
+        inner.width,
+        inner.height.saturating_sub(SP_2),
+    );
 
     let cursor_pos = panel.cursor;
     let scroll = if cursor_pos >= content_h {
@@ -200,15 +201,12 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
                 }
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(
-                        name.clone(),
-                        Style::default().fg(theme.text_primary).bold(),
-                    ),
+                    Span::styled(name.clone(), ty::heading(theme)),
                 ]));
             }
             SettingsRow::Item(item) => {
                 let is_focused = i == panel.cursor;
-                let arrow = if is_focused { "▸ " } else { "  " };
+                let arrow = if is_focused { "\u{25B8} " } else { "  " };
 
                 let value_display = render_value(item, theme, is_focused);
 
@@ -220,15 +218,15 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
                 };
 
                 let label_style = if is_focused {
-                    Style::default().fg(theme.text_primary).bold()
+                    ty::heading(theme)
                 } else {
-                    Style::default().fg(theme.text_secondary)
+                    ty::secondary(theme)
                 };
 
                 let arrow_style = if is_focused {
                     Style::default().fg(theme.accent)
                 } else {
-                    Style::default().fg(theme.text_disabled)
+                    ty::disabled(theme)
                 };
 
                 let mut spans = vec![
@@ -242,15 +240,15 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
         }
     }
 
-    let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_elevated));
+    let paragraph = Paragraph::new(lines).style(ty::on_elevated(theme));
     frame.render_widget(paragraph, list_area);
 
     if !desc.is_empty() {
         let desc_line = Line::from(vec![
             Span::raw("  "),
-            Span::styled(desc, Style::default().fg(theme.text_disabled).italic()),
+            Span::styled(desc, ty::muted(theme)),
         ]);
-        let desc_p = Paragraph::new(desc_line).style(Style::default().bg(theme.bg_elevated));
+        let desc_p = Paragraph::new(desc_line).style(ty::on_elevated(theme));
         frame.render_widget(desc_p, desc_area);
     }
 }
@@ -261,14 +259,13 @@ fn render_value<'a>(item: &SettingItem, theme: &Theme, is_focused: bool) -> Vec<
     } else {
         theme.text_tertiary
     };
-    let dim = theme.text_disabled;
 
     match &item.kind {
         SettingKind::Toggle => {
             let (icon, color) = if item.current_value == "On" {
-                ("[✓]", theme.success)
+                ("[\u{2713}]", theme.success)
             } else {
-                ("[ ]", dim)
+                ("[ ]", theme.text_disabled)
             };
             vec![Span::styled(
                 icon.to_string(),
@@ -276,14 +273,14 @@ fn render_value<'a>(item: &SettingItem, theme: &Theme, is_focused: bool) -> Vec<
             )]
         }
         SettingKind::Cycle { .. } => {
-            let arrow_style = Style::default().fg(dim);
+            let arrow_style = ty::disabled(theme);
             vec![
-                Span::styled("◂ ", arrow_style),
+                Span::styled("\u{25C2} ", arrow_style),
                 Span::styled(
                     item.current_value.clone(),
                     Style::default().fg(val_color).bold(),
                 ),
-                Span::styled(" ▸", arrow_style),
+                Span::styled(" \u{25B8}", arrow_style),
             ]
         }
         SettingKind::SubMenu => {
@@ -292,7 +289,7 @@ fn render_value<'a>(item: &SettingItem, theme: &Theme, is_focused: bool) -> Vec<
                     item.current_value.clone(),
                     Style::default().fg(val_color),
                 ),
-                Span::styled(" ▸", Style::default().fg(dim)),
+                Span::styled(" \u{25B8}", ty::disabled(theme)),
             ]
         }
     }

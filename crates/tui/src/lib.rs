@@ -1,3 +1,4 @@
+pub mod aesthetic;
 mod app;
 pub mod completion;
 pub mod components;

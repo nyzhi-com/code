@@ -424,28 +424,28 @@ impl ThemePreset {
 
     pub fn palette(self) -> Theme {
         let mode = self.mode();
-        let accent = Accent::Copper;
+        let accent = Accent::NyzhiOrange;
         match self {
             ThemePreset::NyzhiDark => Theme {
                 mode,
                 preset: self,
                 accent_type: accent,
                 bg_page: Color::Rgb(0, 0, 0),
-                bg_surface: Color::Rgb(20, 20, 24),
-                bg_elevated: Color::Rgb(32, 32, 38),
+                bg_surface: Color::Rgb(0x0A, 0x0A, 0x0C),
+                bg_elevated: Color::Rgb(0x1C, 0x1C, 0x22),
                 bg_sunken: Color::Rgb(0, 0, 0),
-                text_primary: Color::Rgb(250, 250, 250),
-                text_secondary: Color::Rgb(161, 161, 170),
-                text_tertiary: Color::Rgb(113, 113, 122),
-                text_disabled: Color::Rgb(63, 63, 70),
-                border_default: Color::Rgb(38, 38, 44),
-                border_strong: Color::Rgb(55, 55, 62),
+                text_primary: Color::Rgb(0xFA, 0xFA, 0xFA),
+                text_secondary: Color::Rgb(0xA1, 0xA1, 0xAA),
+                text_tertiary: Color::Rgb(0x71, 0x71, 0x7A),
+                text_disabled: Color::Rgb(0x3F, 0x3F, 0x46),
+                border_default: Color::Rgb(0x1E, 0x1E, 0x26),
+                border_strong: Color::Rgb(0x2C, 0x2C, 0x36),
                 accent: accent.color(mode),
                 accent_muted: accent.muted(mode),
-                success: Color::Rgb(74, 222, 128),
-                danger: Color::Rgb(248, 113, 113),
-                warning: Color::Rgb(251, 191, 36),
-                info: Color::Rgb(161, 161, 170),
+                success: Color::Rgb(0x4A, 0xDE, 0x80),
+                danger: Color::Rgb(0xF8, 0x71, 0x71),
+                warning: Color::Rgb(0xFB, 0xBF, 0x24),
+                info: Color::Rgb(0xA1, 0xA1, 0xAA),
             },
             ThemePreset::NyzhiLight => Theme {
                 mode,
@@ -1692,6 +1692,7 @@ impl ThemePreset {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Accent {
+    NyzhiOrange,
     Copper,
     Blue,
     Orange,
@@ -1740,6 +1741,7 @@ pub enum Accent {
 
 impl Accent {
     pub const ALL: &[Accent] = &[
+        Accent::NyzhiOrange,
         Accent::Copper,
         Accent::Blue,
         Accent::Orange,
@@ -1788,6 +1790,7 @@ impl Accent {
 
     pub fn name(self) -> &'static str {
         match self {
+            Accent::NyzhiOrange => "nyzhi-orange",
             Accent::Copper => "copper",
             Accent::Blue => "blue",
             Accent::Orange => "orange",
@@ -1837,6 +1840,7 @@ impl Accent {
 
     pub fn from_name(name: &str) -> Self {
         match name.to_lowercase().as_str() {
+            "nyzhi-orange" | "nyzhi_orange" | "nyzhiorange" | "orange-nyzhi" => Accent::NyzhiOrange,
             "copper" => Accent::Copper,
             "blue" => Accent::Blue,
             "orange" => Accent::Orange,
@@ -1881,7 +1885,7 @@ impl Accent {
             "turquoise" => Accent::Turquoise,
             "chartreuse" => Accent::Chartreuse,
             "midnight" => Accent::Midnight,
-            _ => Accent::Copper,
+            _ => Accent::NyzhiOrange,
         }
     }
 
@@ -1896,6 +1900,7 @@ impl Accent {
 
     fn color(self, mode: ThemeMode) -> Color {
         match self {
+            Accent::NyzhiOrange => Color::Rgb(0xEE, 0x60, 0x18),
             Accent::Copper => Color::Rgb(196, 154, 108),
             Accent::Blue => Color::Rgb(59, 130, 246),
             Accent::Orange => Color::Rgb(255, 102, 0),

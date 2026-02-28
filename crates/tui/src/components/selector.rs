@@ -2,6 +2,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+use crate::aesthetic::primitives;
+use crate::aesthetic::tokens::*;
+use crate::aesthetic::typography as ty;
 use crate::theme::Theme;
 
 #[derive(Debug, Clone)]
@@ -243,11 +246,10 @@ impl SelectorState {
 }
 
 pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
+    // Blur overlay
+    primitives::blur_overlay(frame, theme);
+
     let area = frame.area();
-
-    let overlay = Block::default().style(Style::default().bg(theme.bg_sunken).add_modifier(Modifier::DIM));
-    frame.render_widget(overlay, area);
-
     let filtered = selector.filtered_indices();
 
     let item_count = filtered.len() as u16;
@@ -262,56 +264,42 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
             | SelectorKind::UserQuestion
     );
     let search_rows = if has_search { 2 } else { 0 };
-    let popup_h = (item_count + 4 + search_rows).min(area.height.saturating_sub(4));
+    let popup_h = (item_count + SP_4 + search_rows).min(area.height.saturating_sub(POPUP_MARGIN));
     let base_w = match selector.kind {
         SelectorKind::Command | SelectorKind::Model | SelectorKind::UserQuestion => 60u16,
         _ => 50u16,
     };
-    let popup_w = base_w.min(area.width.saturating_sub(8));
+    let popup_w = base_w.min(area.width.saturating_sub(POPUP_MARGIN * 2));
 
-    let x = area.x + (area.width.saturating_sub(popup_w)) / 2;
-    let y = area.y + (area.height.saturating_sub(popup_h)) / 2;
-    let popup_area = Rect::new(x, y, popup_w, popup_h);
+    let popup_area = primitives::centered_popup(area, popup_w, popup_h);
 
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.border_strong))
-        .title(Line::from(Span::styled(
-            format!(" {} ", selector.title),
-            Style::default().fg(theme.accent).bold(),
-        )))
-        .title_alignment(Alignment::Center)
-        .style(Style::default().bg(theme.bg_elevated));
-
+    // Build footer hints
     let footer_spans: Vec<Span> = match selector.kind {
         SelectorKind::Model if selector.context_value.as_deref() != Some("thinking") => {
             vec![
                 Span::styled(" ctrl+a", Style::default().fg(theme.accent)),
-                Span::styled(": providers  ", Style::default().fg(theme.text_disabled)),
+                Span::styled(": providers  ", ty::disabled(theme)),
                 Span::styled("tab", Style::default().fg(theme.accent)),
-                Span::styled(": thinking  ", Style::default().fg(theme.text_disabled)),
-                Span::styled("esc ", Style::default().fg(theme.text_disabled)),
+                Span::styled(": thinking  ", ty::disabled(theme)),
+                Span::styled("esc ", ty::disabled(theme)),
             ]
         }
         SelectorKind::UserQuestion | SelectorKind::PlanTransition => {
             vec![
                 Span::styled(" enter", Style::default().fg(theme.accent)),
-                Span::styled(": select  ", Style::default().fg(theme.text_disabled)),
-                Span::styled("esc ", Style::default().fg(theme.text_disabled)),
+                Span::styled(": select  ", ty::disabled(theme)),
+                Span::styled("esc ", ty::disabled(theme)),
             ]
         }
         _ => {
-            vec![Span::styled(
-                " esc ",
-                Style::default().fg(theme.text_disabled),
-            )]
+            vec![Span::styled(" esc ", ty::disabled(theme))]
         }
     };
-    let block = block.title_bottom(Line::from(footer_spans).alignment(Alignment::Right));
 
-    let inner = block.inner(popup_area);
-    frame.render_widget(Clear, popup_area);
-    frame.render_widget(block, popup_area);
+    let card = primitives::Card::new(theme)
+        .title(&selector.title)
+        .title_bottom_spans(footer_spans);
+    let inner = card.render_frame(frame, popup_area);
 
     let mut content_area = inner;
 
@@ -326,27 +314,23 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
                 SelectorKind::UserQuestion => "Type custom answer...",
                 _ => "Search...",
             };
-            Span::styled(placeholder, Style::default().fg(theme.text_disabled))
+            Span::styled(placeholder, ty::disabled(theme))
         } else if selector.kind == SelectorKind::ApiKeyInput {
             let masked: String = "*".repeat(selector.search.len());
-            Span::styled(masked, Style::default().fg(theme.text_primary))
+            Span::styled(masked, ty::body(theme))
         } else {
-            Span::styled(&selector.search, Style::default().fg(theme.text_primary))
+            Span::styled(&selector.search, ty::body(theme))
         };
-        let search_line = Line::from(vec![Span::styled("  ", Style::default()), search_text]);
+        let search_line = Line::from(vec![Span::raw("  "), search_text]);
         frame.render_widget(
-            Paragraph::new(search_line).style(Style::default().bg(theme.bg_elevated)),
+            Paragraph::new(search_line).style(ty::on_elevated(theme)),
             search_area,
         );
 
         let sep_area = Rect::new(content_area.x, content_area.y + 1, content_area.width, 1);
-        let sep = "─".repeat(content_area.width as usize);
         frame.render_widget(
-            Paragraph::new(sep).style(
-                Style::default()
-                    .fg(theme.border_default)
-                    .bg(theme.bg_elevated),
-            ),
+            Paragraph::new(primitives::divider(content_area.width, theme))
+                .style(ty::on_elevated(theme)),
             sep_area,
         );
         content_area = Rect::new(
@@ -376,11 +360,8 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
 
         if item.is_header {
             lines.push(Line::from(vec![
-                Span::styled("  ", Style::default()),
-                Span::styled(
-                    item.label.clone(),
-                    Style::default().fg(theme.text_primary).bold(),
-                ),
+                Span::raw("  "),
+                Span::styled(item.label.clone(), ty::heading(theme)),
             ]));
             continue;
         }
@@ -388,19 +369,19 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         let is_cursor = orig_idx == selector.cursor;
         let is_active = selector.active_idx == Some(orig_idx);
 
-        let marker = if is_active { "● " } else { "  " };
-        let arrow = if is_cursor { "▸ " } else { "  " };
+        let marker = if is_active { "\u{25CF} " } else { "  " };
+        let arrow = if is_cursor { "\u{25B8} " } else { "  " };
 
         let mut spans = vec![];
 
-        if is_cursor {
-            spans.push(Span::styled(arrow, Style::default().fg(theme.accent)));
-        } else {
-            spans.push(Span::styled(
-                arrow,
-                Style::default().fg(theme.text_disabled),
-            ));
-        }
+        spans.push(Span::styled(
+            arrow,
+            if is_cursor {
+                Style::default().fg(theme.accent)
+            } else {
+                ty::disabled(theme)
+            },
+        ));
 
         let marker_color = if is_active {
             theme.accent
@@ -410,21 +391,20 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         spans.push(Span::styled(marker, Style::default().fg(marker_color)));
 
         if let Some(color) = item.preview_color {
-            spans.push(Span::styled("█ ", Style::default().fg(color)));
+            spans.push(Span::styled("\u{2588} ", Style::default().fg(color)));
         }
 
         let label_style = if is_cursor {
-            Style::default().fg(theme.text_primary).bold()
+            ty::heading(theme)
         } else if is_active {
             Style::default().fg(theme.accent)
         } else {
-            Style::default().fg(theme.text_secondary)
+            ty::secondary(theme)
         };
 
         let prefix_width = 4 + if item.preview_color.is_some() { 2 } else { 0 };
 
         if let Some(ref badge) = item.right_badge {
-            let badge_style = Style::default().fg(theme.text_disabled);
             let label_len = item.label.chars().count();
             let badge_len = badge.chars().count();
             let avail = inner_w.saturating_sub(prefix_width);
@@ -433,7 +413,7 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
             if gap > 0 {
                 spans.push(Span::raw(" ".repeat(gap)));
             }
-            spans.push(Span::styled(badge.clone(), badge_style));
+            spans.push(Span::styled(badge.clone(), ty::disabled(theme)));
         } else {
             spans.push(Span::styled(item.label.clone(), label_style));
         }
@@ -441,6 +421,6 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         lines.push(Line::from(spans));
     }
 
-    let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_elevated));
+    let paragraph = Paragraph::new(lines).style(ty::on_elevated(theme));
     frame.render_widget(paragraph, content_area);
 }

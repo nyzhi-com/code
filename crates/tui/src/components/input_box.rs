@@ -1,6 +1,10 @@
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+use crate::aesthetic::borders;
+use crate::aesthetic::primitives;
+use crate::aesthetic::tokens::*;
+use crate::aesthetic::typography as ty;
 use crate::app::{App, AppMode};
 use crate::completion::{CompletionContext, CompletionState};
 use crate::spinner::SpinnerState;
@@ -19,34 +23,36 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &S
         return;
     }
 
+    // Surface background
     frame.render_widget(
-        Block::default().style(Style::default().bg(theme.bg_surface)),
+        Block::default().style(ty::on_surface(theme)),
         area,
     );
 
-    let accent_w = 1u16;
-    for row in 0..area.height {
-        frame.render_widget(
-            Paragraph::new(Span::styled(
-                "┃",
-                Style::default().fg(theme.accent),
-            ))
-            .style(Style::default().bg(theme.bg_surface)),
-            Rect::new(area.x, area.y + row, accent_w, 1),
-        );
-    }
+    // Left accent bar
+    borders::accent_bar(
+        frame,
+        Rect::new(area.x, area.y, ACCENT_BAR_W, area.height),
+        theme.accent,
+        theme.bg_surface,
+    );
 
     let inner = Rect::new(
-        area.x + accent_w + 1,
+        area.x + ACCENT_GUTTER,
         area.y,
-        area.width.saturating_sub(accent_w + 1),
+        area.width.saturating_sub(ACCENT_GUTTER),
         area.height,
     );
 
-    let status_h = 1u16;
-    let content_h = inner.height.saturating_sub(status_h);
+    // Split: content area + status bar
+    let content_h = inner.height.saturating_sub(STATUS_BAR_H);
     let input_area = Rect::new(inner.x, inner.y, inner.width, content_h.max(1));
-    let status_area = Rect::new(inner.x, inner.y + content_h.max(1), inner.width, status_h);
+    let status_area = Rect::new(
+        inner.x,
+        inner.y + content_h.max(1),
+        inner.width,
+        STATUS_BAR_H,
+    );
 
     match app.mode {
         AppMode::Streaming => render_streaming(frame, input_area, app, theme, spinner),
@@ -82,42 +88,35 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     } else {
         (app.model_name.clone(), app.provider_name.clone())
     };
-    let model_color = if auth == "not connected" {
-        theme.text_disabled
+    let model_style = if auth == "not connected" {
+        ty::disabled(theme)
     } else {
-        theme.text_primary
+        ty::body(theme)
     };
 
     let mut spans: Vec<Span> = vec![
-        Span::styled(
-            mode_label.to_string(),
-            Style::default().fg(mode_color).bold(),
-        ),
-        Span::styled("  ", Style::default()),
-        Span::styled(model_text, Style::default().fg(model_color)),
+        Span::styled(mode_label.to_string(), Style::default().fg(mode_color).bold()),
+        Span::raw("  "),
+        Span::styled(model_text, model_style),
     ];
 
     if !provider_text.is_empty() {
         spans.push(Span::styled(
             format!("  {provider_text}"),
-            Style::default().fg(theme.text_disabled),
+            ty::disabled(theme),
         ));
     }
 
     if matches!(app.trust_mode, nyzhi_config::TrustMode::Full) {
-        spans.push(Span::styled(
-            "  YOLO",
-            Style::default().fg(theme.danger).bold(),
-        ));
+        spans.push(Span::styled("  YOLO", ty::danger(theme)));
     }
 
-    let paragraph = Paragraph::new(Line::from(spans))
-        .style(Style::default().bg(theme.bg_surface));
+    let paragraph = Paragraph::new(Line::from(spans)).style(ty::on_surface(theme));
     frame.render_widget(paragraph, area);
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let pad_top = if area.height > 2 { 1u16 } else { 0 };
+    let pad_top = if area.height > SP_2 { SP_1 } else { 0 };
     let content_area = Rect::new(
         area.x,
         area.y + pad_top,
@@ -128,11 +127,8 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     if app.input.is_empty() {
         let placeholder = "Ask anything... \"What is the tech stack of this project?\"";
         frame.render_widget(
-            Paragraph::new(Span::styled(
-                placeholder,
-                Style::default().fg(theme.text_disabled),
-            ))
-            .style(Style::default().bg(theme.bg_surface)),
+            Paragraph::new(Span::styled(placeholder, ty::disabled(theme)))
+                .style(ty::on_surface(theme)),
             content_area,
         );
         frame.set_cursor_position(Position::new(content_area.x, content_area.y));
@@ -142,12 +138,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let lines: Vec<Line> = app
         .input
         .split('\n')
-        .map(|text| {
-            Line::from(Span::styled(
-                text.to_string(),
-                Style::default().fg(theme.text_primary),
-            ))
-        })
+        .map(|text| Line::from(Span::styled(text.to_string(), ty::body(theme))))
         .collect();
 
     let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
@@ -159,7 +150,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     };
 
     let paragraph = Paragraph::new(lines)
-        .style(Style::default().bg(theme.bg_surface))
+        .style(ty::on_surface(theme))
         .scroll((scroll, 0));
     frame.render_widget(paragraph, content_area);
 
@@ -176,7 +167,7 @@ fn render_streaming(
     theme: &Theme,
     spinner: &SpinnerState,
 ) {
-    let pad_top = if area.height > 2 { 1u16 } else { 0 };
+    let pad_top = if area.height > SP_2 { SP_1 } else { 0 };
     let content_area = Rect::new(
         area.x,
         area.y + pad_top,
@@ -188,27 +179,24 @@ fn render_streaming(
         let lines: Vec<Line> = app
             .input
             .split('\n')
-            .map(|text| {
-                Line::from(Span::styled(
-                    text.to_string(),
-                    Style::default().fg(theme.text_primary),
-                ))
-            })
+            .map(|text| Line::from(Span::styled(text.to_string(), ty::body(theme))))
             .collect();
-        let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_surface));
+        let paragraph = Paragraph::new(lines).style(ty::on_surface(theme));
         frame.render_widget(paragraph, content_area);
 
         let queue_hint = format!(" queued:{} ", app.message_queue.len() + 1);
         let hint_w = queue_hint.len() as u16;
-        if content_area.width > hint_w + 2 {
-            let hint_area =
-                Rect::new(content_area.x + content_area.width - hint_w, content_area.y, hint_w, 1);
+        if content_area.width > hint_w + SP_2 {
+            let hint_area = Rect::new(
+                content_area.x + content_area.width - hint_w,
+                content_area.y,
+                hint_w,
+                1,
+            );
             frame.render_widget(
                 Paragraph::new(Span::styled(
                     queue_hint,
-                    Style::default()
-                        .fg(theme.text_disabled)
-                        .bg(theme.bg_elevated),
+                    ty::disabled(theme).bg(theme.bg_elevated),
                 )),
                 hint_area,
             );
@@ -223,9 +211,9 @@ fn render_streaming(
         let mut spans: Vec<Span> = vec![
             Span::styled(
                 format!("{} ", spinner.current_frame()),
-                Style::default().fg(theme.accent),
+                ty::accent(theme.accent),
             ),
-            Span::styled("thinking", Style::default().fg(theme.text_tertiary)),
+            Span::styled("thinking", ty::caption(theme)),
         ];
 
         if let Some(start) = &app.turn_start {
@@ -239,27 +227,21 @@ fn render_streaming(
                 let s = (ms % 60_000) / 1000;
                 format!("{m}m{s}s")
             };
-            spans.push(Span::styled(
-                format!(" {elapsed}"),
-                Style::default().fg(theme.text_disabled),
-            ));
+            spans.push(Span::styled(format!(" {elapsed}"), ty::disabled(theme)));
         }
 
         let queue_count = app.message_queue.len();
         if queue_count > 0 {
             spans.push(Span::styled(
                 format!("  queue:{queue_count}"),
-                Style::default().fg(theme.text_disabled),
+                ty::disabled(theme),
             ));
         }
 
-        spans.push(Span::styled(
-            "  type to queue",
-            Style::default().fg(theme.text_disabled),
-        ));
+        spans.push(Span::styled("  type to queue", ty::disabled(theme)));
 
         frame.render_widget(
-            Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg_surface)),
+            Paragraph::new(Line::from(spans)).style(ty::on_surface(theme)),
             content_area,
         );
     }
@@ -272,14 +254,8 @@ fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut spans: Vec<Span> = Vec::new();
 
     if let Some((ref tool, ref args)) = app.pending_approval_context {
-        spans.push(Span::styled(
-            "? ",
-            Style::default().fg(theme.warning).bold(),
-        ));
-        spans.push(Span::styled(
-            tool.clone(),
-            Style::default().fg(theme.accent).bold(),
-        ));
+        spans.push(Span::styled("? ", ty::warning_style(theme)));
+        spans.push(Span::styled(tool.clone(), ty::subheading(theme)));
 
         let first_line = args.lines().next().unwrap_or("");
         let max_args = (area.width as usize).saturating_sub(tool.len() + btn_total_width + 6);
@@ -289,20 +265,11 @@ fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
             } else {
                 format!(" {first_line}")
             };
-            spans.push(Span::styled(
-                truncated,
-                Style::default().fg(theme.text_tertiary),
-            ));
+            spans.push(Span::styled(truncated, ty::caption(theme)));
         }
     } else {
-        spans.push(Span::styled(
-            "? ",
-            Style::default().fg(theme.warning).bold(),
-        ));
-        spans.push(Span::styled(
-            "approve? ",
-            Style::default().fg(theme.text_primary),
-        ));
+        spans.push(Span::styled("? ", ty::warning_style(theme)));
+        spans.push(Span::styled("approve? ", ty::body(theme)));
     }
 
     let used: usize = spans.iter().map(|s| s.width()).sum();
@@ -313,37 +280,30 @@ fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     for (label, idx) in &buttons {
         if *idx == app.approval_cursor {
-            spans.push(Span::styled(
-                format!("[{label}]"),
-                Style::default().fg(theme.bg_page).bg(theme.accent).bold(),
+            spans.push(primitives::pill(
+                label.trim(),
+                theme.bg_page,
+                theme.accent,
             ));
         } else {
-            spans.push(Span::styled(
-                format!("[{label}]"),
-                Style::default()
-                    .fg(theme.text_secondary)
-                    .bg(theme.bg_elevated),
-            ));
+            spans.push(primitives::pill_outline(label.trim(), theme.text_secondary));
         }
         spans.push(Span::raw(" "));
     }
 
     frame.render_widget(
-        Paragraph::new(Line::from(spans)).style(Style::default().bg(theme.bg_surface)),
+        Paragraph::new(Line::from(spans)).style(ty::on_surface(theme)),
         area,
     );
 }
 
 fn render_question(frame: &mut Frame, area: Rect, theme: &Theme) {
     let content = Line::from(vec![
-        Span::styled("? ", Style::default().fg(theme.info).bold()),
-        Span::styled(
-            "select an option above",
-            Style::default().fg(theme.text_secondary),
-        ),
+        Span::styled("? ", ty::accent(theme.info)),
+        Span::styled("select an option above", ty::secondary(theme)),
     ]);
     frame.render_widget(
-        Paragraph::new(content).style(Style::default().bg(theme.bg_surface)),
+        Paragraph::new(content).style(ty::on_surface(theme)),
         area,
     );
 }
@@ -375,10 +335,10 @@ fn render_completion_popup(
             .map(|d| d.len())
             .max()
             .unwrap_or(0);
-        let total = max_name_width + 2 + max_desc_width + 4;
-        (total as u16).min(input_area.width).max(30)
+        let total = max_name_width + 2 + max_desc_width + PAD_H as usize * 2;
+        (total as u16).min(input_area.width).max(POPUP_MIN_W)
     } else {
-        (max_name_width as u16 + 4).min(input_area.width).max(16)
+        (max_name_width as u16 + PAD_H * 2).min(input_area.width).max(16)
     };
 
     let popup_area = Rect {
@@ -393,22 +353,11 @@ fn render_completion_popup(
         CompletionContext::AtMention | CompletionContext::FilePath => "Files",
     };
 
-    frame.render_widget(Clear, popup_area);
-
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.border_strong))
-        .title(Span::styled(
-            format!(" {title} "),
-            Style::default().fg(theme.text_secondary),
-        ))
-        .style(Style::default().bg(theme.bg_elevated));
-
-    let inner = block.inner(popup_area);
-    frame.render_widget(block, popup_area);
+    let card = primitives::Card::new(theme).title(title);
+    let inner = card.render_frame(frame, popup_area);
 
     let name_col_width = if has_descriptions {
-        max_name_width + 2
+        max_name_width + SP_2 as usize
     } else {
         inner.width as usize
     };
@@ -450,7 +399,7 @@ fn render_completion_popup(
                 } else {
                     Line::from(vec![
                         Span::styled(name_display, Style::default().fg(theme.accent)),
-                        Span::styled(desc_display, Style::default().fg(theme.text_tertiary)),
+                        Span::styled(desc_display, ty::caption(theme)),
                     ])
                 }
             } else {
@@ -469,17 +418,13 @@ fn render_completion_popup(
                         Style::default().fg(theme.bg_page).bg(theme.accent),
                     ))
                 } else {
-                    Line::from(Span::styled(
-                        display,
-                        Style::default().fg(theme.text_primary),
-                    ))
+                    Line::from(Span::styled(display, ty::body(theme)))
                 }
             }
         })
         .collect();
 
-    let paragraph =
-        Paragraph::new(visible_candidates).style(Style::default().bg(theme.bg_elevated));
+    let paragraph = Paragraph::new(visible_candidates).style(ty::on_elevated(theme));
     frame.render_widget(paragraph, inner);
 }
 
@@ -495,8 +440,8 @@ fn render_history_search(
 
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::from(vec![
-        Span::styled("search: ", Style::default().fg(theme.accent).bold()),
-        Span::styled(&search.query, Style::default().fg(theme.text_primary)),
+        Span::styled("search: ", ty::subheading(theme)),
+        Span::styled(&search.query, ty::body(theme)),
     ]));
 
     if let Some(entry) = matched_entry {
@@ -506,24 +451,18 @@ fn render_history_search(
         } else {
             display
         };
-        lines.push(Line::from(Span::styled(
-            truncated,
-            Style::default().fg(theme.text_secondary),
-        )));
+        lines.push(Line::from(Span::styled(truncated, ty::secondary(theme))));
         if matches.len() > 1 {
             lines.push(Line::from(Span::styled(
                 format!(" [{}/{}]", search.selected + 1, matches.len()),
-                Style::default().fg(theme.text_tertiary),
+                ty::caption(theme),
             )));
         }
     } else {
-        lines.push(Line::from(Span::styled(
-            " (no match)",
-            Style::default().fg(theme.text_tertiary),
-        )));
+        lines.push(Line::from(Span::styled(" (no match)", ty::caption(theme))));
     }
 
-    let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_surface));
+    let paragraph = Paragraph::new(lines).style(ty::on_surface(theme));
     frame.render_widget(paragraph, area);
 
     let cursor_col = "search: ".len() as u16 + search.query.len() as u16;

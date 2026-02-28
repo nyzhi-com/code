@@ -1,6 +1,9 @@
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+use crate::aesthetic::primitives;
+use crate::aesthetic::tokens::*;
+use crate::aesthetic::typography as ty;
 use crate::theme::Theme;
 
 #[derive(Debug, Clone)]
@@ -48,18 +51,17 @@ impl TodoPanelState {
 }
 
 pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
+    primitives::blur_overlay(frame, theme);
+
     let area = frame.area();
     let (done, _active, total) = state.progress();
 
-    let popup_w = 70u16.min(area.width.saturating_sub(8));
-    let content_rows = total as u16 + 4;
-    let popup_h = (content_rows + 4).min(area.height.saturating_sub(4)).max(8);
+    let popup_w = 70u16;
+    let content_rows = total as u16 + SP_4;
+    let popup_h = (content_rows + SP_4).min(area.height.saturating_sub(POPUP_MARGIN)).max(8);
+    let popup_area = primitives::centered_popup(area, popup_w, popup_h);
 
-    let x = area.x + (area.width.saturating_sub(popup_w)) / 2;
-    let y = area.y + (area.height.saturating_sub(popup_h)) / 2;
-    let popup_area = Rect::new(x, y, popup_w, popup_h);
-
-    let title = format!(" Todos ({done}/{total}) ");
+    let title = format!("Todos ({done}/{total})");
 
     let enforcer_label = if state.enforcer_active {
         if state.enforce_count > 0 {
@@ -71,52 +73,41 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
         "enforcer: paused".to_string()
     };
 
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.border_strong))
-        .title(
-            Line::from(Span::styled(
-                title,
-                Style::default().fg(theme.accent).bold(),
-            ))
-            .alignment(Alignment::Center),
-        )
-        .title_bottom(
-            Line::from(vec![
-                Span::styled(
-                    format!(" {enforcer_label} "),
-                    Style::default().fg(if state.enforcer_active {
-                        theme.success
-                    } else {
-                        theme.text_disabled
-                    }),
-                ),
-                Span::raw(" "),
-                Span::styled("esc", Style::default().fg(theme.accent)),
-                Span::styled(": close ", Style::default().fg(theme.text_disabled)),
-            ])
-            .alignment(Alignment::Right),
-        )
-        .style(Style::default().bg(theme.bg_elevated));
+    let enforcer_color = if state.enforcer_active {
+        theme.success
+    } else {
+        theme.text_disabled
+    };
 
-    let inner = block.inner(popup_area);
-    frame.render_widget(Clear, popup_area);
-    frame.render_widget(block, popup_area);
+    let footer_spans = vec![
+        Span::styled(
+            format!(" {enforcer_label} "),
+            Style::default().fg(enforcer_color),
+        ),
+        Span::raw(" "),
+        Span::styled("esc", Style::default().fg(theme.accent)),
+        Span::styled(": close ", ty::disabled(theme)),
+    ];
+
+    let card = primitives::Card::new(theme)
+        .title(&title)
+        .title_bottom_spans(footer_spans);
+    let inner = card.render_frame(frame, popup_area);
 
     if total == 0 {
         let empty = Paragraph::new(Line::from(vec![
-            Span::styled("  No todos yet. ", Style::default().fg(theme.text_disabled)),
+            Span::styled("  No todos yet. ", ty::disabled(theme)),
             Span::styled(
                 "The agent creates todos for multi-step tasks.",
-                Style::default().fg(theme.text_disabled).italic(),
+                ty::muted(theme),
             ),
         ]))
-        .style(Style::default().bg(theme.bg_elevated));
+        .style(ty::on_elevated(theme));
         frame.render_widget(empty, inner);
         return;
     }
 
-    let bar_width = inner.width.saturating_sub(4) as usize;
+    let bar_width = inner.width.saturating_sub(PAD_H * 2) as usize;
     let filled = if total > 0 {
         (done * bar_width) / total
     } else {
@@ -126,23 +117,26 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
 
     let bar_line = Line::from(vec![
         Span::raw("  "),
-        Span::styled("█".repeat(filled), Style::default().fg(theme.success)),
         Span::styled(
-            "░".repeat(empty_bar),
-            Style::default().fg(theme.text_disabled),
+            "\u{2588}".repeat(filled),
+            Style::default().fg(theme.success),
+        ),
+        Span::styled(
+            "\u{2591}".repeat(empty_bar),
+            ty::disabled(theme),
         ),
         Span::styled(
             format!(" {done}/{total}"),
-            Style::default().fg(theme.text_secondary),
+            ty::secondary(theme),
         ),
     ]);
 
-    let sep = Line::from(Span::styled(
-        format!("  {}", "─".repeat(inner.width.saturating_sub(4) as usize)),
-        Style::default().fg(theme.border_default),
-    ));
+    let sep = primitives::divider(inner.width.saturating_sub(PAD_H * 2), theme);
+    let mut padded_sep = vec![Span::raw("  ")];
+    padded_sep.extend(sep.spans);
+    let sep_line = Line::from(padded_sep);
 
-    let mut lines: Vec<Line> = vec![bar_line, sep];
+    let mut lines: Vec<Line> = vec![bar_line, sep_line];
 
     let completed_ids: std::collections::HashSet<&str> = state
         .items
@@ -159,30 +153,30 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
                 .all(|dep| completed_ids.contains(dep.as_str()));
 
         let (marker, marker_color) = match item.status.as_str() {
-            "completed" => ("✓", theme.success),
-            "in_progress" => ("▸", theme.warning),
-            "cancelled" => ("✗", theme.text_disabled),
-            _ if is_blocked => ("⊘", theme.danger),
-            _ => ("○", theme.text_secondary),
+            "completed" => ("\u{2713}", theme.success),
+            "in_progress" => ("\u{25B8}", theme.warning),
+            "cancelled" => ("\u{2717}", theme.text_disabled),
+            _ if is_blocked => ("\u{2298}", theme.danger),
+            _ => ("\u{25CB}", theme.text_secondary),
         };
 
         let content_style = match item.status.as_str() {
-            "completed" => Style::default().fg(theme.text_disabled),
-            "in_progress" => Style::default().fg(theme.text_primary).bold(),
-            "cancelled" => Style::default().fg(theme.text_disabled).italic(),
-            _ if is_blocked => Style::default().fg(theme.text_disabled),
-            _ => Style::default().fg(theme.text_secondary),
+            "completed" => ty::disabled(theme),
+            "in_progress" => ty::heading(theme),
+            "cancelled" => ty::muted(theme),
+            _ if is_blocked => ty::disabled(theme),
+            _ => ty::secondary(theme),
         };
 
         let max_content = (inner.width as usize).saturating_sub(10);
         let truncated: String = if item.content.len() > max_content {
-            format!("{}…", &item.content[..max_content.saturating_sub(1)])
+            format!("{}\u{2026}", &item.content[..max_content.saturating_sub(1)])
         } else {
             item.content.clone()
         };
 
         let mut spans = vec![
-            Span::styled("  ", Style::default()),
+            Span::raw("  "),
             Span::styled(format!("{marker} "), Style::default().fg(marker_color)),
             Span::styled(truncated, content_style),
         ];
@@ -195,7 +189,7 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
                 .map(|s| s.as_str())
                 .collect();
             spans.push(Span::styled(
-                format!(" ⊘{}", pending_deps.join(",")),
+                format!(" \u{2298}{}", pending_deps.join(",")),
                 Style::default().fg(theme.danger),
             ));
         }
@@ -206,6 +200,6 @@ pub fn draw(frame: &mut Frame, state: &TodoPanelState, theme: &Theme) {
     let visible = inner.height as usize;
     let display_lines: Vec<Line> = lines.into_iter().take(visible).collect();
 
-    let paragraph = Paragraph::new(display_lines).style(Style::default().bg(theme.bg_elevated));
+    let paragraph = Paragraph::new(display_lines).style(ty::on_elevated(theme));
     frame.render_widget(paragraph, inner);
 }

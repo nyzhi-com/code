@@ -2,6 +2,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+use crate::aesthetic::primitives;
+use crate::aesthetic::tokens::*;
+use crate::aesthetic::typography as ty;
 use crate::theme::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,7 +102,6 @@ impl TextPromptState {
             }
             KeyCode::Char(c) => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'v' {
-                    // Paste support would need clipboard access
                     TextPromptAction::None
                 } else {
                     self.value.insert(self.cursor_pos, c);
@@ -113,46 +115,38 @@ impl TextPromptState {
 }
 
 pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
+    primitives::blur_overlay(frame, theme);
+
     let area = frame.area();
-
-    let popup_width = 60u16.min(area.width.saturating_sub(4));
     let desc_lines = state.description.len() as u16;
-    let popup_height = (8 + desc_lines).min(area.height.saturating_sub(4));
-    let x = (area.width.saturating_sub(popup_width)) / 2;
-    let y = (area.height.saturating_sub(popup_height)) / 2;
-    let popup_area = Rect::new(x, y, popup_width, popup_height);
-
-    frame.render_widget(Clear, popup_area);
+    let popup_h = (8 + desc_lines).min(area.height.saturating_sub(POPUP_MARGIN));
+    let popup_w = 60u16;
+    let popup_area = primitives::centered_popup(area, popup_w, popup_h);
 
     let mut hint_spans: Vec<Span> = vec![
         Span::styled(" enter", Style::default().fg(theme.accent)),
-        Span::styled(" confirm  ", Style::default().fg(theme.text_disabled)),
+        Span::styled(" confirm  ", ty::disabled(theme)),
         Span::styled("esc", Style::default().fg(theme.accent)),
-        Span::styled(" cancel", Style::default().fg(theme.text_disabled)),
+        Span::styled(" cancel", ty::disabled(theme)),
     ];
     if state.masked {
         hint_spans.push(Span::styled("  tab", Style::default().fg(theme.accent)));
-        hint_spans.push(Span::styled(" reveal ", Style::default().fg(theme.text_disabled)));
+        hint_spans.push(Span::styled(" reveal ", ty::disabled(theme)));
     } else {
-        hint_spans.push(Span::styled(" ", Style::default()));
+        hint_spans.push(Span::raw(" "));
     }
 
-    let block = Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.border_strong))
-        .title(Line::from(vec![
-            Span::raw(" "),
-            Span::styled(&state.title, Style::default().fg(theme.accent).bold()),
-            Span::raw(" "),
-        ]))
-        .title_alignment(Alignment::Center)
-        .title_bottom(Line::from(hint_spans).alignment(Alignment::Right))
-        .style(Style::default().bg(theme.bg_elevated));
+    let card = primitives::Card::new(theme)
+        .title(&state.title)
+        .title_bottom_spans(hint_spans);
+    let inner = card.render_frame(frame, popup_area);
 
-    let inner = block.inner(popup_area);
-    frame.render_widget(block, popup_area);
-
-    let content = Rect::new(inner.x + 1, inner.y, inner.width.saturating_sub(2), inner.height);
+    let content = Rect::new(
+        inner.x + SP_1,
+        inner.y,
+        inner.width.saturating_sub(SP_1 * 2),
+        inner.height,
+    );
 
     let mut y_offset = 0u16;
 
@@ -161,7 +155,7 @@ pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
             let desc_area = Rect::new(content.x, content.y + y_offset, content.width, 1);
             frame.render_widget(
                 Paragraph::new(desc.as_str())
-                    .style(Style::default().fg(theme.text_secondary).bg(theme.bg_elevated)),
+                    .style(ty::secondary(theme).bg(theme.bg_elevated)),
                 desc_area,
             );
             y_offset += 1;
@@ -180,7 +174,7 @@ pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
         };
         frame.render_widget(
             Paragraph::new(label_text)
-                .style(Style::default().fg(theme.text_primary).bold().bg(theme.bg_elevated)),
+                .style(ty::heading(theme).bg(theme.bg_elevated)),
             label_area,
         );
         y_offset += 1;
@@ -198,9 +192,9 @@ pub fn draw(frame: &mut Frame, state: &TextPromptState, theme: &Theme) {
         };
 
         let style = if state.value.is_empty() {
-            Style::default().fg(theme.text_disabled).bg(theme.bg_page)
+            ty::disabled(theme).bg(theme.bg_page)
         } else {
-            Style::default().fg(theme.text_primary).bg(theme.bg_page)
+            ty::body(theme).bg(theme.bg_page)
         };
 
         let visible_width = content.width as usize;

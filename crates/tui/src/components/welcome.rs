@@ -1,12 +1,14 @@
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+use crate::aesthetic::tokens::*;
+use crate::aesthetic::typography as ty;
 use crate::app::App;
 use crate::logo::LOGO_SPLASH;
 use crate::theme::Theme;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let block = Block::default().style(Style::default().bg(theme.bg_page));
+    let block = Block::default().style(ty::on_page(theme));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -28,14 +30,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         let pad = inner_w.saturating_sub(logo_width) / 2;
         lines.push(Line::from(Span::styled(
             format!("{:>pad$}{logo_line}", ""),
-            Style::default().fg(theme.accent),
+            ty::subheading(theme),
         )));
     }
 
     let sub_pad = inner_w.saturating_sub(subtitle.len()) / 2;
     lines.push(Line::from(Span::styled(
         format!("{:>sub_pad$}{subtitle}", ""),
-        Style::default().fg(theme.text_disabled),
+        ty::disabled(theme),
     )));
 
     lines.push(Line::from(""));
@@ -46,14 +48,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         let h_pad = inner_w.saturating_sub(hint.len()) / 2;
         lines.push(Line::from(Span::styled(
             format!("{:>h_pad$}{hint}", ""),
-            Style::default().fg(theme.warning),
+            ty::warning_style(theme),
         )));
     } else {
-        let status = format!("{} · {}", app.provider_name, app.model_name);
+        let status = format!("{} \u{00B7} {}", app.provider_name, app.model_name);
         let s_pad = inner_w.saturating_sub(status.len()) / 2;
         lines.push(Line::from(Span::styled(
             format!("{:>s_pad$}{status}", ""),
-            Style::default().fg(theme.text_secondary),
+            ty::secondary(theme),
         )));
     }
 
@@ -69,18 +71,15 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let mut hint_spans: Vec<Span> = Vec::new();
     for (i, (key, desc)) in shortcuts.iter().enumerate() {
         if i > 0 {
-            hint_spans.push(Span::styled(
-                "   ",
-                Style::default().fg(theme.text_disabled),
-            ));
+            hint_spans.push(Span::raw(" ".repeat(SP_4 as usize - 1)));
         }
         hint_spans.push(Span::styled(
             (*key).to_string(),
-            Style::default().fg(theme.text_tertiary).bold(),
+            ty::caption(theme).bold(),
         ));
         hint_spans.push(Span::styled(
             format!(" {desc}"),
-            Style::default().fg(theme.text_disabled),
+            ty::disabled(theme),
         ));
     }
 
@@ -90,6 +89,6 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     padded.extend(hint_spans);
     lines.push(Line::from(padded));
 
-    let paragraph = Paragraph::new(lines).style(Style::default().bg(theme.bg_page));
+    let paragraph = Paragraph::new(lines).style(ty::on_page(theme));
     frame.render_widget(paragraph, inner);
 }

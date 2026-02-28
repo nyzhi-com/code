@@ -1,5 +1,6 @@
 use ratatui::prelude::*;
 
+use crate::aesthetic::layout as aes_layout;
 use crate::app::App;
 use crate::components::{
     chat, footer, header, input_box, plan_banner, plan_panel, selector, settings_panel,
@@ -19,46 +20,34 @@ pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState)
     } else {
         app.input.lines().count().max(1) as u16
     };
-    let input_height = (input_lines + 2).max(4).min(12);
-    let banner_height = update_banner::height(&app.update_status);
-    let plan_height = plan_banner::height(app.plan_mode);
-    let show_header = !app.items.is_empty() || !app.current_stream.is_empty();
-    let header_height = if show_header { 1u16 } else { 0 };
+    let banner_h = update_banner::height(&app.update_status);
+    let plan_h = plan_banner::height(app.plan_mode);
+    let has_content = !app.items.is_empty() || !app.current_stream.is_empty();
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(banner_height),
-            Constraint::Length(plan_height),
-            Constraint::Length(header_height),
-            Constraint::Min(1),
-            Constraint::Length(input_height),
-            Constraint::Length(1),
-        ])
-        .split(frame.area());
+    let regions = aes_layout::compute(
+        frame.area(),
+        banner_h,
+        plan_h,
+        has_content,
+        input_lines,
+    );
 
-    if banner_height > 0 {
-        update_banner::draw(frame, chunks[0], &app.update_status, theme);
+    if banner_h > 0 {
+        update_banner::draw(frame, regions.banner, &app.update_status, theme);
     }
 
-    if plan_height > 0 {
-        plan_banner::draw(frame, chunks[1], theme);
+    if plan_h > 0 {
+        plan_banner::draw(frame, regions.plan_banner, theme);
     }
 
-    if show_header {
-        header::draw(frame, chunks[2], app, theme);
+    if has_content {
+        header::draw(frame, regions.header, app, theme);
     }
-
-    let main_area = chunks[3];
 
     let (chat_area, panel_area) = if app.show_plan_panel {
-        let split = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
-            .split(main_area);
-        (split[0], Some(split[1]))
+        aes_layout::split_side_panel(regions.main)
     } else {
-        (main_area, None)
+        (regions.main, None)
     };
 
     if app.items.is_empty() && app.current_stream.is_empty() {
@@ -71,8 +60,8 @@ pub fn draw(frame: &mut Frame, app: &App, theme: &Theme, spinner: &SpinnerState)
         plan_panel::draw(frame, panel_rect, &app.plan_panel, theme);
     }
 
-    input_box::draw(frame, chunks[4], app, theme, spinner);
-    footer::draw(frame, chunks[5], app, theme);
+    input_box::draw(frame, regions.input, app, theme, spinner);
+    footer::draw(frame, regions.footer, app, theme);
 
     if let Some(sel) = &app.selector {
         selector::draw(frame, sel, theme);

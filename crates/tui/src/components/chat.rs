@@ -1,6 +1,9 @@
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 
+use crate::aesthetic::borders;
+use crate::aesthetic::tokens::*;
+use crate::aesthetic::typography as ty;
 use crate::app::{App, DiffLineKind, DisplayItem, ToolStatus};
 use crate::highlight::{self, SyntaxHighlighter};
 use crate::theme::{Theme, ThemeMode};
@@ -8,7 +11,6 @@ use crate::theme::{Theme, ThemeMode};
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     let inner = area;
     let w = inner.width;
-
     let dark = theme.mode == ThemeMode::Dark;
     let mut lines: Vec<Line> = Vec::new();
 
@@ -37,14 +39,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                         let mode_label = if app.plan_mode { "Plan" } else { "Build" };
                         let mode_color = if app.plan_mode { theme.warning } else { theme.accent };
                         let mut indicator = vec![
-                            Span::styled("  ■ ", Style::default().fg(mode_color)),
                             Span::styled(
-                                mode_label,
-                                Style::default().fg(mode_color).bold(),
+                                format!("  {} ", "\u{25A0}"),
+                                Style::default().fg(mode_color),
                             ),
+                            Span::styled(mode_label, Style::default().fg(mode_color).bold()),
                             Span::styled(
-                                format!(" · {}", app.model_name),
-                                Style::default().fg(theme.text_disabled),
+                                format!(" \u{00B7} {}", app.model_name),
+                                ty::disabled(theme),
                             ),
                         ];
                         if let Some(dur) = app.last_turn_duration {
@@ -58,8 +60,8 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                                 format!("{m}m{s}s")
                             };
                             indicator.push(Span::styled(
-                                format!(" · {dur_str}"),
-                                Style::default().fg(theme.text_disabled),
+                                format!(" \u{00B7} {dur_str}"),
+                                ty::disabled(theme),
                             ));
                         }
                         lines.push(Line::from(indicator));
@@ -72,7 +74,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
                 } else {
                     lines.push(Line::from(Span::styled(
                         "  ... thinking (hidden)",
-                        Style::default().fg(theme.text_disabled).italic(),
+                        ty::muted(theme),
                     )));
                 }
             }
@@ -125,6 +127,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         }
     }
 
+    // Thinking stream (live)
     if !app.thinking_stream.is_empty() && app.current_stream.is_empty() {
         if app.show_thinking {
             lines.push(Line::from(""));
@@ -132,11 +135,12 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         } else {
             lines.push(Line::from(Span::styled(
                 "  ... thinking (hidden)",
-                Style::default().fg(theme.text_disabled).italic(),
+                ty::muted(theme),
             )));
         }
     }
 
+    // Assistant stream (live)
     if !app.current_stream.is_empty() {
         lines.push(Line::from(""));
         let stream_start = lines.len();
@@ -149,7 +153,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         );
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled("█", Style::default().fg(theme.accent)),
+            Span::styled("\u{2588}", Style::default().fg(theme.accent)),
         ]));
         prepend_bar_vec(&mut lines, stream_start, theme.accent, w);
     }
@@ -166,10 +170,14 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     let paragraph = Paragraph::new(lines)
         .scroll((scroll, 0))
-        .style(Style::default().bg(theme.bg_page));
+        .style(ty::on_page(theme));
 
     frame.render_widget(paragraph, inner);
 }
+
+// ---------------------------------------------------------------------------
+// Search highlighting
+// ---------------------------------------------------------------------------
 
 fn highlight_search_in_line<'a>(line: Line<'a>, query: &str, hl_style: Style) -> Line<'a> {
     let query_lower = query.to_lowercase();
@@ -206,9 +214,16 @@ fn highlight_search_in_line<'a>(line: Line<'a>, query: &str, hl_style: Style) ->
     Line::from(new_spans)
 }
 
+// ---------------------------------------------------------------------------
+// Bar prepend (accent bar for message groups)
+// ---------------------------------------------------------------------------
+
 fn prepend_bar_vec(lines: &mut Vec<Line<'_>>, start: usize, color: Color, max_width: u16) {
-    let bar_span = Span::styled(" ┃ ", Style::default().fg(color));
-    let content_width = (max_width as usize).saturating_sub(3);
+    let bar_span = Span::styled(
+        format!(" {} ", borders::BAR_CHAR),
+        Style::default().fg(color),
+    );
+    let content_width = (max_width as usize).saturating_sub(ACCENT_GUTTER as usize + 1);
 
     let tail: Vec<Line<'_>> = lines.drain(start..).collect();
     for line in tail {
@@ -267,6 +282,10 @@ fn wrap_line_spans<'a>(line: &Line<'a>, max_width: usize) -> Vec<Line<'a>> {
     rows.into_iter().map(Line::from).collect()
 }
 
+// ---------------------------------------------------------------------------
+// Message rendering
+// ---------------------------------------------------------------------------
+
 fn is_error_content(content: &str) -> bool {
     content.starts_with("Error:")
         || content.starts_with("Turn error:")
@@ -300,7 +319,7 @@ fn render_user_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &The
     for line in content.lines() {
         lines.push(Line::from(Span::styled(
             format!("  {line}"),
-            Style::default().fg(theme.text_primary).bold(),
+            ty::body_bold(theme),
         )));
     }
 }
@@ -315,10 +334,7 @@ fn render_assistant_message<'a>(
 ) {
     lines.push(Line::from(""));
     let bar_start = lines.len();
-    lines.push(Line::from(Span::styled(
-        "  Nizzy",
-        Style::default().fg(theme.accent).bold(),
-    )));
+    lines.push(Line::from(Span::styled("  Nizzy", ty::subheading(theme))));
     render_highlighted_content(lines, content, theme, highlighter, dark);
     prepend_bar_vec(lines, bar_start, theme.accent, width);
 }
@@ -330,30 +346,27 @@ fn render_system_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &T
     let rest_count = all_lines.len().saturating_sub(1);
 
     lines.push(Line::from(vec![
-        Span::styled("    \u{2500} ", Style::default().fg(theme.text_disabled)),
-        Span::styled(
-            first.to_string(),
-            Style::default().fg(theme.text_tertiary).italic(),
-        ),
+        Span::styled("    \u{2500} ", ty::disabled(theme)),
+        Span::styled(first.to_string(), ty::muted(theme)),
     ]));
 
     if rest_count > 0 && rest_count <= 30 {
         for line in all_lines.iter().skip(1) {
             lines.push(Line::from(Span::styled(
                 format!("      {line}"),
-                Style::default().fg(theme.text_tertiary).italic(),
+                ty::muted(theme),
             )));
         }
     } else if rest_count > 30 {
         for line in all_lines.iter().skip(1).take(20) {
             lines.push(Line::from(Span::styled(
                 format!("      {line}"),
-                Style::default().fg(theme.text_tertiary).italic(),
+                ty::muted(theme),
             )));
         }
         lines.push(Line::from(Span::styled(
             format!("      ... +{} more lines", rest_count - 20),
-            Style::default().fg(theme.text_disabled),
+            ty::disabled(theme),
         )));
     }
 }
@@ -363,7 +376,7 @@ fn render_error_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Th
     let bar_start = lines.len();
     lines.push(Line::from(Span::styled(
         "  \u{2717} error",
-        Style::default().fg(theme.danger).bold(),
+        ty::danger(theme),
     )));
     for line in content.lines() {
         lines.push(Line::from(Span::styled(
@@ -374,18 +387,19 @@ fn render_error_message<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Th
     prepend_bar_vec(lines, bar_start, theme.danger, width);
 }
 
+// ---------------------------------------------------------------------------
+// Thinking
+// ---------------------------------------------------------------------------
+
 fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, width: u16) {
     lines.push(Line::from(""));
     let think_start = lines.len();
-    let dim = Style::default()
-        .fg(theme.text_disabled)
-        .add_modifier(Modifier::ITALIC);
 
     lines.push(Line::from(vec![
-        Span::styled("  thinking ", dim),
+        Span::styled("  thinking ", ty::muted(theme)),
         Span::styled(
             format!("({} lines)", content.lines().count()),
-            Style::default().fg(theme.text_disabled),
+            ty::disabled(theme),
         ),
     ]));
 
@@ -395,12 +409,15 @@ fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, 
         } else {
             line_text.to_string()
         };
-        lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
+        lines.push(Line::from(Span::styled(
+            format!("  {trimmed}"),
+            ty::muted(theme),
+        )));
     }
     if content.lines().count() > 8 {
         lines.push(Line::from(Span::styled(
             format!("  ... +{} more", content.lines().count() - 8),
-            Style::default().fg(theme.text_disabled),
+            ty::disabled(theme),
         )));
     }
     prepend_bar_vec(lines, think_start, theme.text_disabled, width);
@@ -408,11 +425,8 @@ fn render_thinking<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, 
 
 fn render_thinking_stream<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &Theme, width: u16) {
     let think_start = lines.len();
-    let dim = Style::default()
-        .fg(theme.text_disabled)
-        .add_modifier(Modifier::ITALIC);
 
-    lines.push(Line::from(Span::styled("  thinking...", dim)));
+    lines.push(Line::from(Span::styled("  thinking...", ty::muted(theme))));
     let tlines: Vec<&str> = content.lines().collect();
     let show = tlines.len().min(6);
     let start = if show < tlines.len() {
@@ -426,10 +440,17 @@ fn render_thinking_stream<'a>(lines: &mut Vec<Line<'a>>, content: &str, theme: &
         } else {
             (*line_text).to_string()
         };
-        lines.push(Line::from(Span::styled(format!("  {trimmed}"), dim)));
+        lines.push(Line::from(Span::styled(
+            format!("  {trimmed}"),
+            ty::muted(theme),
+        )));
     }
     prepend_bar_vec(lines, think_start, theme.text_disabled, width);
 }
+
+// ---------------------------------------------------------------------------
+// Highlighted markdown content
+// ---------------------------------------------------------------------------
 
 fn render_highlighted_content<'a>(
     lines: &mut Vec<Line<'a>>,
@@ -491,6 +512,10 @@ fn render_highlighted_content<'a>(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Tool calls
+// ---------------------------------------------------------------------------
+
 fn format_elapsed(ms: u64) -> String {
     if ms < 1000 {
         format!("{ms}ms")
@@ -505,10 +530,10 @@ fn format_elapsed(ms: u64) -> String {
 
 fn tool_icon(status: &ToolStatus) -> (&'static str, fn(&Theme) -> Color) {
     match status {
-        ToolStatus::Running => ("◌", |t: &Theme| t.warning),
+        ToolStatus::Running => ("\u{25CC}", |t: &Theme| t.warning),
         ToolStatus::WaitingApproval => ("?", |t: &Theme| t.warning),
-        ToolStatus::Completed => ("✓", |t: &Theme| t.success),
-        ToolStatus::Denied => ("✗", |t: &Theme| t.danger),
+        ToolStatus::Completed => ("\u{2713}", |t: &Theme| t.success),
+        ToolStatus::Denied => ("\u{2717}", |t: &Theme| t.danger),
     }
 }
 
@@ -522,10 +547,7 @@ fn render_tool_minimal<'a>(
     let color = color_fn(theme);
     lines.push(Line::from(vec![
         Span::styled(format!("    {icon} "), Style::default().fg(color)),
-        Span::styled(
-            name.to_string(),
-            Style::default().fg(theme.text_disabled),
-        ),
+        Span::styled(name.to_string(), ty::disabled(theme)),
     ]));
 }
 
@@ -552,24 +574,18 @@ fn render_tool_call<'a>(
 
     let mut spans = vec![
         Span::styled(format!("    {icon} "), Style::default().fg(icon_color)),
-        Span::styled(
-            name.to_string(),
-            Style::default().fg(theme.accent).bold(),
-        ),
+        Span::styled(name.to_string(), ty::subheading(theme)),
     ];
 
     if !summary.is_empty() {
-        spans.push(Span::styled(
-            format!(" {summary}"),
-            Style::default().fg(theme.text_tertiary),
-        ));
+        spans.push(Span::styled(format!(" {summary}"), ty::caption(theme)));
     }
 
     if *status == ToolStatus::Completed {
         if let Some(ms) = elapsed_ms {
             spans.push(Span::styled(
                 format!(" {}", format_elapsed(*ms)),
-                Style::default().fg(theme.text_disabled),
+                ty::disabled(theme),
             ));
         }
     }
@@ -602,17 +618,21 @@ fn render_tool_call<'a>(
             };
             lines.push(Line::from(Span::styled(
                 format!("      {truncated}"),
-                Style::default().fg(theme.text_disabled),
+                ty::disabled(theme),
             )));
         }
         if all_lines.len() > max_lines {
             lines.push(Line::from(Span::styled(
                 format!("      ... +{} lines", all_lines.len() - max_lines),
-                Style::default().fg(theme.text_disabled),
+                ty::disabled(theme),
             )));
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Diffs
+// ---------------------------------------------------------------------------
 
 fn render_diff<'a>(
     lines: &mut Vec<Line<'a>>,
@@ -665,11 +685,15 @@ fn render_diff<'a>(
     if hunks.is_empty() && !is_new_file {
         lines.push(Line::from(Span::styled(
             "  (no changes)",
-            Style::default().fg(theme.text_disabled),
+            ty::disabled(theme),
         )));
     }
 
-    let bar_color = if is_new_file { theme.success } else { theme.warning };
+    let bar_color = if is_new_file {
+        theme.success
+    } else {
+        theme.warning
+    };
     prepend_bar_vec(lines, diff_start, bar_color, width);
 }
 

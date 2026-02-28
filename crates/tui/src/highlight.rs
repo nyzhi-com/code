@@ -274,7 +274,7 @@ pub fn format_prose_line<'a>(raw: &str, base_fg: Color, accent: Color, code_bg: 
     }
 
     if is_horizontal_rule(trimmed) {
-        let rule = "─".repeat(60);
+        let rule = crate::aesthetic::borders::THIN_H.repeat(60);
         return Line::from(Span::styled(
             format!("  {rule}"),
             Style::default().fg(Color::DarkGray),
@@ -528,7 +528,7 @@ pub fn format_table_lines<'a>(
         if is_header && (i + 1 == header_count || header_count == 0) {
             let mut sep_spans = vec![Span::raw("  ")];
             for (j, width) in col_widths.iter().enumerate() {
-                let dash = "─".repeat(width + 2);
+                let dash = crate::aesthetic::borders::THIN_H.repeat(width + 2);
                 sep_spans.push(Span::styled(dash, Style::default().fg(border_fg)));
                 if j + 1 < col_count {
                     sep_spans.push(Span::styled("┼", Style::default().fg(border_fg)));
