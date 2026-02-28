@@ -360,6 +360,8 @@ fn render_completion_popup(
 
     let max_name_width = state.candidates.iter().map(|c| c.len()).max().unwrap_or(10);
 
+    let prefix_w: usize = 1;
+
     let popup_width = if has_descriptions {
         let max_desc_width = state
             .descriptions
@@ -367,10 +369,12 @@ fn render_completion_popup(
             .map(|d| d.len())
             .max()
             .unwrap_or(0);
-        let total = max_name_width + 2 + max_desc_width + PAD_H as usize * 2;
+        let total = prefix_w + max_name_width + 2 + max_desc_width + PAD_H as usize * 2;
         (total as u16).min(input_area.width).max(POPUP_MIN_W)
     } else {
-        (max_name_width as u16 + PAD_H * 2).min(input_area.width).max(16)
+        (prefix_w as u16 + max_name_width as u16 + PAD_H * 2)
+            .min(input_area.width)
+            .max(16)
     };
 
     let popup_area = Rect {
@@ -385,13 +389,18 @@ fn render_completion_popup(
         CompletionContext::AtMention | CompletionContext::FilePath => "Files",
     };
 
-    let card = primitives::Card::new(theme).title(title);
+    let card = primitives::Card::new(theme)
+        .title(title)
+        .border(theme.accent);
     let inner = card.render_frame(frame, popup_area);
+
+    let inner_w = inner.width as usize;
+    let content_w = inner_w.saturating_sub(prefix_w);
 
     let name_col_width = if has_descriptions {
         max_name_width + SP_2 as usize
     } else {
-        inner.width as usize
+        content_w
     };
 
     let visible_candidates: Vec<Line> = state
@@ -401,7 +410,17 @@ fn render_completion_popup(
         .skip(state.scroll_offset)
         .take(max_visible)
         .map(|(i, candidate)| {
+            let is_selected = i == state.selected;
+            let row_bg = if is_selected { theme.accent } else { theme.bg_elevated };
+            let primary_fg = if is_selected { theme.bg_page } else { theme.text_primary };
+            let secondary_fg = if is_selected { theme.bg_elevated } else { theme.text_tertiary };
+            let row_style = Style::default().fg(primary_fg).bg(row_bg);
+
             let desc = state.descriptions.get(i).map(|d| d.as_str()).unwrap_or("");
+
+            let mut spans = vec![
+                Span::styled(" ", Style::default().bg(row_bg)),
+            ];
 
             if has_descriptions {
                 let name_display = if candidate.len() > name_col_width {
@@ -410,49 +429,36 @@ fn render_completion_popup(
                     format!("{:<width$}", candidate, width = name_col_width)
                 };
 
-                let remaining = (inner.width as usize).saturating_sub(name_col_width);
+                let remaining = content_w.saturating_sub(name_col_width);
                 let desc_display = if desc.len() > remaining {
                     format!("{}...", &desc[..remaining.saturating_sub(3)])
                 } else {
                     format!("{:<width$}", desc, width = remaining)
                 };
 
-                if i == state.selected {
-                    Line::from(vec![
-                        Span::styled(
-                            name_display,
-                            Style::default().fg(theme.bg_page).bg(theme.accent).bold(),
-                        ),
-                        Span::styled(
-                            desc_display,
-                            Style::default().fg(theme.bg_elevated).bg(theme.accent),
-                        ),
-                    ])
-                } else {
-                    Line::from(vec![
-                        Span::styled(name_display, Style::default().fg(theme.accent)),
-                        Span::styled(desc_display, ty::caption(theme)),
-                    ])
-                }
+                spans.push(Span::styled(name_display, row_style.bold()));
+                spans.push(Span::styled(
+                    desc_display,
+                    Style::default().fg(secondary_fg).bg(row_bg),
+                ));
             } else {
-                let display = if candidate.len() as u16 > inner.width {
-                    format!(
-                        "{}...",
-                        &candidate[..(inner.width as usize).saturating_sub(3)]
-                    )
+                let display = if candidate.len() > content_w {
+                    format!("{}...", &candidate[..content_w.saturating_sub(3)])
                 } else {
                     candidate.clone()
                 };
-
-                if i == state.selected {
-                    Line::from(Span::styled(
-                        format!("{display:<width$}", width = inner.width as usize),
-                        Style::default().fg(theme.bg_page).bg(theme.accent),
-                    ))
-                } else {
-                    Line::from(Span::styled(display, ty::body(theme)))
+                spans.push(Span::styled(display.clone(), row_style.bold()));
+                let used = prefix_w + display.len();
+                let trail = inner_w.saturating_sub(used);
+                if trail > 0 {
+                    spans.push(Span::styled(
+                        " ".repeat(trail),
+                        Style::default().bg(row_bg),
+                    ));
                 }
             }
+
+            Line::from(spans)
         })
         .collect();
 

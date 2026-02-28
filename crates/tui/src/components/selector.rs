@@ -246,7 +246,6 @@ impl SelectorState {
 }
 
 pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
-    // Blur overlay
     primitives::blur_overlay(frame, theme);
 
     let area = frame.area();
@@ -273,7 +272,6 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
 
     let popup_area = primitives::centered_popup(area, popup_w, popup_h);
 
-    // Build footer hints
     let footer_spans: Vec<Span> = match selector.kind {
         SelectorKind::Model if selector.context_value.as_deref() != Some("thinking") => {
             vec![
@@ -298,6 +296,7 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
 
     let card = primitives::Card::new(theme)
         .title(&selector.title)
+        .border(theme.accent)
         .title_bottom_spans(footer_spans);
     let inner = card.render_frame(frame, popup_area);
 
@@ -305,12 +304,12 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
 
     if has_search {
         let search_area = Rect::new(content_area.x, content_area.y, content_area.width, 1);
-        let search_text = if selector.search.is_empty() {
+        let search_content = if selector.search.is_empty() {
             let placeholder = match selector.kind {
                 SelectorKind::ApiKeyInput => "Enter API key...",
-                SelectorKind::Command => "Type to filter commands...",
+                SelectorKind::Command => "Type to filter...",
                 SelectorKind::CustomModelInput => "e.g. anthropic/claude-sonnet-4",
-                SelectorKind::Model => "Search...",
+                SelectorKind::Model => "Search models...",
                 SelectorKind::UserQuestion => "Type custom answer...",
                 _ => "Search...",
             };
@@ -321,7 +320,10 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         } else {
             Span::styled(&selector.search, ty::body(theme))
         };
-        let search_line = Line::from(vec![Span::raw("  "), search_text]);
+        let search_line = Line::from(vec![
+            Span::styled(" \u{203A} ", Style::default().fg(theme.accent).bold()),
+            search_content,
+        ]);
         frame.render_widget(
             Paragraph::new(search_line).style(ty::on_elevated(theme)),
             search_area,
@@ -360,8 +362,11 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
 
         if item.is_header {
             lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(item.label.clone(), ty::heading(theme)),
+                Span::raw(" "),
+                Span::styled(
+                    item.label.clone(),
+                    Style::default().fg(theme.text_tertiary).bold(),
+                ),
             ]));
             continue;
         }
@@ -369,53 +374,81 @@ pub fn draw(frame: &mut Frame, selector: &SelectorState, theme: &Theme) {
         let is_cursor = orig_idx == selector.cursor;
         let is_active = selector.active_idx == Some(orig_idx);
 
+        let row_bg = if is_cursor {
+            theme.accent
+        } else {
+            theme.bg_elevated
+        };
+        let primary_fg = if is_cursor { theme.bg_page } else { theme.text_primary };
+        let secondary_fg = if is_cursor { theme.bg_elevated } else { theme.text_disabled };
+
         let marker = if is_active { "\u{25CF} " } else { "  " };
-        let arrow = if is_cursor { "\u{25B8} " } else { "  " };
 
         let mut spans = vec![];
 
         spans.push(Span::styled(
-            arrow,
-            if is_cursor {
-                Style::default().fg(theme.accent)
-            } else {
-                ty::disabled(theme)
-            },
+            " ",
+            Style::default().bg(row_bg),
         ));
 
-        let marker_color = if is_active {
+        let marker_fg = if is_cursor {
+            theme.bg_page
+        } else if is_active {
             theme.accent
         } else {
             theme.text_disabled
         };
-        spans.push(Span::styled(marker, Style::default().fg(marker_color)));
+        spans.push(Span::styled(
+            marker,
+            Style::default().fg(marker_fg).bg(row_bg),
+        ));
 
         if let Some(color) = item.preview_color {
-            spans.push(Span::styled("\u{2588} ", Style::default().fg(color)));
+            let swatch_fg = if is_cursor { color } else { color };
+            spans.push(Span::styled(
+                "\u{2588} ",
+                Style::default().fg(swatch_fg).bg(row_bg),
+            ));
         }
 
-        let label_style = if is_cursor {
-            ty::heading(theme)
-        } else if is_active {
-            Style::default().fg(theme.accent)
-        } else {
-            ty::secondary(theme)
-        };
+        let label_style = Style::default().fg(primary_fg).bg(row_bg).bold();
 
-        let prefix_width = 4 + if item.preview_color.is_some() { 2 } else { 0 };
+        let prefix_width = 3 + if item.preview_color.is_some() { 2 } else { 0 };
 
         if let Some(ref badge) = item.right_badge {
             let label_len = item.label.chars().count();
             let badge_len = badge.chars().count();
-            let avail = inner_w.saturating_sub(prefix_width);
+            let avail = inner_w.saturating_sub(prefix_width + 1);
             let gap = avail.saturating_sub(label_len + badge_len);
             spans.push(Span::styled(item.label.clone(), label_style));
             if gap > 0 {
-                spans.push(Span::raw(" ".repeat(gap)));
+                spans.push(Span::styled(
+                    " ".repeat(gap),
+                    Style::default().bg(row_bg),
+                ));
             }
-            spans.push(Span::styled(badge.clone(), ty::disabled(theme)));
+            spans.push(Span::styled(
+                badge.clone(),
+                Style::default().fg(secondary_fg).bg(row_bg),
+            ));
+            let used = prefix_width + label_len + gap + badge_len + 1;
+            let trail = inner_w.saturating_sub(used);
+            if trail > 0 {
+                spans.push(Span::styled(
+                    " ".repeat(trail),
+                    Style::default().bg(row_bg),
+                ));
+            }
         } else {
             spans.push(Span::styled(item.label.clone(), label_style));
+            let used = prefix_width + item.label.chars().count();
+            let trail = inner_w.saturating_sub(used);
+            if trail > 0 {
+                spans.push(Span::styled(
+                    " ".repeat(trail),
+                    Style::default().bg(row_bg),
+                ));
+            }
         }
 
         lines.push(Line::from(spans));

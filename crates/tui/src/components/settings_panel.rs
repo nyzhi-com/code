@@ -165,24 +165,16 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
 
     let card = primitives::Card::new(theme)
         .title("Settings")
+        .border(theme.accent)
         .title_bottom_spans(footer_spans);
     let inner = card.render_frame(frame, popup_area);
 
-    let content_h = inner.height.saturating_sub(SP_2) as usize;
-    let desc_area = Rect::new(
-        inner.x,
-        inner.y + inner.height.saturating_sub(SP_2),
-        inner.width,
-        1,
-    );
-    let list_area = Rect::new(
-        inner.x,
-        inner.y,
-        inner.width,
-        inner.height.saturating_sub(SP_2),
-    );
+    let sep_and_desc_h: u16 = if desc.is_empty() { 0 } else { SP_2 };
+    let list_h = inner.height.saturating_sub(sep_and_desc_h);
+    let list_area = Rect::new(inner.x, inner.y, inner.width, list_h);
 
     let cursor_pos = panel.cursor;
+    let content_h = list_h as usize;
     let scroll = if cursor_pos >= content_h {
         cursor_pos - content_h + 1
     } else {
@@ -197,18 +189,35 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
         match row {
             SettingsRow::Header(name) => {
                 if i > 0 {
-                    lines.push(Line::from(""));
+                    lines.push(Line::from(Span::styled(
+                        " ".repeat(inner_w),
+                        Style::default().bg(theme.bg_elevated),
+                    )));
                 }
+                let label = format!(" {name}");
+                let trail = inner_w.saturating_sub(label.len());
                 lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(name.clone(), ty::heading(theme)),
+                    Span::styled(
+                        label,
+                        Style::default()
+                            .fg(theme.text_tertiary)
+                            .bg(theme.bg_elevated)
+                            .bold(),
+                    ),
+                    Span::styled(
+                        " ".repeat(trail),
+                        Style::default().bg(theme.bg_elevated),
+                    ),
                 ]));
             }
             SettingsRow::Item(item) => {
                 let is_focused = i == panel.cursor;
-                let arrow = if is_focused { "\u{25B8} " } else { "  " };
+                let row_bg = if is_focused { theme.accent } else { theme.bg_elevated };
+                let primary_fg = if is_focused { theme.bg_page } else { theme.text_primary };
+                let secondary_fg = if is_focused { theme.bg_elevated } else { theme.text_disabled };
 
-                let value_display = render_value(item, theme, is_focused);
+                let arrow = if is_focused { "\u{25B8} " } else { "  " };
+                let value_spans = render_value(item, theme, is_focused, row_bg);
 
                 let label_len = item.label.len();
                 let pad = if label_len < label_col {
@@ -217,24 +226,30 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
                     1
                 };
 
-                let label_style = if is_focused {
-                    ty::heading(theme)
-                } else {
-                    ty::secondary(theme)
-                };
-
-                let arrow_style = if is_focused {
-                    Style::default().fg(theme.accent)
-                } else {
-                    ty::disabled(theme)
-                };
-
                 let mut spans = vec![
-                    Span::styled(arrow.to_string(), arrow_style),
-                    Span::styled(item.label.clone(), label_style),
-                    Span::raw(" ".repeat(pad)),
+                    Span::styled(
+                        arrow.to_string(),
+                        Style::default().fg(primary_fg).bg(row_bg),
+                    ),
+                    Span::styled(
+                        item.label.clone(),
+                        Style::default().fg(primary_fg).bg(row_bg).bold(),
+                    ),
+                    Span::styled(
+                        " ".repeat(pad),
+                        Style::default().bg(row_bg),
+                    ),
                 ];
-                spans.extend(value_display);
+                spans.extend(value_spans);
+
+                let used: usize = spans.iter().map(|s| s.width()).sum();
+                let trail = inner_w.saturating_sub(used);
+                if trail > 0 {
+                    spans.push(Span::styled(
+                        " ".repeat(trail),
+                        Style::default().fg(secondary_fg).bg(row_bg),
+                    ));
+                }
                 lines.push(Line::from(spans));
             }
         }
@@ -244,6 +259,24 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
     frame.render_widget(paragraph, list_area);
 
     if !desc.is_empty() {
+        let sep_area = Rect::new(
+            inner.x,
+            inner.y + list_h,
+            inner.width,
+            1,
+        );
+        frame.render_widget(
+            Paragraph::new(primitives::divider(inner.width, theme))
+                .style(ty::on_elevated(theme)),
+            sep_area,
+        );
+
+        let desc_area = Rect::new(
+            inner.x,
+            inner.y + list_h + 1,
+            inner.width,
+            1,
+        );
         let desc_line = Line::from(vec![
             Span::raw("  "),
             Span::styled(desc, ty::muted(theme)),
@@ -253,43 +286,59 @@ pub fn draw(frame: &mut Frame, panel: &SettingsPanel, theme: &Theme) {
     }
 }
 
-fn render_value<'a>(item: &SettingItem, theme: &Theme, is_focused: bool) -> Vec<Span<'a>> {
-    let val_color = if is_focused {
-        theme.accent
-    } else {
-        theme.text_tertiary
-    };
+fn render_value<'a>(
+    item: &SettingItem,
+    theme: &Theme,
+    is_focused: bool,
+    row_bg: Color,
+) -> Vec<Span<'a>> {
+    let primary_fg = if is_focused { theme.bg_page } else { theme.text_tertiary };
+    let secondary_fg = if is_focused { theme.bg_elevated } else { theme.text_disabled };
 
     match &item.kind {
         SettingKind::Toggle => {
-            let (icon, color) = if item.current_value == "On" {
-                ("[\u{2713}]", theme.success)
+            let (icon, fg) = if item.current_value == "On" {
+                if is_focused {
+                    ("[\u{2713}]", theme.bg_page)
+                } else {
+                    ("[\u{2713}]", theme.success)
+                }
+            } else if is_focused {
+                ("[ ]", theme.bg_elevated)
             } else {
                 ("[ ]", theme.text_disabled)
             };
             vec![Span::styled(
                 icon.to_string(),
-                Style::default().fg(color).bold(),
+                Style::default().fg(fg).bg(row_bg).bold(),
             )]
         }
         SettingKind::Cycle { .. } => {
-            let arrow_style = ty::disabled(theme);
             vec![
-                Span::styled("\u{25C2} ", arrow_style),
+                Span::styled(
+                    "\u{25C2} ",
+                    Style::default().fg(secondary_fg).bg(row_bg),
+                ),
                 Span::styled(
                     item.current_value.clone(),
-                    Style::default().fg(val_color).bold(),
+                    Style::default().fg(primary_fg).bg(row_bg).bold(),
                 ),
-                Span::styled(" \u{25B8}", arrow_style),
+                Span::styled(
+                    " \u{25B8}",
+                    Style::default().fg(secondary_fg).bg(row_bg),
+                ),
             ]
         }
         SettingKind::SubMenu => {
             vec![
                 Span::styled(
                     item.current_value.clone(),
-                    Style::default().fg(val_color),
+                    Style::default().fg(primary_fg).bg(row_bg),
                 ),
-                Span::styled(" \u{25B8}", ty::disabled(theme)),
+                Span::styled(
+                    " \u{25B8}",
+                    Style::default().fg(secondary_fg).bg(row_bg),
+                ),
             ]
         }
     }

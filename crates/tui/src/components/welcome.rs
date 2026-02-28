@@ -1,6 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+use crate::aesthetic::primitives;
 use crate::aesthetic::tokens::*;
 use crate::aesthetic::typography as ty;
 use crate::app::App;
@@ -8,31 +9,78 @@ use crate::logo::LOGO_SPLASH;
 use crate::theme::Theme;
 
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let block = Block::default().style(ty::on_page(theme));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let mut lines: Vec<Line> = Vec::new();
+    frame.render_widget(
+        Block::default().style(ty::on_page(theme)),
+        area,
+    );
 
     let logo_lines: Vec<&str> = LOGO_SPLASH.lines().filter(|l| !l.is_empty()).collect();
-    let logo_width = logo_lines.iter().map(|l| l.len()).max().unwrap_or(0);
-    let inner_w = inner.width as usize;
+    let logo_width = logo_lines.iter().map(|l| l.len()).max().unwrap_or(0) as u16;
 
     let subtitle = format!("code  v{}", env!("CARGO_PKG_VERSION"));
-    let content_height = logo_lines.len() + 6;
-    let vert_pad = inner.height.saturating_sub(content_height as u16) / 2;
+
+    let auth = nyzhi_auth::auth_status(&app.provider_name);
+    let status_text = if auth == "not connected" {
+        "type /connect to get started".to_string()
+    } else {
+        format!("{} \u{00B7} {}", app.provider_name, app.model_name)
+    };
+
+    let shortcuts: &[(&str, &str)] = &[
+        ("/", "commands"),
+        ("S-Tab", "plan"),
+        ("Tab", "thinking"),
+        ("Ctrl+J", "newline"),
+    ];
+
+    let hint_width: u16 = shortcuts
+        .iter()
+        .map(|(k, d)| k.len() + 1 + d.len() + SP_4 as usize)
+        .sum::<usize>() as u16;
+
+    let content_lines = logo_lines.len() as u16 + 7;
+    let card_inner_w = logo_width
+        .max(hint_width)
+        .max(subtitle.len() as u16)
+        .max(status_text.len() as u16)
+        + PAD_H * 2;
+    let card_w = (card_inner_w + 2).min(area.width.saturating_sub(4));
+    let card_h = (content_lines + SP_2 * 2 + 2).min(area.height.saturating_sub(2));
+
+    let card_area = primitives::centered_popup(area, card_w, card_h);
+
+    let card = primitives::Card::new(theme)
+        .bg_color(theme.bg_surface)
+        .border(theme.border_default);
+    let inner = card.render_frame(frame, card_area);
+
+    let padded = Rect::new(
+        inner.x + PAD_H,
+        inner.y,
+        inner.width.saturating_sub(PAD_H * 2),
+        inner.height,
+    );
+
+    let inner_w = padded.width as usize;
+
+    let content_h = logo_lines.len() as u16 + 7;
+    let vert_pad = padded.height.saturating_sub(content_h) / 2;
+
+    let mut lines: Vec<Line> = Vec::new();
 
     for _ in 0..vert_pad {
         lines.push(Line::from(""));
     }
 
     for logo_line in &logo_lines {
-        let pad = inner_w.saturating_sub(logo_width) / 2;
+        let pad = inner_w.saturating_sub(logo_line.len()) / 2;
         lines.push(Line::from(Span::styled(
             format!("{:>pad$}{logo_line}", ""),
             ty::subheading(theme),
         )));
     }
+
+    lines.push(Line::from(""));
 
     let sub_pad = inner_w.saturating_sub(subtitle.len()) / 2;
     lines.push(Line::from(Span::styled(
@@ -42,40 +90,34 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
 
     lines.push(Line::from(""));
 
-    let auth = nyzhi_auth::auth_status(&app.provider_name);
-    if auth == "not connected" {
-        let hint = "type /connect to get started";
-        let h_pad = inner_w.saturating_sub(hint.len()) / 2;
-        lines.push(Line::from(Span::styled(
-            format!("{:>h_pad$}{hint}", ""),
-            ty::warning_style(theme),
-        )));
+    let status_style = if auth == "not connected" {
+        ty::warning_style(theme)
     } else {
-        let status = format!("{} \u{00B7} {}", app.provider_name, app.model_name);
-        let s_pad = inner_w.saturating_sub(status.len()) / 2;
-        lines.push(Line::from(Span::styled(
-            format!("{:>s_pad$}{status}", ""),
-            ty::secondary(theme),
-        )));
-    }
+        ty::secondary(theme)
+    };
+    let s_pad = inner_w.saturating_sub(status_text.len()) / 2;
+    lines.push(Line::from(Span::styled(
+        format!("{:>s_pad$}{status_text}", ""),
+        status_style,
+    )));
 
     lines.push(Line::from(""));
-
-    let shortcuts: &[(&str, &str)] = &[
-        ("/", "commands"),
-        ("S-Tab", "plan"),
-        ("Tab", "thinking"),
-        ("Ctrl+J", "newline"),
-    ];
+    lines.push(Line::from(""));
 
     let mut hint_spans: Vec<Span> = Vec::new();
     for (i, (key, desc)) in shortcuts.iter().enumerate() {
         if i > 0 {
-            hint_spans.push(Span::raw(" ".repeat(SP_4 as usize - 1)));
+            hint_spans.push(Span::styled(
+                "  \u{00B7}  ",
+                Style::default().fg(theme.border_default),
+            ));
         }
         hint_spans.push(Span::styled(
-            (*key).to_string(),
-            ty::caption(theme).bold(),
+            format!(" {key} "),
+            Style::default()
+                .fg(theme.text_primary)
+                .bg(theme.bg_elevated)
+                .bold(),
         ));
         hint_spans.push(Span::styled(
             format!(" {desc}"),
@@ -83,12 +125,13 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         ));
     }
 
-    let hint_width: usize = hint_spans.iter().map(|s| s.width()).sum();
-    let ht_pad = inner_w.saturating_sub(hint_width) / 2;
-    let mut padded = vec![Span::raw(" ".repeat(ht_pad))];
-    padded.extend(hint_spans);
-    lines.push(Line::from(padded));
+    let total_hint_w: usize = hint_spans.iter().map(|s| s.width()).sum();
+    let ht_pad = inner_w.saturating_sub(total_hint_w) / 2;
+    let mut padded_hints = vec![Span::raw(" ".repeat(ht_pad))];
+    padded_hints.extend(hint_spans);
+    lines.push(Line::from(padded_hints));
 
-    let paragraph = Paragraph::new(lines).style(ty::on_page(theme));
-    frame.render_widget(paragraph, inner);
+    let paragraph = Paragraph::new(lines)
+        .style(Style::default().bg(theme.bg_surface));
+    frame.render_widget(paragraph, padded);
 }
