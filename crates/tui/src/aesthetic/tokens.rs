@@ -14,7 +14,7 @@ pub const ACCENT_BAR_W: u16 = 1;
 pub const ACCENT_BAR_GAP: u16 = 1;
 pub const ACCENT_GUTTER: u16 = ACCENT_BAR_W + ACCENT_BAR_GAP;
 
-pub const INPUT_MIN_H: u16 = 4;
+pub const INPUT_MIN_H: u16 = 5;
 pub const INPUT_MAX_H: u16 = 12;
 pub const HEADER_H: u16 = 1;
 pub const FOOTER_H: u16 = 1;

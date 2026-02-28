@@ -18,54 +18,97 @@ fn cursor_2d(input: &str, byte_pos: usize) -> (u16, u16) {
     (row, col)
 }
 
+fn border_color_for_mode(app: &App, theme: &Theme) -> Color {
+    match app.mode {
+        AppMode::Input => {
+            if app.input.is_empty() && app.history_search.is_none() {
+                theme.border_default
+            } else {
+                theme.accent
+            }
+        }
+        AppMode::Streaming => theme.text_tertiary,
+        AppMode::AwaitingApproval => theme.warning,
+        AppMode::AwaitingUserQuestion => theme.info,
+    }
+}
+
 pub fn draw(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, spinner: &SpinnerState) {
-    if area.height < 2 || area.width == 0 {
+    if area.height < 3 || area.width < 6 {
         return;
     }
 
-    // Surface background
-    frame.render_widget(
-        Block::default().style(ty::on_surface(theme)),
-        area,
+    let border_color = border_color_for_mode(app, theme);
+
+    let show_title = matches!(app.mode, AppMode::Input) && app.history_search.is_none();
+    let mut block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(border_color))
+        .style(Style::default().bg(theme.bg_surface));
+
+    if show_title {
+        block = block.title(
+            Line::from(Span::styled(
+                " nyzhi ",
+                Style::default().fg(border_color).bold(),
+            ))
+            .alignment(Alignment::Left),
+        );
+    }
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let padded = Rect::new(
+        inner.x + PAD_H,
+        inner.y,
+        inner.width.saturating_sub(PAD_H * 2),
+        inner.height,
     );
 
-    // Left accent bar
-    borders::accent_bar(
-        frame,
-        Rect::new(area.x, area.y, ACCENT_BAR_W, area.height),
-        theme.accent,
-        theme.bg_surface,
-    );
+    if padded.height < 2 || padded.width == 0 {
+        return;
+    }
 
-    let inner = Rect::new(
-        area.x + ACCENT_GUTTER,
-        area.y,
-        area.width.saturating_sub(ACCENT_GUTTER),
-        area.height,
-    );
+    let sep_and_status_h: u16 = 2;
+    let content_h = padded.height.saturating_sub(sep_and_status_h);
 
-    // Split: content area + status bar
-    let content_h = inner.height.saturating_sub(STATUS_BAR_H);
-    let input_area = Rect::new(inner.x, inner.y, inner.width, content_h.max(1));
+    let content_area = Rect::new(padded.x, padded.y, padded.width, content_h.max(1));
+    let sep_area = Rect::new(
+        padded.x,
+        padded.y + content_h.max(1),
+        padded.width,
+        1,
+    );
     let status_area = Rect::new(
-        inner.x,
-        inner.y + content_h.max(1),
-        inner.width,
-        STATUS_BAR_H,
+        padded.x,
+        padded.y + content_h.max(1) + 1,
+        padded.width,
+        1,
     );
 
     match app.mode {
-        AppMode::Streaming => render_streaming(frame, input_area, app, theme, spinner),
-        AppMode::AwaitingApproval => render_approval(frame, input_area, app, theme),
-        AppMode::AwaitingUserQuestion => render_question(frame, input_area, theme),
+        AppMode::Streaming => render_streaming(frame, content_area, app, theme, spinner),
+        AppMode::AwaitingApproval => render_approval(frame, content_area, app, theme),
+        AppMode::AwaitingUserQuestion => render_question(frame, content_area, theme),
         AppMode::Input => {
             if let Some(search) = &app.history_search {
-                render_history_search(frame, input_area, app, theme, search);
+                render_history_search(frame, content_area, app, theme, search);
             } else {
-                render_input(frame, input_area, app, theme);
+                render_input(frame, content_area, app, theme);
             }
         }
     }
+
+    let sep_line = borders::THIN_H.repeat(padded.width as usize);
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            sep_line,
+            Style::default().fg(theme.border_default),
+        ))
+        .style(Style::default().bg(theme.bg_surface)),
+        sep_area,
+    );
 
     render_status_bar(frame, status_area, app, theme);
 
@@ -111,27 +154,20 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         spans.push(Span::styled("  YOLO", ty::danger(theme)));
     }
 
-    let paragraph = Paragraph::new(Line::from(spans)).style(ty::on_surface(theme));
+    let paragraph = Paragraph::new(Line::from(spans))
+        .style(Style::default().bg(theme.bg_surface));
     frame.render_widget(paragraph, area);
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
-    let pad_top = if area.height > SP_2 { SP_1 } else { 0 };
-    let content_area = Rect::new(
-        area.x,
-        area.y + pad_top,
-        area.width,
-        area.height.saturating_sub(pad_top),
-    );
-
     if app.input.is_empty() {
         let placeholder = "Ask anything... \"What is the tech stack of this project?\"";
         frame.render_widget(
             Paragraph::new(Span::styled(placeholder, ty::disabled(theme)))
-                .style(ty::on_surface(theme)),
-            content_area,
+                .style(Style::default().bg(theme.bg_surface)),
+            area,
         );
-        frame.set_cursor_position(Position::new(content_area.x, content_area.y));
+        frame.set_cursor_position(Position::new(area.x, area.y));
         return;
     }
 
@@ -142,7 +178,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
         .collect();
 
     let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
-    let visible_height = content_area.height;
+    let visible_height = area.height;
     let scroll = if visible_height > 0 && cursor_row >= visible_height {
         cursor_row - visible_height + 1
     } else {
@@ -150,13 +186,13 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     };
 
     let paragraph = Paragraph::new(lines)
-        .style(ty::on_surface(theme))
+        .style(Style::default().bg(theme.bg_surface))
         .scroll((scroll, 0));
-    frame.render_widget(paragraph, content_area);
+    frame.render_widget(paragraph, area);
 
     frame.set_cursor_position(Position::new(
-        content_area.x + cursor_col,
-        content_area.y + cursor_row - scroll,
+        area.x + cursor_col,
+        area.y + cursor_row - scroll,
     ));
 }
 
@@ -167,29 +203,22 @@ fn render_streaming(
     theme: &Theme,
     spinner: &SpinnerState,
 ) {
-    let pad_top = if area.height > SP_2 { SP_1 } else { 0 };
-    let content_area = Rect::new(
-        area.x,
-        area.y + pad_top,
-        area.width,
-        area.height.saturating_sub(pad_top),
-    );
-
     if !app.input.is_empty() {
         let lines: Vec<Line> = app
             .input
             .split('\n')
             .map(|text| Line::from(Span::styled(text.to_string(), ty::body(theme))))
             .collect();
-        let paragraph = Paragraph::new(lines).style(ty::on_surface(theme));
-        frame.render_widget(paragraph, content_area);
+        let paragraph = Paragraph::new(lines)
+            .style(Style::default().bg(theme.bg_surface));
+        frame.render_widget(paragraph, area);
 
         let queue_hint = format!(" queued:{} ", app.message_queue.len() + 1);
         let hint_w = queue_hint.len() as u16;
-        if content_area.width > hint_w + SP_2 {
+        if area.width > hint_w + SP_2 {
             let hint_area = Rect::new(
-                content_area.x + content_area.width - hint_w,
-                content_area.y,
+                area.x + area.width - hint_w,
+                area.y,
                 hint_w,
                 1,
             );
@@ -204,8 +233,8 @@ fn render_streaming(
 
         let (cursor_row, cursor_col) = cursor_2d(&app.input, app.cursor_pos);
         frame.set_cursor_position(Position::new(
-            content_area.x + cursor_col,
-            content_area.y + cursor_row,
+            area.x + cursor_col,
+            area.y + cursor_row,
         ));
     } else {
         let mut spans: Vec<Span> = vec![
@@ -241,8 +270,9 @@ fn render_streaming(
         spans.push(Span::styled("  type to queue", ty::disabled(theme)));
 
         frame.render_widget(
-            Paragraph::new(Line::from(spans)).style(ty::on_surface(theme)),
-            content_area,
+            Paragraph::new(Line::from(spans))
+                .style(Style::default().bg(theme.bg_surface)),
+            area,
         );
     }
 }
@@ -292,7 +322,8 @@ fn render_approval(frame: &mut Frame, area: Rect, app: &App, theme: &Theme) {
     }
 
     frame.render_widget(
-        Paragraph::new(Line::from(spans)).style(ty::on_surface(theme)),
+        Paragraph::new(Line::from(spans))
+            .style(Style::default().bg(theme.bg_surface)),
         area,
     );
 }
@@ -303,7 +334,8 @@ fn render_question(frame: &mut Frame, area: Rect, theme: &Theme) {
         Span::styled("select an option above", ty::secondary(theme)),
     ]);
     frame.render_widget(
-        Paragraph::new(content).style(ty::on_surface(theme)),
+        Paragraph::new(content)
+            .style(Style::default().bg(theme.bg_surface)),
         area,
     );
 }
@@ -462,7 +494,8 @@ fn render_history_search(
         lines.push(Line::from(Span::styled(" (no match)", ty::caption(theme))));
     }
 
-    let paragraph = Paragraph::new(lines).style(ty::on_surface(theme));
+    let paragraph = Paragraph::new(lines)
+        .style(Style::default().bg(theme.bg_surface));
     frame.render_widget(paragraph, area);
 
     let cursor_col = "search: ".len() as u16 + search.query.len() as u16;
